@@ -10,6 +10,11 @@ import {
   type SortKey,
   type SortDir
 } from "@/utils/notes-list";
+import {
+  extractNotePreview,
+  EMPTY_PREVIEW,
+  type NotePreview
+} from "@/utils/note-preview";
 
 export interface NoteListItem {
   id: string;
@@ -73,6 +78,13 @@ export const useNotesStore = defineStore("notes", () => {
   /** Incremented by the "Search notes" palette command; the list watches it to
    * focus the search input (DOM focus is an on-site visual gate). */
   const focusSearchSignal = ref(0);
+
+  // Per-note list previews (Phase 3.3 follow-up): thumbnail + checklist
+  // progress, derived from each note's HTML body. Populated lazily and cached
+  // by `loadPreview` so the list renders fast and previews trickle in.
+  const previews = ref<Record<string, NotePreview>>({});
+  /** noteId → "loading" while a preview fetch is in flight (idempotency guard). */
+  const pendingPreviews = new Set<string>();
 
   const count = computed(() => items.value.length);
 
@@ -148,6 +160,40 @@ export const useNotesStore = defineStore("notes", () => {
     const db = getDatabase();
     const all = await db.notes.all.items();
     items.value = all.map(toListItem);
+    // Fire-and-forget preview enrichment per note: the list renders
+    // immediately from `items`, previews populate as each content fetch
+    // resolves. Not awaited so a slow/locked note never blocks the list.
+    for (const note of items.value) void loadPreview(note.id);
+  }
+
+  /**
+   * Fetch + parse a note's HTML body into a list preview (thumbnail +
+   * checklist progress), caching it in {@link previews}. Idempotent: a
+   * second call for an already-cached or in-flight note is a no-op unless
+   * `force` is set (e.g. after an edit). Vault-locked / missing content
+   * resolves to an empty preview rather than throwing.
+   */
+  async function loadPreview(noteId: string, force = false): Promise<void> {
+    if (!force && (previews.value[noteId] || pendingPreviews.has(noteId))) {
+      return;
+    }
+    pendingPreviews.add(noteId);
+    try {
+      const db = getDatabase();
+      const item = await db.content.findByNoteId(noteId);
+      if (item && "locked" in item && item.locked) {
+        previews.value = { ...previews.value, [noteId]: EMPTY_PREVIEW };
+        return;
+      }
+      const data = item && typeof item.data === "string" ? item.data : "";
+      previews.value = { ...previews.value, [noteId]: extractNotePreview(data) };
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] loadPreview failed:", e);
+      previews.value = { ...previews.value, [noteId]: EMPTY_PREVIEW };
+    } finally {
+      pendingPreviews.delete(noteId);
+    }
   }
 
   /** Create a new note, reload, and open it in a tab. */
@@ -224,6 +270,9 @@ export const useNotesStore = defineStore("notes", () => {
         .slice(0, 10)
         .join(" ");
       note.headline = firstLine;
+      // Re-derive the list preview from the just-saved HTML so the thumbnail
+      // / progress bar update live without a content round-trip.
+      previews.value = { ...previews.value, [note.id]: extractNotePreview(html) };
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[notes] saveContent failed:", e);
@@ -248,11 +297,13 @@ export const useNotesStore = defineStore("notes", () => {
     sortKey,
     sortDir,
     focusSearchSignal,
+    previews,
     openTab,
     closeTab,
     selectNote,
     load,
     create,
+    loadPreview,
     loadActiveContent,
     saveContent,
     setQuery,

@@ -621,6 +621,21 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     Folge-Inkremente (brauchen Collection-Views Phase 3.2 + Content-Parse).
     **On-Site-Gate:** Tippen filtert live, Regex-Toggle, Sort-Wechsel, Clear,
     `Ctrl+Shift+P` "Search notes" fokussiert das Input.
+  - **Status 2026-07-19 (Teil 2 — thumbnail + progress, headless):** die
+    Content-Parse-Folge-Inkremente aus Teil 1 sind gelandet. Neues
+    `utils/note-preview.ts` (`extractNotePreview` — first-`<img>`-`src`-Thumbnail
+    + DOM-Klassen-Zählung `li.checklist--item`/`.checked` via `DOMParser`,
+    never-throws), `notes`-Store `previews`-Cache + `loadPreview(id)` (lazy,
+    idempotent, locked/missing-safe; `load()` fire-and-forget pro Note;
+    `saveContent` re-deriviert den Preview live aus dem gespeicherten HTML),
+    `NotesList.vue` rendert Thumbnail-`<img>` + Fortschrittsbalken (`previewOf`/
+    `progressWidth`-Helper für vue-tsc-Narrowing). 20 neue Contract-Tests in
+    `note-preview.spec.ts` (happy-dom). **229 Contract-Tests grün (209 + 20)**,
+    typecheck (node+web) + build clean, 0 React/theme-ui/zustand-Leck.
+    **Verbleibend aufgeschoben:** Grouping (braucht Phase 3.2), Search-Highlight
+    (Visual-Polish), Listen-Virtualisierung (Skalierung).
+    **On-Site-Gate:** Thumbnail rendert für die Seed-Image-Note; Bar rendert für
+    die 2.4a-Checklist-Seed (3/5) und füllt sich live beim Toggle.
 - [ ] **3.4 StatusBar unten** — Sync-Status, Wortzahl, Cursor-Position
 - [x] **3.5 Vue Router** — file-based via `unplugin-vue-router` oder klassisch;
   ersetzt den dual-Router-Ansatz des Hauptrepos
@@ -2308,5 +2323,79 @@ clearSearch/focusSearch-signal/filter+sort compose). 209 Contract-Tests grün
 
 ---
 
+## Phase 3.3 (Teil 2) — Notes List: Thumbnail + Checklist-Fortschrittsbalken (2026-07-19)
+
+Folge-Inkrement zu 3.3 (Roadmap §4.2). List-Entries zeigen jetzt das **erste
+Bild als Thumbnail** und einen **Fortschrittsbalken** (`x / y` checked), wenn
+die Note eine Checklist enthält. Beides lebt nicht auf dem `Note`-Objekt
+(nur `title`/`headline`/Tags sind dort), sondern im **HTML-Body** der Note —
+also reine Content-Parse-Logik, vollständig headless verifizierbar.
+
+**Neue Dateien:**
+- `apps/desktop/src/renderer/src/utils/note-preview.ts` — reine View-Logik:
+  `extractNotePreview(html): { thumbnail: string|null; checklist:
+  {checked,total}|null }`. Parst via `DOMParser` (renderer-native, happy-dom
+  in Tests). **Thumbnail** = `src` des ersten `<img>`; attachment-backed
+  images (nur `data-hash`, kein `src`) → `null` (Blob-Auflösung Phase 6).
+  **Checklist** = DOM-Klassen-Zählung `li.checklist--item` /
+  `li.checklist--item.checked` — spiegelt **exakt** die `parseHTML`-Logik des
+  task-list-Nodes (dessen `stats`-Attr `rendered:false` ist → nicht im HTML);
+  über alle Root-Task-Listen summiert = Gesamt-Fortschritt der Note. Never
+  throws (malformed HTML → `EMPTY_PREVIEW`). `NotePreview`/`ChecklistProgress`
+  /`EMPTY_PREVIEW` exportiert.
+
+**Geänderte Dateien:**
+- `stores/notes.ts` — `previews: Ref<Record<id, NotePreview>>` +
+  `loadPreview(noteId, force=false)` (idempotent via `pendingPreviews`-Set;
+  fetcht `db.content.findByNoteId` → parst → cacht; vault-locked/missing →
+  `EMPTY_PREVIEW`; throw → `EMPTY_PREVIEW`). `load()` fire-and-forget-t
+  `loadPreview` pro Note (nicht awaited → Liste rendert sofort, Previews
+  trickle rein; forward-kompatibel mit künftiger Virtualisierung: dann
+  pro-Entry `onMounted`). `saveContent` re-deriviert den Preview aus dem
+  gerade gespeicherten HTML (kein Content-Round-trip) → Thumbnail/Bar
+  aktualisieren live nach einem Edit. `previews` + `loadPreview` exportiert.
+- `components/NotesList.vue` — Entry rendert Thumbnail-`<img>` (8×8, nur
+  wenn `preview.thumbnail`) + Fortschrittsbalken (nur wenn
+  `checklist.total > 0`) mit `x/y`-Label; typisiertes `previewOf(id)`-
+  Lookup + `progressWidth(preview)`-Helper für saubere vue-tsc-Narrowing
+  (`thumbnail` ist `string|null` → `:src="… ?? undefined"` für das
+  `string|undefined`-Binding).
+
+**Verifiziert (headless):** `tests/contract/note-preview.spec.ts` (20 Tests,
+happy-dom per File-Env-Override) — `extractNotePreview` (kein img/checklist,
+first img, mehrere imgs → erstes, attachment-only ohne src → null, fallback
+auf späteres img, all-checked/none-checked/mixed checklist, mehrere Root-Listen
+summieren, nested-Verhalten dokumentiert, combined, malformed-HTML-Robustheit)
++ Store `loadPreview` (cacht aus findByNoteId, idempotent kein Refetch,
+locked→empty, missing→empty, force→refetch, throw→empty via gemocktem
+`@/platform/bootstrap`). **229 Contract-Tests grün (209 + 20)**; typecheck
+(node+web) clean; `electron-vite build` clean (Renderer 5,24 MB unverändert —
+kein neuer Dep, `DOMParser` ist browser-native; 0 React/theme-ui/zustand-Leck).
+
+**Wichtige Erkenntnisse:**
+1. **`stats` ist `rendered:false` → nicht im gespeicherten HTML.** Der
+   Fortschritt muss neu gezählt werden — die DOM-Klassen-Zählung ist die
+   exakte Spiegelung des Node-eigenen `parseHTML`, also vertragskonform.
+2. **`Note` trägt keinen Preview.** Headline (precomputed) reicht nicht für
+   Bild/Checklist → Content-Fetch pro Note nötig. Lazy+cached+non-blocking
+   gehalten; `load()` blockiert nicht auf Content.
+3. **vue-tsc narrowt getrennte Index-Zugriffe nicht.** `v-if` auf
+   `previewOf(id)?.thumbnail` narrowt nicht das `:src`-Binding → `?? undefined`
+   bzw. `previewOf`-Helper-Funktionen (pro-Aufruf-Narrowing) nötig unter
+   `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`.
+
+**Aufgeschoben (Phase 3.3 Folge-Inkremente):** Grouping nach
+Datum/Notebook/Tag/Custom → braucht Collection-Views (Phase 3.2).
+Search-Highlight (Match im Titel/Headline hervorheben) → Visual-Polish.
+Virtualisierung der Liste (nur sichtbare Entries fetchen) → Skalierung, später.
+
+**On-Site-Gate (physische Anwesenheit, per Memory gebatcht):** Thumbnail-`<img>`
+rendert für die Seed-Image-Note (inline-SVG-data-URL); Fortschrittsbalken
+rendert für die 2.4a-Checklist-Seed-Note (3/5 checked) und füllt sich beim
+Toggle live; nach Edit eines Checklisten-Items aktualisiert sich die Bar
+ohne Neustart.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)** + **Phase 3.5 (Vue Router klassische Route-Tabelle: `createAppRouter`+`createMemoryHistory`+Auth-Guard; `ShellLayout`/`NotesView`/`PlaceholderView`/`SettingsView`; `useShellStore`; Sidebar-`RouterLink` über `VIEWS`; `app:goto-*`-Palette-Commands; lazy Views → Code-Split)** + **Phase 2.5b (Command-Palette Overlay `CommandPalette.vue`: Teleport-to-body, Input→`setQuery`, Arrow/Enter/Esc, Hover/Klick→`setActiveIndex`+`execute`, Autofocus via `flush:"post"`, scoped Theme-Tokens; Store um `setActiveIndex` erweitert)** + **Phase 3.3 (Teil 1): Notes List Search + Regex + Sort — `utils/notes-list.ts` (`filterNotes` plain/regex-invalid-fallback, `sortNotes` dateEdited/dateCreated/title asc/desc pinned-first) + `notes`-Store View-State (`visibleItems` computed) + `NotesList.vue` verdrahtet (Search-Input, Regex-Toggle, Sort-`<select>`+Dir, Clear, Count, Empty-State) + `app:search-notes`-Palette-Command (`focusSearchSignal`)**. **209 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive + 6 registry + 9 palette + 4 editor-store + 10 tool-definitions + 7 slash-commands + 11 router + 9 command-palette-overlay + 23 notes-list)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`; Routing via `vue-router@4` (Memory-History, Auth-Guard, `VIEWS`-getrieben); Command-Palette Overlay via `CommandPalette.vue` (Store/Registry/Hotkey aus Phase 2.5 = Backend). **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay-Render, Sidebar-Nav-Active/View-Wechsel/login↔shell-Übergang/Go-to-Commands, + Notes-Search/Regex/Sort/Clear/Search-notes-Focus) brauchen physische Anwesenheit.**_
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)** + **Phase 3.5 (Vue Router klassische Route-Tabelle: `createAppRouter`+`createMemoryHistory`+Auth-Guard; `ShellLayout`/`NotesView`/`PlaceholderView`/`SettingsView`; `useShellStore`; Sidebar-`RouterLink` über `VIEWS`; `app:goto-*`-Palette-Commands; lazy Views → Code-Split)** + **Phase 2.5b (Command-Palette Overlay `CommandPalette.vue`: Teleport-to-body, Input→`setQuery`, Arrow/Enter/Esc, Hover/Klick→`setActiveIndex`+`execute`, Autofocus via `flush:"post"`, scoped Theme-Tokens; Store um `setActiveIndex` erweitert)** + **Phase 3.3 (Teil 1): Notes List Search + Regex + Sort — `utils/notes-list.ts` (`filterNotes` plain/regex-invalid-fallback, `sortNotes` dateEdited/dateCreated/title asc/desc pinned-first) + `notes`-Store View-State (`visibleItems` computed) + `NotesList.vue` verdrahtet (Search-Input, Regex-Toggle, Sort-`<select>`+Dir, Clear, Count, Empty-State) + `app:search-notes`-Palette-Command (`focusSearchSignal`)** + **Phase 3.3 (Teil 2): Notes List Thumbnail + Checklist-Fortschrittsbalken — `utils/note-preview.ts` (`extractNotePreview` first-img-src/DOM-Klassen-Zählung via DOMParser, never-throws) + `notes`-Store `previews`-Cache + `loadPreview(id)` (lazy/cached/idempotent/locked-safe) + `load()` fire-and-forget + `saveContent` re-deriviert Preview live + `NotesList.vue` Thumbnail-`<img>` + Fortschrittsbalken (`previewOf`/`progressWidth`-Helper)**. **229 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive + 6 registry + 9 palette + 4 editor-store + 10 tool-definitions + 7 slash-commands + 11 router + 9 command-palette-overlay + 23 notes-list + 20 note-preview)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`; Routing via `vue-router@4` (Memory-History, Auth-Guard, `VIEWS`-getrieben); Command-Palette Overlay via `CommandPalette.vue` (Store/Registry/Hotkey aus Phase 2.5 = Backend). **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay-Render, Sidebar-Nav-Active/View-Wechsel/login↔shell-Übergang/Go-to-Commands, + Notes-Search/Regex/Sort/Clear/Search-notes-Focus, + List-Thumbnail-Render/Checklist-Fortschrittsbalken-Render/live-Update-bei-Edit) brauchen physische Anwesenheit.**_

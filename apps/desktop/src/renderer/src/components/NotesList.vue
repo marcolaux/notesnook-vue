@@ -3,11 +3,24 @@ import { ref, watch } from "vue";
 import { useNotesStore } from "@/stores/notes";
 import { useShellStore } from "@/stores/shell";
 import type { SortKey } from "@/utils/notes-list";
+import type { NotePreview } from "@/utils/note-preview";
 
 const notes = useNotesStore();
 const shell = useShellStore();
 
 const searchInput = ref<HTMLInputElement | null>(null);
+
+/** Typed lookup of a note's list preview (thumbnail + checklist progress). */
+function previewOf(id: string): NotePreview | undefined {
+  return notes.previews[id];
+}
+
+/** Progress-bar width (%) for a note's checklist, or 0 when none. */
+function progressWidth(preview: NotePreview): number {
+  const c = preview.checklist;
+  if (!c || c.total === 0) return 0;
+  return (c.checked / c.total) * 100;
+}
 
 const sortKeys: { value: SortKey; label: string }[] = [
   { value: "dateEdited", label: "Modified" },
@@ -129,7 +142,34 @@ watch(
           <span v-if="note.favorite" class="text-[10px] text-rose-300/80" title="Favorite">★</span>
           <span class="truncate text-xs font-medium text-white/90">{{ note.title }}</span>
         </div>
-        <div class="truncate text-[10px] text-white/40">{{ note.headline || "No additional text" }}</div>
+        <div class="mt-1 flex items-start gap-2">
+          <!-- First-image thumbnail (attachment-backed images resolve in Phase 6). -->
+          <img
+            v-if="previewOf(note.id)?.thumbnail"
+            :src="previewOf(note.id)!.thumbnail ?? undefined"
+            alt=""
+            class="h-8 w-8 shrink-0 rounded-sm object-cover"
+            draggable="false"
+          />
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-[10px] text-white/40">{{ note.headline || "No additional text" }}</div>
+            <!-- Checklist progress bar (x / y checked). -->
+            <div
+              v-if="previewOf(note.id)?.checklist && previewOf(note.id)!.checklist!.total > 0"
+              class="mt-1 flex items-center gap-1"
+            >
+              <div class="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
+                <div
+                  class="h-full rounded-full bg-emerald-400/70"
+                  :style="{ width: `${progressWidth(previewOf(note.id)!)}%` }"
+                />
+              </div>
+              <span class="shrink-0 text-[8px] text-white/40">
+                {{ previewOf(note.id)!.checklist!.checked }}/{{ previewOf(note.id)!.checklist!.total }}
+              </span>
+            </div>
+          </div>
+        </div>
         <div class="mt-0.5 flex items-center gap-1.5 text-[9px] text-white/30">
           <span>{{ formatDate(note.dateEdited) }}</span>
           <span
