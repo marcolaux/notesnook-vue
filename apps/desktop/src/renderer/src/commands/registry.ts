@@ -13,6 +13,7 @@ import type { Router } from "vue-router";
 import type { Editor } from "@tiptap/vue-3";
 import type { useNotesStore } from "@/stores/notes";
 import type { useAuthStore } from "@/stores/auth";
+import type { useShellStore } from "@/stores/shell";
 
 export type CommandGroup = "app" | "editor";
 
@@ -21,6 +22,8 @@ export interface CommandContext {
   editor: Editor | undefined;
   notes: ReturnType<typeof useNotesStore>;
   auth: ReturnType<typeof useAuthStore>;
+  /** Shell state (sidebar/list collapse + ToC/Properties panel visibility). */
+  shell: ReturnType<typeof useShellStore>;
   /** The Vue Router instance (set from `main.ts`; undefined outside the app). */
   router: Router | undefined;
   /** Close the palette overlay (called by the store after execute). */

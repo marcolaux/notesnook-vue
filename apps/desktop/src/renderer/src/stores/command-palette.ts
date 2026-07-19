@@ -11,6 +11,7 @@ import { ref, computed } from "vue";
 import { useEditorStore } from "@/stores/editor";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
+import { useShellStore } from "@/stores/shell";
 import { getCommands, getCommandRouter, type Command, type CommandContext } from "@/commands/registry";
 import { filterCommands, cycleCommandIndex } from "@/commands/menu";
 
@@ -18,6 +19,7 @@ export const useCommandPaletteStore = defineStore("commandPalette", () => {
   const editorStore = useEditorStore();
   const notes = useNotesStore();
   const auth = useAuthStore();
+  const shell = useShellStore();
 
   const open = ref(false);
   const query = ref("");
@@ -27,6 +29,7 @@ export const useCommandPaletteStore = defineStore("commandPalette", () => {
     editor: editorStore.editor,
     notes,
     auth,
+    shell,
     router: getCommandRouter(),
     closePalette
   }));

@@ -67,6 +67,41 @@ const appCommands: Command[] = [
     run: (ctx) => {
       ctx.notes.focusSearch();
     }
+  },
+  // Pane/panel toggle commands (Phase 5.3) — the toolbar + "rest over command
+  // palette" entry points for collapsing the sidebar / list and showing the
+  // right-side ToC + properties panels. The panel UI itself is on-site.
+  {
+    id: "app:toggle-sidebar",
+    title: "Toggle sidebar",
+    keywords: ["sidebar", "collapse", "navigation"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => ctx.shell.toggleSidebar()
+  },
+  {
+    id: "app:toggle-list",
+    title: "Toggle notes list",
+    keywords: ["list", "collapse", "notes"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => ctx.shell.toggleList()
+  },
+  {
+    id: "app:toggle-toc",
+    title: "Toggle table of contents",
+    keywords: ["toc", "outline", "headings", "minimap"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => ctx.shell.toggleToc()
+  },
+  {
+    id: "app:toggle-properties",
+    title: "Toggle properties panel",
+    keywords: ["properties", "panel", "info", "metadata"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => ctx.shell.toggleProperties()
   }
 ];
 

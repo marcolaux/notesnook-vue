@@ -14,6 +14,7 @@ function makeCtx(over: Partial<CommandContext> = {}): CommandContext {
     editor: undefined,
     notes: {} as CommandContext["notes"],
     auth: {} as CommandContext["auth"],
+    shell: {} as CommandContext["shell"],
     closePalette: () => {},
     ...over
   };
