@@ -15,6 +15,7 @@
 import { ref, watch, onBeforeUnmount } from "vue";
 import { useEditor, EditorContent } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
+import { AttachmentNode, TaskItemNode, TaskListNode } from "@notesnook-vue/editor-vue";
 import { useNotesStore } from "@/stores/notes";
 
 const notes = useNotesStore();
@@ -22,7 +23,7 @@ const notes = useNotesStore();
 // `useEditor` returns a ShallowRef<Editor | undefined>; in the template it
 // auto-unwraps, so `:editor="editor"` passes the Editor instance.
 const editor = useEditor({
-  extensions: [StarterKit],
+  extensions: [StarterKit, AttachmentNode, TaskListNode, TaskItemNode.configure({ nested: true })],
   content: notes.activeContent || "",
   autofocus: false,
   editable: true,

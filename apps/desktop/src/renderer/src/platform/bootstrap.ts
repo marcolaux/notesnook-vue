@@ -55,6 +55,18 @@ async function seedIfEmpty(db: Database): Promise<void> {
     title: "Phase 1 pipeline",
     content: { type: "tiptap", data: "<p>Renderer holds the Database; SQL is compiled by Kysely and forwarded over the tRPC bridge to Main's better-sqlite3-multiple-ciphers, which writes an encrypted .sql file in userData.</p>" }
   });
+  // Phase 2.4 demo — a checklist (task-list + task-item node-views) and an
+  // attachment chip (attachment node-view), so `npm run dev` shows the
+  // ported node-views immediately. The attachment uses a fake hash (the real
+  // blob arrives with attachments auth in Phase 6); the chip still renders
+  // from the stored attrs.
+  await db.notes.add({
+    title: "Phase 2.4 editor node-views",
+    content: {
+      type: "tiptap",
+      data: '<p>Ported node-views from @notesnook/editor to Vue:</p><ul class="checklist" data-title="2.4a progress"><li class="checklist--item checked"><p>Attachment chip (inline atom)</p></li><li class="checklist--item checked"><p>Task item + task list (editable content + stats)</p></li><li class="checklist--item"><p>Round-trip contract test</p></li><li class="checklist--item"><p>Runtime check in the app</p></li></ul><p>Attachment sample: <span data-hash="demo-attachment-001" data-filename="phase-2.4.md" data-mime="text/markdown" data-size="2048"></span></p>'
+    }
+  });
 }
 
 /** Returns the initialised Database singleton. Throws if bootstrap hasn't run. */

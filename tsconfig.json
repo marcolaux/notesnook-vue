@@ -22,7 +22,9 @@
     "paths": {
       "@notesnook-vue/contracts": ["packages/contracts/src/index.ts"],
       "@notesnook-vue/contracts/*": ["packages/contracts/src/*"],
-      "@notesnook-vue/shared": ["packages/shared/src/index.ts"]
+      "@notesnook-vue/shared": ["packages/shared/src/index.ts"],
+      "@notesnook-vue/editor-vue": ["packages/editor-vue/src/index.ts"],
+      "@notesnook-vue/editor-vue/*": ["packages/editor-vue/src/*"]
     }
   },
   "include": [],

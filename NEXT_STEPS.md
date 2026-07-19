@@ -219,6 +219,20 @@ vollständiger Toolbar.
   `activeContent`, `contentState`, `saveState`, `loadActiveContent()`,
   `saveContent(noteId, html)`. ProseMirror-Base-CSS in `style.css`.
   **Runtime-Check `npm run dev` offen** (User-Maschine).
+- ✅ **Phase-2.4a Editor-Node-View-Port** — neues Workspace-Paket
+  `packages/editor-vue` (`@notesnook-vue/editor-vue`, Source-as-Entry,
+  pfad-aliasiert). 3 der 9 React-Node-Views portiert: `attachment`
+  (inline Atom), `task-item` + `task-list` (Editable-Content +
+  `appendTransaction`-Stats-Plugin → Progress-Bar). Schema/parseHTML/renderHTML
+  **verbatim** vom Upstream (`streetwriters/notesnook`, Branch `master`) für
+  Byte-stabilen HTML-Round-trip; React-Node-View-Layer → `VueNodeViewRenderer`
+  + `NodeViewWrapper`/`NodeViewContent`. Wiederverwendbare Helfer:
+  `getDataAttribute`, `prosemirror.ts`-Subset, `formatBytes`.
+  Round-trip-Vertragstest `tests/contract/editor-html.spec.ts` (5 Tests,
+  happy-dom per File-Env-Override, Schema via leeren `Editor` gebaut).
+  41 Contract-Tests grün, typecheck (node+web) + build clean.
+  `Editor.vue` nutzt `[StarterKit, AttachmentNode, TaskListNode,
+  TaskItemNode.configure({nested:true})]`. **Runtime-Check offen.**
 - ✅ **Phase-1-Plattform-Seam** in `apps/desktop/src/renderer/src/platform/`:
   `desktop-bridge.ts` (lazy tRPC-Client), `sqlite-dialect.ts` (Kysely-Dialect
   → `sqlite.run`), `compressor.ts`, `key-store.ts` (safeStorage), `key-value.ts`
@@ -405,15 +419,33 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
   - Schema um `opacity` / `backdropBlur`-Felder erweitern (rückwärtskompatibel)
 - [ ] **2.3 Vue-Primitives** — `Flex`/`Box`/`Text`/`Button`/`Input` mit Tailwind
   statt Theme UI (erspart spätere `sx`-Migration in jeder Komponente)
-- [ ] **2.4 Port-Reihenfolge der 9 React-Node-Views** (einfach → komplex):
-  1. `attachment` (rein presentational)
-  2. `audio` (blob URL + `<audio>`)
-  3. `web-clip` (iframe + fullscreen listener)
-  4. `embed` (Resizer + iframe sandbox)
-  5. `image` (IntersectionObserver + blob URL + alignment)
-  6. `task-item` + `task-list` (checkbox toggle + progress bar)
-  7. `code-block` (language selector + prism + caret tracking)
-  8. `table` (vendored `prosemirror-tables` + row/column toolbars — am aufwendigsten)
+- [~] **2.4 Port-Reihenfolge der 9 React-Node-Views** (einfach → komplex).
+  Eigener Paket-Scaffold `packages/editor-vue` (`@notesnook-vue/editor-vue`,
+  Source-as-Entry, pfad-aliasiert wie `contracts`). Pro Node: `<name>.ts`
+  (TipTap-Node, Schema/parseHTML/renderHTML **verbatim** vom Upstream für
+  Byte-stabilen Round-trip) + `Component.vue` (Vue-View via `VueNodeViewRenderer`
+  + `NodeViewWrapper`/`NodeViewContent` aus `@tiptap/vue-3`). Importe NIE direkt
+  von `@tiptap/core`, sondern von `@tiptap/vue-3` (re-exportiert core).
+  **Status 2026-07-19 (2.4a):**
+  1. [x] `attachment` (inline Atom, File-Chip aus Attrs; Blob = Phase 6) ✅
+  6. [x] `task-item` + `task-list` (Checkbox-Toggle, Editable-Content via
+     `NodeViewContent`, `appendTransaction`-Stats-Plugin → Progress-Bar) ✅
+  - Bewiesen: Parse→Serialize Round-trip der data-*-Attrs/Klassen via
+    `tests/contract/editor-html.spec.ts` (5 Tests, happy-dom, Schema via
+    leeren `Editor` gebaut). 41 Contract-Tests grün, typecheck+build clean.
+  - **Aufgeschoben (Polish):** drop-override-Plugin, `[]`/`[x]`-Input-Regel,
+    `sortList`, mobile/iOS-Touch (desktop-first, Entscheidung #8).
+  2. [ ] `audio` (blob URL + `<audio>`) — **Phase-6-gated** (attachments auth)
+  3. [ ] `web-clip` (iframe + fullscreen listener) — **Phase-6-gated**
+  4. [ ] `embed` (Resizer + iframe sandbox) — selbstständig, kein Attachments
+  5. [ ] `image` (IntersectionObserver + blob URL + alignment) — **Phase-6-gated**
+  7. [ ] `code-block` (refractor-Highlighter + Lazy-Lang-Loading + caret/lines-sync)
+  8. [ ] `table` (vendored `prosemirror-tables` + row/column toolbars — am aufwendigsten)
+  - **Wiederverwendbare Helfer** schon portiert: `getDataAttribute`,
+    `prosemirror.ts` (`findParentNodeClosestToPos`/`hasSameAttributes`/
+    `getExactChangedNodes`/`getDeletedNodes`/`getParentAttributes`/
+    `ensureLeadingParagraph`), `formatBytes`. `downloader.ts`/`useObserver`/
+    `getSandboxFeatures`/`Resizer` folgen mit embed/image (2.4b/2.4e).
 - [ ] **2.5 Toolbar** als letztes (höchste Masse, geringstes Schema-Risiko):
   - Erst Command Palette (`Ctrl+Shift+P`) + Slash-Commands (`/`)
   - Dann klassische Toolbar-Buttons für die verbleibenden Aktionen
@@ -748,7 +780,96 @@ single core).
 **Nächster Schritt:** Phase 2.2 (Tailwind-Token-Adapter) oder 2.4
 (Node-View-Ports) — nach Nutzerpriorisierung.
 
+### 2026-07-19 — Phase 2.4a: erste 3 Editor-Node-Views portiert (attachment, task-item, task-list)
+
+Nutzerpriorisierung: 2.4 (Node-View-Ports) vor 2.2. Erste Inkrement-Reichweite
+vom Nutzer freigegeben: `attachment` + `task-item` + `task-list` (beweist beide
+Node-View-Formen — inline-Atom + Editable-Content-mit-PM-Plugin — und liefert
+die §4.2 Progress-Bar). Rest (audio, web-clip, embed, image, code-block, table)
+in späteren Inkrementen; audio/web-clip/image sind **Phase-6-gated** (attachments
+auth).
+
+**Erledigt & verifiziert** (typecheck node+web clean, build clean, 41
+Contract-Tests grün — 36 + 5 neue):
+
+- **`packages/editor-vue`** — neues Workspace-Paket (`@notesnook-vue/editor-vue`),
+  Source-as-Entry (mirror `contracts`), pfad-aliasiert in `tsconfig.json` +
+  `apps/desktop/tsconfig.web.json` (deren `include` um `packages/editor-vue/src`
+  erweitert, so dass `vue-tsc` die SFCs typisiert). Deps: `@tiptap/vue-3`,
+  `@tiptap/pm`, `@tiptap/extension-task-item/list`, `vue` — alle 2.6.6 / ^3.5.0.
+  **Kein direktes `@tiptap/core`-Dep** (Schema-Split-Hygiene; core via vue-3).
+  `vue-shims.d.ts` für nicht-vue-tsc-Kontext.
+- **Port-Strategie** — pro Node: `<name>.ts` (TipTap-Node, Schema/parseHTML/
+  renderHTML/**verbatim** vom Upstream `streetwriters/notesnook` Branch `master`
+  via WebFetch) + `Component.vue` (Vue-View via `VueNodeViewRenderer` +
+  `NodeViewWrapper`/`NodeViewContent`). React-`createNodeView`-Layer ersetzt;
+  `wrapperFactory`/`contentDOMFactory` → `NodeViewWrapper as`/`NodeViewContent`.
+- **`attachment`** — inline-Atom, File-Chip (Icon + Filename + `formatBytes`).
+  `getDataAttribute`-Helfer portiert (round-trip data-hash/filename/mime/size).
+  `insertAttachment`/`removeAttachment`/`updateAttachment` commands; MIME-Routing
+  auf image/audio entfällt (Phase 6). Keyboard-Shortcut + `hasPermission` entfallen.
+- **`task-item`** — `TaskItem.extend`: class-basiertes `checked` (`.checked`),
+  `li.checklist--item`, `ensureLeadingParagraph` als `getContent`. Mobile/Touch
+  entfallen. `TaskItemNode.configure({nested:true})` im Editor (sonst fehlt
+  nested-Content — Stock-Default ist `paragraph+`).
+- **`task-list`** — `TaskList.extend`: `stats`/`title`/`readonly`-Attrs,
+  `appendTransaction`-Plugin (Parent/Child-Auto-Check + `stats`-Sync → Progress-Bar)
+  **1:1 portiert**. Drop-Override-Plugin + `[]`/`[x]`-Input-Regel + `sortList`
+  aufgeschoben (Polish). Komponente: Header (Master-Toggle + Titel-Input +
+  `checked/total` + Clear-Completed) über `NodeViewContent as="ul"`.
+- **Wiederverwendbare Helfer** — `utils/getDataAttribute.ts`,
+  `utils/prosemirror.ts` (Subset: `findParentNodeClosestToPos`, `hasSameAttributes`,
+  `getExactChangedNodes`+`getChangedNodeRanges`, `getDeletedNodes`,
+  `getParentAttributes`, `ensureLeadingParagraph`), `utils/formatBytes.ts`.
+  `downloader`/`useObserver`/`getSandboxFeatures`/`Resizer` folgen mit embed/image.
+- **Integration** — `Editor.vue` `[StarterKit, AttachmentNode, TaskListNode,
+  TaskItemNode.configure({nested:true})]`. `bootstrap.ts` seeedt eine dritte
+  Willkommens-Note mit Checklist + Attachment-Chip (fake Hash; realer Blob =
+  Phase 6).
+- **Round-trip-Vertragstest** `tests/contract/editor-html.spec.ts` — 5 Tests:
+  beweist Parse→Serialize (data-hash/filename/mime/size, `class="checklist"` +
+  `data-title`, class-basiertes `checked`, nested Checklists, gemischter
+  Seed-Shape). happy-dom per File-Env-Override (`// @vitest-environment
+  happy-dom`); die anderen 36 Tests bleiben in `node`. Schema via leeren `Editor`
+  gebaut (flacht StarterKit via `ExtensionManager`; kein Custom-Node-View-Mount
+  da Content leer) — parse/serialize via ProseMirror `DOMParser`/`DOMSerializer`,
+  kein Editor-View/Selection nötig. `vitest.config.ts` um `@vitejs/plugin-vue`
+  (für `.vue` im Test) + `@notesnook-vue/editor-vue`-Alias erweitert;
+  `happy-dom` als root devDep.
+
+**Wichtige Erkenntnisse:**
+
+1. **Stock `TaskItem.content()` = `paragraph+`**, nesting nur mit
+   `nested: true` (Notesnook setzt das auf Editor-Ebene). Ohne es fallen
+   nested Checklists beim Parsen weg — Round-trip-Test hat das aufgedeckt.
+2. **`getSchemaByResolvedExtensions` flattet nicht** — `splitExtensions`
+   filtert nur nach `type`; `StarterKit` (type `extension`) fällt durchs Raster
+   → `doc` fehlt. Lösung: echten leeren `Editor` für das Schema nehmen
+   (ExtensionManager flattet).
+3. **`@notesnook/editor` ist React** (peer: react, theme-ui, framer-motion,
+   zustand) + lädt nicht (mac-scrollbar/extension-character-count-Resolution).
+   Schema/Behaviour also **aus dem Upstream-Source (GitHub `master`)** portiert,
+  nicht aus dem npm-Paket importiert. Typen lokal redeklariert (klein, stabil).
+4. **`updateAttributes` custom-meta** (addToHistory/preventUpdate/forceUpdate)
+  für attachment+task nicht nötig (deren Commands nutzen `tr.setNodeMarkup`
+  direkt bzw. Stock-updateAttributes). Braucht image/embed (`setImageSize`/
+  `setEmbedSize`) → shim dann portieren.
+
+**Offen (User-Maschine):** Runtime-Check `npm run dev` — Checklist rendern,
+Checkbox toggeln → Progress-Bar aktualisieren, Titel editieren, Edits
+persistieren (Neustart). In dieser Session nicht gestartet (Electron-GUI). Code
+fertig + deterministisch verifiziert (typecheck + build + 41 Contract-Tests).
+
+**Commits (auf `main`):**
+- `d8ff3d1` 2.1 TipTap-Spike
+- `ea45c81` Entscheidung #9 (`@tiptap/*` 2.6.6 overrides)
+- (dieser) 2.4a editor-vue + attachment/task-item/task-list
+
+**Nächster Schritt:** 2.4b `embed` (selbstständig, kein Phase-6-Gate) oder 2.4c
+`code-block` — nach Nutzerpriorisierung. 2.2 (Tailwind-Token-Adapter) parallel
+möglich.
+
 ---
 
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 komplett + Phase 2.1 TipTap-Spike + Entscheidung #9 gelöst (`@tiptap/*` alle 2.6.6, single core). 36 Contract-Tests grün, typecheck (node+web) + build clean. Editor läuft mit `@tiptap/vue-3` + StarterKit, Content-HTML round-trip via `db.content`/`db.notes.add`. Runtime-Check `npm run dev` auf User-Maschine offen. Bereit für 2.2 oder 2.4._
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a (editor-vue: attachment/task-item/task-list). 41 Contract-Tests grün (36 + 5 editor-html round-trip), typecheck (node+web) + build clean. Editor nutzt `@notesnook-vue/editor-vue`-Nodes; Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip. Runtime-Check `npm run dev` offen. Bereit für 2.4b/2.4c oder 2.2._

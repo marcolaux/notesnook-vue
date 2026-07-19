@@ -1,7 +1,11 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
+import vue from "@vitejs/plugin-vue";
 
 export default defineConfig({
+  // Needed so contract tests that import `@notesnook-vue/editor-vue` can load
+  // its `.vue` node-view components (the editor-html round-trip test).
+  plugins: [vue()],
   test: {
     dir: "tests/contract",
     environment: "node",
@@ -24,7 +28,9 @@ export default defineConfig({
       // Allow contract tests to import the renderer platform modules, which use
       // the same path aliases as the electron-vite renderer build.
       "@contracts/*": resolve(__dirname, "apps/desktop/src/contracts/*"),
-      "@notesnook-vue/shared": resolve(__dirname, "packages/shared/src/index.ts")
+      "@notesnook-vue/shared": resolve(__dirname, "packages/shared/src/index.ts"),
+      "@notesnook-vue/editor-vue": resolve(__dirname, "packages/editor-vue/src/index.ts"),
+      "@notesnook-vue/editor-vue/*": resolve(__dirname, "packages/editor-vue/src/*")
     }
   }
 });
