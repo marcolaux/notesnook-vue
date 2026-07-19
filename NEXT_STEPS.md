@@ -295,17 +295,25 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
 
 ### Phase 1 — Fundament & Daten-Pipeline (Woche 1–3)
 
-> **Status 2026-07-19:** De-Risk-Spine (M1–M5 + Gate) **fertig und deterministisch
-> verifiziert** (20 Contract-Tests grün, typecheck + build clean). Siehe
-> `tests/contract/{bridge-router,sqlite-engine,bridge-dialect,data}.spec.ts`.
-> Die Pipeline läuft end-to-end: `db.init()` + Migrationen + `notes.add`/`all`
-> — im Renderer über die Bridge-Dialect, in Tests über In-Process-SQLite.
-> Verbleibt: M6 Key-Store, M7 NNStorage, M8 FileStorage (Stubs ersetzen),
-> M9 Full-Init-Singleton, M10 echte NotesList, M11 erweiterte Contract-Tests.
+> **Status 2026-07-19:** Phase 1 **komplett** (M1–M3, M5–M11; M4 entfällt).
+> 36 Contract-Tests grün, typecheck (node+web) + build clean. Die Pipeline
+> läuft end-to-end: `db.init()` + Migrationen + `notes.add`/`all` — im Renderer
+> über die Bridge-Dialect, in Tests über In-Process-SQLite. NotesList liest
+> `database.notes.all()`, bootstrap seeed zwei Willkommens-Notes.
+> **Offen:** Runtime-Check per `npm run dev` steht auf der User-Maschine aus
+> (in dieser Sandbox ist das Electron-Binary unvollständig — Frameworks fehlen,
+> kein Netz zum Reinstall). Code ist fertig + deterministisch verifiziert.
 > **M4 (FTS5 native Extensions) entfällt** — SQLite 3.53.2 (bündelt mit
 > `better-sqlite3-multiple-ciphers@12`) liefert `trigram` als Built-in-Tokenizer;
 > Migrationen laufen ohne ladbare Extensions. `html`-Tokenizer fehlt noch
 > (nur für Search-Highlighting nötig) → ggf. Phase 6/7.
+> **Attach­ments-Collection ist user-gated** (`_getEncryptionKey` →
+> `db.user.getAttachmentsKey`, gesetzt beim Login) → voller Attachments-Round-
+> trip braucht Auth (Phase 6). Die FileStorage-Verschlüsselung darunter ist
+> verifiziert (`filestorage.spec`).
+> **Fix:** `apps/desktop/package.json` `main` war `./dist-electron/…`, aber
+> electron-vite baut nach `./out/…` → `npm run dev` scheiterte an "No electron
+> app entry file found". Auf `./out/main/index.js` korrigiert.
 
 - [x] **M1 tRPC-Bridge** — `main/ipc.ts` (`createIPCHandler`), Preload
   `exposeElectronTRPC()` (`appEvents`+`os` bleiben), Renderer
@@ -324,29 +332,36 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
   `createDesktopPlatform`) + `stub-storage.ts`/`stub-fs.ts`. Deterministisch
   verifiziert via `data.spec.ts` (In-Process) + `bridge-dialect.spec.ts`
   (echte Bridge-Forwarder über Fake-Bridge). ✅
-- [ ] **M6 Key-Store (safeStorage)** — `main/safe-storage.ts` + Renderer
-  `key-store.ts`; `databaseKey` als `sqliteOptions.password`.
-- [ ] **M7 NNStorage (echtes IStorage)** — `key-value.ts` (IndexedDB),
-  `nncrypto.ts` (`@notesnook/sodium`), `storage.ts` (Port). `intl`-Stub in
-  `packages/shared/src/intl.ts`. `openpgp`-Dep.
-- [ ] **M8 FileStorage (echtes IFileStorage)** — `main/file-storage.ts` (Node-fs
-  Chunk-Store) + Renderer `file-store.ts` + `fs.ts` (Port, ~23 KB).
-- [ ] **M9 Full-Init + Singleton-Boot** — `platform/database.ts` mit echten
-  storage/fs/compressor/dialect/password; Boot in `main.ts`.
-- [ ] **M10 Echte NotesList** — `stores/notes.ts` `load()` →
-  `database.notes.all()`; `NotesList.vue` rendert echte Items.
-- [ ] **M11 Contract-Tests erweitern** — `notebooks.add`, `tags.add`,
-  `settings.set`, `attachments.add` (echtes FileStorage), `vault.create/unlock`,
-  `sync.start` gegen In-Process-SQLite.
+- [x] **M6 Key-Store (safeStorage)** — `main/safe-storage.ts` (OS-Keychain,
+  `secrets.json`-Persistenz) + Renderer `key-store.ts` (`getDatabaseKey`,
+  `databaseKeyToPassword` hex, `SafeStorageKeyStore`); `sqliteOptions.password`
+  verschlüsselt die DB (verifiziert in `database-encryption.spec`). ✅
+- [x] **M7 NNStorage (echtes IStorage)** — `key-value.ts` (IndexedDB +
+  Memory), `nncrypto.ts` (`@notesnook/crypto` sync, sodium), `storage.ts`
+  (NNStorage, IStorage-Oberfläche nur — PGP/`openpgp`/`intl` entfallen, da
+  nicht in `IStorage`). Verifiziert in `nnstorage.spec`. ✅
+- [x] **M8 FileStorage (echtes IFileStorage)** — `main/file-storage.ts`
+  (Node-fs Chunk-Store, namenssanitisiert) + Renderer `file-store.ts`
+  (`NodeFSFileStore` forwardet) + `fs.ts` (`FileStorage`: streamable-fs +
+  sodium secretstream + SHA-256-Hash; HTTP-Sync-Methoden stubben Phase 6).
+  Verifiziert in `filestorage.spec`. ✅
+- [x] **M9 Full-Init + Singleton-Boot** — `createDesktopPlatform` waltet
+  echte NNStorage + FileStorage + Compressor + Dialect + Password;
+  `bootstrap()` läuft beim App-Start; `getDatabase()` Singleton. ✅
+- [x] **M10 Echte NotesList** — `stores/notes.ts` `load()` →
+  `database.notes.all().items()`; `NotesList.vue` rendert Title/Headline/
+  Datum/Tags; New-Note-Button; `Editor.vue` zeigt aktive Note (read-only bis
+  TipTap Phase 2); `App.vue` Boot-Overlay. ✅
+- [x] **M11 Contract-Tests erweitern** — `collections.spec`: notebooks, tags,
+  settings, vault, sync (Attachments user-gated → Phase 6). ✅
 
 #### Ursprüngliche 1.x-Items (Referenz, z.T. durch M-Struktur ersetzt)
 
-- [x] 1.1 Platform-Implementierungen (sqlite-dialect + compressor done; storage/fs
-  als Stubs fürs Gate, echt in M7/M8)
-- [x] 1.2 tRPC-Bridge (done — Preload `exposeElectronTRPC`, nicht rohe `appEvents`)
-- [x] 1.3 Datenbank-Wiring (done als `initDatabase`-DI-Helfer; Singleton folgt in M9)
-- [ ] 1.4 Erste echte Komponente — NotesList (→ M10)
-- [ ] 1.5 Vertragstests erweitern (→ M11; Basis-Suite schon da)
+- [x] 1.1 Platform-Implementierungen (sqlite-dialect + compressor + storage + fs)
+- [x] 1.2 tRPC-Bridge (Preload `exposeElectronTRPC`, nicht rohe `appEvents`)
+- [x] 1.3 Datenbank-Wiring (`initDatabase`-DI-Helfer + `createDesktopPlatform`)
+- [x] 1.4 Erste echte Komponente — NotesList (`database.notes.all()`)
+- [x] 1.5 Vertragstests erweitern (9 Spec-Dateien, 36 Tests)
 
 ### Phase 2 — Editor-Port (Woche 2–8, parallel zu Phase 1 möglich)
 
