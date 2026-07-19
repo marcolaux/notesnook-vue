@@ -45,7 +45,10 @@ export type {
   BackupFile,
   LegacyBackupFile,
   ResolveInternalLink,
-  User
+  User,
+  TimeFormat,
+  TrashCleanupInterval,
+  Profile
 } from "@notesnook/core";
 
 export type {
