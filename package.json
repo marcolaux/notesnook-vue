@@ -56,14 +56,18 @@
   },
   "scripts": {
     "dev": "npm run dev --workspace=apps/desktop",
+    "predev": "electron-rebuild -f -w better-sqlite3-multiple-ciphers --module-dir apps/desktop",
     "build": "npm run build --workspace=apps/desktop",
     "typecheck": "npm run typecheck --workspace=apps/desktop --if-present && npm run typecheck --workspace=packages/contracts --if-present",
     "test:contract": "vitest run --dir tests/contract",
+    "pretest:contract": "npm rebuild better-sqlite3-multiple-ciphers",
     "test:contract:watch": "vitest --dir tests/contract",
+    "pretest:contract:watch": "npm rebuild better-sqlite3-multiple-ciphers",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.6.1",
     "@types/node": "^22.10.0",
     "eslint": "^9.10.0",
     "happy-dom": "^15.0.0",
