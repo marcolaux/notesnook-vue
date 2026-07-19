@@ -1,18 +1,30 @@
 @import "tailwindcss";
 
-/* Theme tokens — wired from @notesnook/theme's ThemeDefinition.scopes.
-   For now these are placeholder values; the real adapter lives in
-   src/renderer/src/platform/theme.ts and will inject these at runtime. */
-:root {
-  --color-surface: theme(colors.slate.900 / 65%);
-  --color-surface-solid: theme(colors.slate.900);
-  --color-bg: theme(colors.slate.950);
-  --color-text: theme(colors.slate.100);
-  --color-text-muted: theme(colors.slate.400);
-  --color-border: color-mix(in oklab, white 8%, transparent);
-  --color-accent: theme(colors.indigo.500);
-  --color-accent-foreground: white;
-  --backdrop-blur-base: 24px;
+/* Tailwind v4 token bridge. `inline` makes Tailwind inline the value into
+   utilities (e.g. `bg-surface` → `background-color: var(--background)`)
+   instead of emitting `--color-*` on :root. The `--<upstream>` vars
+   (`--background`, `--paragraph`, `--accent`, …) are provided at runtime by
+   `@notesnook-vue/theme-vue`'s `injectTheme()` — a vendored port of upstream
+   `themeToCSS` that injects the `.theme-scope-*` blocks + a `:root` bridge
+   (`--color-*: var(--<upstream>)`, `--backdrop-blur-base: var(--nn-backdrop-blur)`)
+   and applies `.theme-scope-base-primary` to <html>.
+   Keep this map in sync with TAILWIND_TOKEN_MAP in
+   packages/theme-vue/src/tailwind-bridge.ts. */
+@theme inline {
+  --color-surface: var(--background);
+  --color-surface-solid: var(--background);
+  --color-bg: var(--background);
+  --color-text: var(--paragraph);
+  --color-text-muted: var(--paragraph-secondary);
+  --color-heading: var(--heading);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accentForeground);
+  --color-placeholder: var(--placeholder);
+  --color-hover: var(--hover);
+  --color-separator: var(--separator);
+  --color-icon: var(--icon);
+  --color-backdrop: var(--backdrop);
 }
 
 html,

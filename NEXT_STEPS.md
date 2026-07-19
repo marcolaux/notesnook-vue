@@ -245,6 +245,21 @@ vollständiger Toolbar.
   Table.configure({resizable:true, showResizeHandleOnSelection:true}), TableRow,
   TableCell, TableHeader]`.
   **Runtime-Check offen.**
+- ✅ **Phase-2.2 Tailwind-Token-Adapter** — neues Workspace-Paket
+  `packages/theme-vue` (`@notesnook-vue/theme-vue`, Source-as-Entry,
+  pfad-aliasiert). Vendored TS-Port von `@notesnook/theme`'s `themeToCSS`/
+  `buildVariants`/`colorsToCSSVariables`/`deriveShadeColor` (byte-kompatibler
+  `.theme-scope-<scope>-<variant>`-Output) + vendored `ThemeDark`/`ThemeLight`
+  (generiert via `scripts/extract-default-themes.mjs`) + `validateTheme`-Port.
+  **Nur Type-Only-Import** von `@notesnook/theme` (`import type`) → React/
+  theme-ui/zustand bleiben aus dem Renderer-Bundle (grep verifiziert 0 Lecks;
+  Bundle +10 KB). Glassmorphism-Erweiterung `VueTheme = ThemeDefinition &
+  { glassmorphism?: { backdropBlur?; surfaceOpacity? } }` (global, Defaults
+  `24px`/`65`) → `--nn-backdrop-blur`/`--nn-surface-opacity`. Tailwind-v4-
+  `@theme inline`-Bridge in `style.css` + runtime `:root`-Bridge via
+  `injectTheme()`. `bootstrap.ts` ruft `injectTheme(ThemeDark)` als Step 0.
+  Vertragstest `tests/contract/theme.spec.ts` (11 Tests, happy-dom). 68
+  Contract-Tests grün, typecheck (node+web) + build clean. **Runtime-Check offen.**
 - ✅ **Phase-1-Plattform-Seam** in `apps/desktop/src/renderer/src/platform/`:
   `desktop-bridge.ts` (lazy tRPC-Client), `sqlite-dialect.ts` (Kysely-Dialect
   → `sqlite.run`), `compressor.ts`, `key-store.ts` (safeStorage), `key-value.ts`
@@ -426,9 +441,26 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
   `dateEdited`/`headline`-Bump). Build + typecheck (node+web) clean, 36
   Contract-Tests grün. **Runtime-Check `npm run dev` offen** (User-Maschine).
   ✅
-- [ ] **2.2 Tailwind-Token-Adapter** — `@notesnook/theme`'s `ThemeDefinition.scopes`
+- [x] **2.2 Tailwind-Token-Adapter** — `@notesnook/theme`'s `ThemeDefinition.scopes`
   → Tailwind-CSS-Variablen (`--color-surface`, `--backdrop-blur-base`, …)
   - Schema um `opacity` / `backdropBlur`-Felder erweitern (rückwärtskompatibel)
+  - **Status 2026-07-19 (done):** neues Workspace-Paket `packages/theme-vue`
+    (`@notesnook-vue/theme-vue`, Source-as-Entry, pfad-aliasiert). Vendored
+    TS-Port von `themeToCSS`/`buildVariants`/`colorsToCSSVariables`/
+    `deriveShadeColor` (byte-kompatibel mit Upstream `.theme-scope-*`-Output)
+    + vendored `ThemeDark`/`ThemeLight` (generiert via
+    `scripts/extract-default-themes.mjs`) + `validateTheme`-Port. **Nur
+    Type-Only-Import** von `@notesnook/theme` (erased) — React/theme-ui/zustand
+    bleiben aus dem Renderer-Bundle (grep bestätigt 0 Lecks; Bundle +10 KB).
+    Glassmorphism-Erweiterung `VueTheme = ThemeDefinition & { glassmorphism?:
+    { backdropBlur?; surfaceOpacity? } }` (global, backward-kompatibel, Defaults
+    `24px`/`65`) → `--nn-backdrop-blur`/`--nn-surface-opacity`. Tailwind-v4-
+    `@theme inline`-Bridge in `style.css` (`--color-surface: var(--background)`
+    etc.) + runtime `:root`-Bridge (`--color-*` + `--backdrop-blur-base:
+    var(--nn-backdrop-blur)`). `bootstrap.ts` ruft `injectTheme(ThemeDark)`
+    als Step 0. Vertragstest `theme.spec.ts` (11 Tests, happy-dom).
+    68 Contract-Tests grün, typecheck (node+web) + build clean. **Runtime-Check
+    offen.**
 - [ ] **2.3 Vue-Primitives** — `Flex`/`Box`/`Text`/`Button`/`Input` mit Tailwind
   statt Theme UI (erspart spätere `sx`-Migration in jeder Komponente)
 - [~] **2.4 Port-Reihenfolge der 9 React-Node-Views** (einfach → komplex).
@@ -559,7 +591,7 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
 | 2 | **`block-id` & `outline-list` Lesbarkeit** | Alte Notes haben diese Block-Typen. Nur darstellen oder editieren? | Erst nur darstellen (billig), Edit-Support später |
 | 3 | **Electron bleiben vs. Tauri** | Tauri = Rust-Main, kleineres Bundle, aber `better-sqlite3` + `sodium-native` neu bauen | **Electron bleiben** — 1–2 Monate Neubau gespart |
 | 4 | **Editor-Fork im Hauptrepo vs. eigenes Package** | Port im Notesnook-Mainline oder Fork pflegen? | Im neuen Repo als `packages/editor-vue` (später Upstream-PR möglich) |
-| 5 | **Theme-Schema-Erweiterung** | `ThemeDefinition.scopes` hat keine `opacity`/`backdropBlur`-Felder | Vor Phase 2.2 klären + rückwärtskompatibel defaulten |
+| 5 | **Theme-Schema-Erweiterung** ✅ gelöst | `ThemeDefinition.scopes` hat keine `opacity`/`backdropBlur`-Felder | **Gelöst 2026-07-19 (2.2):** lokale Augmentierung `VueTheme = ThemeDefinition & { glassmorphism?: { backdropBlur?: string; surfaceOpacity?: number } }` — global, optional, backward-kompatibel (Defaults `24px`/`65`). Per-Scope-Promotion später additiv. Upstream `ThemeDefinition` wird nicht angerührt (Type-Only-Import). |
 | 6 | **MVP-Editor-Umfang** | 46 Extensions → wie viele im MVP? | ~18: paragraph, heading, bold/italic/underline/strike, link, bullet/ordered/task/check-list, blockquote, code-block, highlight, image, attachment, table, math |
 | 7 | **`@notesnook/desktop`-Type-Quelle** | Nicht auf npm, nur als Type-Import nötig | Eigener Vertrag in `apps/desktop/src/contracts/router.ts` (bereits angelegt) |
 | 8 | **Mobile / Tablet** | Hauptrepo hat Mobile-Slider; Vue-Äquivalent? | Später — Desktop zuerst |
@@ -1220,5 +1252,137 @@ komplett für die nicht-Phase-6-gated Nodes.
 
 ---
 
+### 2026-07-19 — Phase 2.2: Tailwind-Token-Adapter (theme-vue)
+
+Ersetzt die hardcoded Placeholder-`:root`-Tokens in `style.css` durch ein
+echtes `@notesnook/theme`-getriebenes Token-System + löst Entscheidung #5
+(Glassmorphism-Schema-Erweiterung). Nutzerpriorisierung: 2.2 vor den
+Phase-6-gated Node-Views.
+
+**Erledigt & deterministisch verifiziert** (typecheck node+web clean, build
+clean, 68 Contract-Tests grün — 57 + 11 neue theme-Cases; Renderer-Bundle
++10 KB, 0 React/theme-ui/zustand-Leck):
+
+- **`packages/theme-vue`** — neues Workspace-Paket (`@notesnook-vue/theme-vue`,
+  Source-as-Entry, pfad-aliasiert wie `editor-vue`). Reiner TS (keine `.vue`),
+  kein Build-Step. `@notesnook/theme` als devDep (Type-Only + Extraktions-
+  Skript), kein Runtime-Dep.
+- **Vendored `themeToCSS`-Port** (`src/theme-to-css.ts`) — byte-kompatibel
+  mit Upstream (`dist/index.mjs:1196-1261`): `themeToCSS`/`buildVariants`/
+  `colorsToCSSVariables`/`deriveShadeColor`. `tinycolor2` (einzig in
+  `deriveShadeColor` genutzt) ersetzt durch ~10-Zeilen-Hex-Alpha-Helper
+  (`#RRGGBB` + `1A` = round(0.1·255)), kein neuer Dep. Output: `.theme-scope-
+  <scope>-<variant> { --<color>[-<variant>]: … }` + aggregierte `.theme-scope-
+  <scope>`-Blöcke + synthetische `static`-Variante (`--<name>-static`).
+  Fallback-Chain (`themeScope → theme.base → defaultTheme.scope →
+  defaultTheme.base`) 1:1 portiert. `THEME_SCOPES`-Runtime-Reihenfolge
+  übernommen (≠ d.ts-Deklarationsreihenfolge).
+- **Vendored Default-Themes** (`src/defaults.ts`) — `ThemeDark`/`ThemeLight`
+  als typed Daten, generiert von `scripts/extract-default-themes.mjs`
+  (importiert sie in Node, wo React resolved, schreibt TS; Re-Run bei
+  `@notesnook/*`-Bumps; Provenance-Header `@notesnook/theme@2.1.3`).
+  Vendoring statt Runtime-Import → React/theme-ui/zustand bleiben aus dem
+  Bundle.
+- **`validateTheme`-Port** (`src/validate-theme.ts`) — verbatim, inkl.
+  `RequiredKeys`/`flatten`/Regexe/`COLORS`/`ALPHA_COLORS`/`DEPRECATED_COLORS`.
+  Akzeptiert `Partial<VueTheme>` (glassmorphism wird ignoriert, da nicht
+  `scopes`-Prefix).
+- **Glassmorphism-Erweiterung** (`src/glassmorphism.ts`, `src/types.ts`) —
+  `VueTheme = ThemeDefinition & { glassmorphism?: { backdropBlur?: string;
+  surfaceOpacity?: number } }`, **global**, optional, backward-kompatibel
+  (Defaults `24px`/`65` → matchen die vorige Placeholder). Emitiert
+  `--nn-backdrop-blur`/`--nn-surface-opacity` auf `:root`. Upstream-
+  `ThemeDefinition` unangetastet (Type-Only-Import).
+- **Tailwind-v4-Bridge** (`src/tailwind-bridge.ts` + `style.css`) —
+  `TAILWIND_TOKEN_MAP` (14 `--color-*` → `--<upstream>`-Paare) ist Source of
+  Truth. `@theme inline { --color-surface: var(--background); … }` in
+  `style.css` registriert `bg-surface`/`text-*`/`border-*`-Utilities (Werte
+  inline, kein `:root`-Emit). Runtime-`:root`-Bridge (`tailwindBridgeToCSS()`)
+  emitieren `--color-*: var(--<upstream>)` + `--backdrop-blur-base:
+  var(--nn-backdrop-blur)`, damit die handgeschriebenen `var(--color-*)`/
+  `var(--backdrop-blur-base)`-Refs in `style.css` (ProseMirror-Base, Table-
+  Decorations, `.tb-btn`, `.pop-*`) unverändert weiterlaufen. Beide `:root`
+  und `.theme-scope-base-primary` auf `<html>` → `var(--background)` resolved
+  auf demselben Element.
+- **`injectTheme`** (`src/inject.ts`) — komponiert `themeToCSS` +
+  `glassmorphismToCSS` + `tailwindBridgeToCSS` in ein idempotentes
+  `<style id="nn-theme">`, appliziert `.theme-scope-base` +
+  `.theme-scope-base-primary` + `data-theme` + native `color-scheme` auf
+  `<html>`. `setTheme()`/`getCurrentTheme()` für Phase-3-Runtime-Switch.
+- **Integration** — `bootstrap.ts` ruft `injectTheme(ThemeDark)` als Step 0
+  (vor Bridge-Ping → First Paint themed). `apps/desktop` dep + Root-/Web-
+  tsconfig + vitest-Alias um `@notesnook-vue/theme-vue` erweitert (mirror
+  editor-vue). `electron.vite.config.ts` unchanged (resolve via npm
+  workspaces).
+- **Vertragstest** `tests/contract/theme.spec.ts` — 11 Tests (happy-dom):
+  `themeToCSS`-Byte-Format (`--accent: #008837`, `--background: #181818`,
+  `--background-secondary`, `.theme-scope-list`, `--red-static`),
+  `validateTheme` (Built-Ins pass, `{}` → "missing"), Glassmorphism (Defaults
+  + Override), `injectTheme`-DOM-Effekte (class list, `data-theme`,
+  `colorScheme`, idempotentes Single-Style-Element), `TAILWIND_TOKEN_MAP`-
+  Shape.
+
+**Wichtige Erkenntnisse:**
+
+1. **`@notesnook/theme` ist nicht side-effect-free.** `package.json` hat
+   kein `sideEffects: false` → jeder Runtime-Import zieht React 19 +
+   `@theme-ui/*` + zustand in den Bundle (top-level `useThemeEngineStore =
+   create()` + React-Komponenten-Exports werden nicht weg-tree-shaket).
+   Renderer-Bundle war vorher clean (grep: 0× theme-ui/react-dom/zustand).
+   Lösung: **nur `import type`** (erased) + vendored Logic/Data. Verifiziert:
+   nach 2.2 grep weiterhin 0 Lecks, Bundle nur +10 KB.
+2. **Upstream-Type/Data-Inkonsistenz bei deprecated Colors.** `Colors`-Typ
+   deklariert `shade`/`textSelection` als required (`string`), aber die
+   Runtime-`ThemeDark`/`ThemeLight`-Daten enthalten sie **nicht** (nur 11 der
+   13 Colors). `validateTheme` fordert nur die nicht-deprecated `COLORS`
+   (11); `buildVariants` deriviert `shade` selbst. Lösung: vendored Daten mit
+   `as ThemeDefinition` gecastet (dokumentiert im Extraktions-Skript) —
+   `as` ist erlaubt, weil `ThemeDefinition` zum Literal-Typ assignbar ist
+   (mehr Felder → weniger-Felder-Typ strukturell ok).
+3. **`@notesnook/theme`'s `exports` exponiert nicht `./package.json`.**
+   `require("@notesnook/theme/package.json")` scheitert
+   (`ERR_PACKAGE_PATH_NOT_EXPORTED`). Extraktions-Skript liest die Version
+   via `require.resolve("@notesnook/theme")` → dirname → `../package.json`
+   vom Filesystem.
+4. **`tinycolor2` nur für eine Zeile.** Einziger Use-Case im CSS-Pfad ist
+   `setAlpha(0.1).toHex8String()` in `deriveShadeColor`. 10-Zeilen-Hex-Helper
+   ersetzt es → `packages/theme-vue` bleibt dep-frei.
+5. **`@theme inline` vs. nicht-inline.** `inline` unterdrückt das `:root`-
+   Emit der `--color-*`-Vars und inline den Wert direkt in die Utilities
+   (`bg-surface` → `background-color: var(--background)`). Die Runtime-`
+   :root`-Bridge liefert die `--color-*`-Custom-Properties für handgeschriebene
+   `var(--color-*)`-Refs. Kein Konflikt, da `inline` das statische `:root`
+   weglässt.
+
+**Aufgeschoben (Polish, kein Vertragsrisiko):**
+
+- Per-Scope-Glassmorphism (verschiedene Blur/Opacity pro Region) → Phase 3,
+  additiv zur globalen `glassmorphism`.
+- Per-Region-Scoping (`.theme-scope-list`/`.theme-scope-editor`/… auf Region-
+  Roots) → Phase 3 (die `.theme-scope-*`-Klassen sind schon da, nur noch
+  applizieren).
+- Theme-Auswahl (Light/Dark/System + Settings-UI) → Phase 3/7; `setTheme()`
+  existiert.
+- Visuelles Polish der ProseMirror-Placeholder (`color-mix(white 30%)` →
+  `var(--color-placeholder)`) → folgt mit Toolbar/Properties-Phase.
+
+**Offen (User-Maschine):** Runtime-Check `npm run dev` — Dark-Theme rendert,
+Table-Decorations + Popovers themed, keine React-Warnungen in der Console,
+Theme-Vars in DevTools (`--accent: #008837` auf `<html>`). In dieser Session
+nicht gestartet (Electron-GUI). Code fertig + deterministisch verifiziert
+(typecheck + build + 68 Contract-Tests + Bundle-Leak-grep).
+
+**Commits (auf `main`):**
+- `3b6a122` 2.4h editor-vue + table
+- (dieser) 2.2 editor-vue… theme-vue + Tailwind-Token-Adapter
+
+**Nächster Schritt:** 2.4e `image` (Phase-6-gated — braucht Login/Attachments-
+Auth) oder Login-Logik (Phase-6-Prerequisite, entblockt audio/web-clip/image)
+oder 2.3 Vue-Primitives (`Flex`/`Box`/`Text`/`Button`/`Input` mit Tailwind).
+Node-View-Port für nicht-Phase-6-gated Nodes komplett; Theme-Token-System
+steht.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/h (editor-vue: attachment/task-item/task-list/embed/code-block/table). 57 Contract-Tests grün (36 + 21 editor-html round-trip), typecheck (node+web) + build clean. Editor nutzt `@notesnook-vue/editor-vue`-Nodes (StarterKit-codeBlock deaktiviert); Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; refractor-Highlighting mit 297 lazy-Literal-Import-Thunks; table via vendored prosemirror-tables-Fork (`@ts-nocheck` pro Datei) + `columnResizing({View:null})`/Vue-Node-View + Row/Column-Toolbars + Properties-Popups. Runtime-Check `npm run dev` offen. Node-View-Port für nicht-Phase-6-gated Nodes komplett; bereit für 2.4e (Phase-6-gated), 2.2 (Tailwind-Token-Adapter), oder Login (Phase-6-Prerequisite)._
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/h (editor-vue: attachment/task-item/task-list/embed/code-block/table) + 2.2 (theme-vue: Tailwind-Token-Adapter). 68 Contract-Tests grün (36 + 21 editor-html round-trip + 11 theme), typecheck (node+web) + build clean. Editor nutzt `@notesnook-vue/editor-vue`-Nodes; Theme via `@notesnook-vue/theme-vue` (vendored `themeToCSS`-Port + `ThemeDark`/`ThemeLight` + Glassmorphism-Extension + Tailwind-`@theme inline`-Bridge; nur Type-Only-`@notesnook/theme`-Import → 0 React/theme-ui-Leck). Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; refractor-Highlighting mit 297 lazy-Literal-Import-Thunks; table via vendored prosemirror-tables-Fork. Runtime-Check `npm run dev` offen. Bereit für 2.4e (Phase-6-gated), Login (Phase-6-Prerequisite), oder 2.3 Vue-Primitives._

@@ -30,7 +30,9 @@ export default defineConfig({
       "@contracts/*": resolve(__dirname, "apps/desktop/src/contracts/*"),
       "@notesnook-vue/shared": resolve(__dirname, "packages/shared/src/index.ts"),
       "@notesnook-vue/editor-vue": resolve(__dirname, "packages/editor-vue/src/index.ts"),
-      "@notesnook-vue/editor-vue/*": resolve(__dirname, "packages/editor-vue/src/*")
+      "@notesnook-vue/editor-vue/*": resolve(__dirname, "packages/editor-vue/src/*"),
+      "@notesnook-vue/theme-vue": resolve(__dirname, "packages/theme-vue/src/index.ts"),
+      "@notesnook-vue/theme-vue/*": resolve(__dirname, "packages/theme-vue/src/*")
     }
   }
 });

@@ -13,8 +13,10 @@
       "@notesnook-vue/contracts/*": ["../../packages/contracts/src/*"],
       "@notesnook-vue/shared": ["../../packages/shared/src/index.ts"],
       "@notesnook-vue/editor-vue": ["../../packages/editor-vue/src/index.ts"],
-      "@notesnook-vue/editor-vue/*": ["../../packages/editor-vue/src/*"]
+      "@notesnook-vue/editor-vue/*": ["../../packages/editor-vue/src/*"],
+      "@notesnook-vue/theme-vue": ["../../packages/theme-vue/src/index.ts"],
+      "@notesnook-vue/theme-vue/*": ["../../packages/theme-vue/src/*"]
     }
   },
-  "include": ["src/renderer/**/*", "src/renderer/**/*.vue", "../../packages/editor-vue/src/**/*"]
+  "include": ["src/renderer/**/*", "src/renderer/**/*.vue", "../../packages/editor-vue/src/**/*", "../../packages/theme-vue/src/**/*"]
 }

@@ -11,11 +11,19 @@
  */
 import { desktop } from "./desktop-bridge";
 import { initDatabase, createDesktopPlatform } from "./database";
+import { injectTheme, ThemeDark } from "@notesnook-vue/theme-vue";
 import type { Database } from "@notesnook-vue/contracts";
 
 let database: Database | undefined;
 
 export async function bootstrap(): Promise<Database> {
+  // 0. Theme — inject before anything else so the first paint is already
+  // themed. `injectTheme` writes the vendored `themeToCSS` output (scoped
+  // `.theme-scope-*` vars) + glassmorphism vars + the Tailwind `:root` bridge
+  // into a single `<style id="nn-theme">`, and applies `.theme-scope-base-
+  // primary` + `color-scheme` to <html>. `setTheme()` switches it at runtime.
+  injectTheme(ThemeDark);
+
   // 1. Bridge smoke check.
   try {
     const pong = await desktop.ping.query();

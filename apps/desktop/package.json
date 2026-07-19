@@ -17,6 +17,7 @@
     "@notesnook-vue/contracts": "*",
     "@notesnook-vue/editor-vue": "*",
     "@notesnook-vue/shared": "*",
+    "@notesnook-vue/theme-vue": "*",
     "@notesnook/common": "~2.1.3",
     "@notesnook/core": "~8.1.3",
     "@notesnook/crypto": "~2.1.3",
