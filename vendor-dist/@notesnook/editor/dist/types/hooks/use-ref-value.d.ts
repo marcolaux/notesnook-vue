@@ -1,0 +1,1 @@
+export declare function useRefValue<T>(value: T): import("react").MutableRefObject<T>;

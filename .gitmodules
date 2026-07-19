@@ -1,0 +1,3 @@
+[submodule "vendor/notesnook"]
+	path = vendor/notesnook
+	url = https://github.com/streetwriters/notesnook.git

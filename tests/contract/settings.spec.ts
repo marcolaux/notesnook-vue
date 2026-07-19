@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useSettingsStore } from "@/stores/settings";
-import type { TimeFormat, TrashCleanupInterval, Profile } from "@notesnook-vue/contracts";
+import type { TimeFormat, TrashCleanupInterval, Profile, DayFormat, WeekFormat } from "@notesnook-vue/contracts";
 
 // In-memory fake db.settings: each getter reads from _d; setters mutate + the
 // store re-reads via the getter (matching core's set-then-get contract).
@@ -12,6 +12,8 @@ const db = {
       dateFormat: "DD-MM-YYYY",
       timeFormat: "12-hour" as TimeFormat,
       titleFormat: "Note $date$ $time$",
+      dayFormat: "long" as DayFormat,
+      weekFormat: "Mon" as WeekFormat,
       trashCleanupInterval: 7 as TrashCleanupInterval,
       defaultNotebook: undefined as string | undefined,
       profile: undefined as Profile | undefined
@@ -29,6 +31,16 @@ const db = {
     getTitleFormat: () => db.settings._d.titleFormat,
     setTitleFormat: vi.fn(async (f: string) => {
       db.settings._d.titleFormat = f;
+      return "id";
+    }),
+    getDayFormat: () => db.settings._d.dayFormat,
+    setDayFormat: vi.fn(async (f: DayFormat) => {
+      db.settings._d.dayFormat = f;
+      return "id";
+    }),
+    getWeekFormat: () => db.settings._d.weekFormat,
+    setWeekFormat: vi.fn(async (f: WeekFormat) => {
+      db.settings._d.weekFormat = f;
       return "id";
     }),
     getTrashCleanupInterval: () => db.settings._d.trashCleanupInterval,
@@ -79,6 +91,8 @@ function resetState(): void {
     dateFormat: "DD-MM-YYYY",
     timeFormat: "12-hour",
     titleFormat: "Note $date$ $time$",
+    dayFormat: "long",
+    weekFormat: "Mon",
     trashCleanupInterval: 7,
     defaultNotebook: undefined,
     profile: undefined
@@ -100,6 +114,8 @@ describe("useSettingsStore — defaults + load", () => {
     expect(s.dateFormat).toBe("DD-MM-YYYY");
     expect(s.timeFormat).toBe("12-hour");
     expect(s.titleFormat).toBe("Note $date$ $time$");
+    expect(s.dayFormat).toBe("long");
+    expect(s.weekFormat).toBe("Mon");
     expect(s.trashCleanupInterval).toBe(7);
     expect(s.defaultNotebook).toBeUndefined();
     expect(s.profile).toBeUndefined();
@@ -125,6 +141,8 @@ describe("useSettingsStore — defaults + load", () => {
     db.settings._d.dateFormat = "YYYY-MM-DD";
     db.settings._d.timeFormat = "24-hour";
     db.settings._d.titleFormat = "T $time$";
+    db.settings._d.dayFormat = "short";
+    db.settings._d.weekFormat = "Sun";
     db.settings._d.trashCleanupInterval = 30;
     db.settings._d.defaultNotebook = "nb-1";
     db.settings._d.profile = { fullName: "Ada" };
@@ -134,6 +152,8 @@ describe("useSettingsStore — defaults + load", () => {
     expect(s.dateFormat).toBe("YYYY-MM-DD");
     expect(s.timeFormat).toBe("24-hour");
     expect(s.titleFormat).toBe("T $time$");
+    expect(s.dayFormat).toBe("short");
+    expect(s.weekFormat).toBe("Sun");
     expect(s.trashCleanupInterval).toBe(30);
     expect(s.defaultNotebook).toBe("nb-1");
     expect(s.profile).toEqual({ fullName: "Ada" });
@@ -159,6 +179,20 @@ describe("useSettingsStore — setters", () => {
     const s = useSettingsStore();
     await s.setTitleFormat("New $date$");
     expect(s.titleFormat).toBe("New $date$");
+  });
+
+  it("setDayFormat calls db + updates state", async () => {
+    const s = useSettingsStore();
+    await s.setDayFormat("short");
+    expect(db.settings.setDayFormat).toHaveBeenCalledWith("short");
+    expect(s.dayFormat).toBe("short");
+  });
+
+  it("setWeekFormat calls db + updates state", async () => {
+    const s = useSettingsStore();
+    await s.setWeekFormat("Sun");
+    expect(db.settings.setWeekFormat).toHaveBeenCalledWith("Sun");
+    expect(s.weekFormat).toBe("Sun");
   });
 
   it("setTrashCleanupInterval calls db + updates state", async () => {

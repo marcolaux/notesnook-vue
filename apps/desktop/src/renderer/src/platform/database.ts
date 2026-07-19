@@ -56,7 +56,12 @@ export async function initDatabase(
     sqliteOptions: platform.sqliteOptions,
     storage: platform.storage,
     fs: platform.fs,
-    compressor: platform.compressor,
+    // The newer core takes a `CompressorAccessor = () => Promise<ICompressor>`
+    // (a factory), not an instance — wrap our compressor accordingly.
+    compressor: () => Promise.resolve(platform.compressor),
+    // Note-history version cap (newer core requires it). `undefined` = no cap
+    // until a settings-driven value is wired in.
+    maxNoteVersions: () => Promise.resolve(undefined),
     batchSize: 100
   } satisfies DatabaseOptions);
   await db.init();

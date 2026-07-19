@@ -1,0 +1,11 @@
+import { Editor } from "@tiptap/core";
+import { EditorState, Transaction } from "prosemirror-state";
+declare function moveColumnRight(editor: Editor): void;
+declare function moveColumnLeft(editor: Editor): void;
+declare function moveRowDown(editor: Editor): void;
+declare function moveRowUp(editor: Editor): void;
+declare function selectRow(tr: Transaction, state: EditorState, direction: "prev" | "next"): boolean;
+declare function selectColumn(tr: Transaction, state: EditorState, direction: "prev" | "next"): boolean;
+declare function importCsvToTable(csvText: string, editor: Editor): "" | undefined;
+declare function exportToCSV(editor?: Editor): void;
+export { moveColumnLeft, moveColumnRight, moveRowDown, moveRowUp, selectRow, selectColumn, exportToCSV, importCsvToTable };

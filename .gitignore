@@ -56,3 +56,13 @@ coverage/
 
 # Patch artifacts
 patches/*.orig
+# Vendored upstream @notesnook/* dist cluster (built by scripts/build-vendor.mjs
+# from the vendor/notesnook submodule). The broad `dist/` + `node_modules/`
+# rules above would exclude these, so re-include the vendored dist (the actual
+# consumed artifact) while still ignoring any node_modules npm installs inside
+# the vendored packages.
+!vendor-dist/
+!vendor-dist/@notesnook/
+!vendor-dist/@notesnook/*/
+!vendor-dist/@notesnook/*/dist/
+!vendor-dist/@notesnook/*/dist/**

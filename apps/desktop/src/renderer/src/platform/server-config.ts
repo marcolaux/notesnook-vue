@@ -2,11 +2,12 @@
  * Server configuration — which Notesnook servers the app talks to.
  *
  * `@notesnook/core`'s `Database.host(hosts)` must be called *before* `db.init()`
- * (see `database.ts`), and the `hosts` bag is five separate per-component URLs
- * (`API_HOST`, `AUTH_HOST`, `SSE_HOST`, `SUBSCRIPTIONS_HOST`, `ISSUES_HOST`) —
- * there is no single discovery URL yet (upstream issue #9670). So a self-hosted
- * setup is expressed as one host per component, mirroring upstream's
- * Settings → Servers.
+ * (see `database.ts`), and the `hosts` bag is one separate per-component URL
+ * per entry (`API_HOST`, `AUTH_HOST`, `SSE_HOST`, `SUBSCRIPTIONS_HOST`,
+ * `ISSUES_HOST`, `MONOGRAPH_HOST`, `NOTESNOOK_HOST` — the set is whatever the
+ * pinned core exports, derived dynamically below) — there is no single
+ * discovery URL yet (upstream issue #9670). So a self-hosted setup is expressed
+ * as one host per component, mirroring upstream's Settings → Servers.
  *
  * The chosen config is persisted to `localStorage` (it is not a secret) and
  * read at the very start of `bootstrap()` so the right hosts are in place
@@ -36,13 +37,11 @@ export type ServerConfig = NotesnookProfile | CustomProfile;
 
 const CONFIG_KEY = "notesnook.serverConfig";
 
-const HOST_KEYS: ReadonlyArray<keyof Hosts> = [
-  "API_HOST",
-  "AUTH_HOST",
-  "SSE_HOST",
-  "SUBSCRIPTIONS_HOST",
-  "ISSUES_HOST"
-];
+// Derive the required host keys from the pinned core's `hosts` bag so the
+// validator always mirrors whatever set core exports (it grew from 5 to 7 when
+// MONOGRAPH_HOST + NOTESNOOK_HOST were added). Hardcoding the list here would
+// silently let a custom config missing newer hosts validate.
+const HOST_KEYS = Object.keys(hosts) as ReadonlyArray<keyof Hosts>;
 
 /** True when `value` looks like a usable absolute URL with an http(s) scheme. */
 function isHostUrl(value: unknown): value is string {
@@ -92,7 +91,7 @@ export function writeServerConfig(config: ServerConfig): void {
 /**
  * Resolve a config into the concrete `Hosts` bag `Database.host()` expects.
  * Custom hosts are merged over the defaults so a partial bag still yields a
- * complete one (defensive — the UI always collects all five).
+ * complete one (defensive — the UI always collects all of them).
  */
 export function resolveHosts(config: ServerConfig): Hosts {
   if (config.profile === "custom") {

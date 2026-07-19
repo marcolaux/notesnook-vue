@@ -10,7 +10,14 @@
   },
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "vendor-dist/@notesnook/core",
+    "vendor-dist/@notesnook/crypto",
+    "vendor-dist/@notesnook/logger",
+    "vendor-dist/@notesnook/sodium",
+    "vendor-dist/@notesnook/streamable-fs",
+    "vendor-dist/@notesnook/editor",
+    "vendor-dist/@notesnook/theme"
   ],
   "overrides": {
     "@tiptap/core": "2.6.6",

@@ -1,0 +1,7 @@
+{
+  "name": "@notesnook/theme",
+  "version": "2.1.3",
+  "private": true,
+  "types": "./dist/types/index.d.ts",
+  "dependencies": {}
+}

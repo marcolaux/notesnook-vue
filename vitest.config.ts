@@ -39,7 +39,19 @@ export default defineConfig({
       // Renderer path aliases (same as the electron-vite renderer build) so
       // contract tests can import renderer platform modules / stores.
       { find: /^@contracts\/(.+)$/, replacement: resolve(__dirname, "apps/desktop/src/contracts") + "/$1" },
-      { find: /^@\/(.+)$/, replacement: resolve(__dirname, "apps/desktop/src/renderer/src") + "/$1" }
+      { find: /^@\/(.+)$/, replacement: resolve(__dirname, "apps/desktop/src/renderer/src") + "/$1" },
+      // Vendored `@notesnook/sodium` ships a `node` export (sodium-native,
+      // native, not built for tests) + a `default`/browser export
+      // (libsodium-wrappers-sumo, WASM). The browser ESM build (`browser.mjs`)
+      // imports `libsodium-wrappers-sumo`'s ESM, which is broken across all
+      // published versions (it imports a `libsodium-sumo.mjs` that is never
+      // shipped); the CJS `browser.js` uses `require` → the self-contained
+      // CJS bundle, which works. Alias to the CJS build so tests use WASM
+      // sodium (same as the renderer) without the broken ESM path.
+      {
+        find: "@notesnook/sodium",
+        replacement: resolve(__dirname, "vendor-dist/@notesnook/sodium/dist/browser.js")
+      }
     ]
   }
 });

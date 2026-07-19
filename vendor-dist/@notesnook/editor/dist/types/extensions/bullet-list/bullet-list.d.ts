@@ -1,0 +1,2 @@
+export declare const inputRegex: RegExp;
+export declare const BulletList: import("@tiptap/core").Node<import("@tiptap/extension-bullet-list").BulletListOptions, any>;

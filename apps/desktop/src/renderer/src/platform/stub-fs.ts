@@ -43,6 +43,9 @@ export class StubFileStorage implements IFileStorage {
   deleteFile(_filename: string, _requestOptions?: RequestOptions): Promise<boolean> {
     return Promise.reject(notImplemented("deleteFile"));
   }
+  bulkDeleteFiles(_filenames: string[], _requestOptions?: RequestOptions): Promise<boolean> {
+    return Promise.reject(notImplemented("bulkDeleteFiles"));
+  }
   exists(_filename: string): Promise<boolean> {
     return Promise.reject(notImplemented("exists"));
   }

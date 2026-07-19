@@ -48,7 +48,9 @@ export type {
   User,
   TimeFormat,
   TrashCleanupInterval,
-  Profile
+  Profile,
+  DayFormat,
+  WeekFormat
 } from "@notesnook/core";
 
 export type {
@@ -79,6 +81,7 @@ export {
 export type {
   Cipher,
   SerializedKey,
+  SerializedKeyPair,
   DataFormat
 } from "@notesnook/crypto";
 

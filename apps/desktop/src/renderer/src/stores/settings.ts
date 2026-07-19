@@ -1,18 +1,17 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { getDatabase } from "@/platform/bootstrap";
-import type { TimeFormat, TrashCleanupInterval, Profile } from "@notesnook-vue/contracts";
+import type { TimeFormat, TrashCleanupInterval, Profile, DayFormat, WeekFormat } from "@notesnook-vue/contracts";
 
 /**
  * Settings store (Phase 7) — the headless data backend for `SettingsView`.
  * Combines two kinds of setting:
  *
- *  - **`db.settings`-backed (upstream, applies here):** date/time/title format,
- *    trash-cleanup interval, default notebook, profile. These map 1:1 to the
- *    typed accessors `@notesnook/core`'s `Settings` collection exposes on our
- *    pinned version (8.1.3). `getDayFormat`/`getWeekFormat` exist in newer
- *    upstream but NOT here, so they're intentionally omitted (don't call
- *    accessors that don't exist on the installed core).
+ *  - **`db.settings`-backed (upstream, applies here):** date/time/title/day/week
+ *    format, trash-cleanup interval, default notebook, profile. These map 1:1
+ *    to the typed accessors `@notesnook/core`'s `Settings` collection exposes.
+ *    (The npm-pinned 8.1.3 core lacked `getDayFormat`/`getWeekFormat`; the
+ *    vendored upstream core has them, so they're wired in now.)
  *
  *  - **Client-only (ours):** `themeMode` (light/dark/system) — applied through
  *    `@notesnook-vue/theme-vue`'s `setTheme`, our Tailwind-token adapter
@@ -34,6 +33,8 @@ const THEME_MODE_KEY = "notesnook.themeMode";
 const DEFAULT_DATE_FORMAT = "DD-MM-YYYY";
 const DEFAULT_TIME_FORMAT: TimeFormat = "12-hour";
 const DEFAULT_TITLE_FORMAT = "Note $date$ $time$";
+const DEFAULT_DAY_FORMAT: DayFormat = "long";
+const DEFAULT_WEEK_FORMAT: WeekFormat = "Mon";
 const DEFAULT_TRASH_CLEANUP: TrashCleanupInterval = 7;
 const DEFAULT_THEME_MODE: ThemeMode = "dark";
 
@@ -59,6 +60,8 @@ export const useSettingsStore = defineStore("settings", () => {
   const dateFormat = ref<string>(DEFAULT_DATE_FORMAT);
   const timeFormat = ref<TimeFormat>(DEFAULT_TIME_FORMAT);
   const titleFormat = ref<string>(DEFAULT_TITLE_FORMAT);
+  const dayFormat = ref<DayFormat>(DEFAULT_DAY_FORMAT);
+  const weekFormat = ref<WeekFormat>(DEFAULT_WEEK_FORMAT);
   const trashCleanupInterval = ref<TrashCleanupInterval>(DEFAULT_TRASH_CLEANUP);
   const defaultNotebook = ref<string | undefined>(undefined);
   const profile = ref<Profile | undefined>(undefined);
@@ -81,6 +84,8 @@ export const useSettingsStore = defineStore("settings", () => {
       dateFormat.value = s.getDateFormat();
       timeFormat.value = s.getTimeFormat();
       titleFormat.value = s.getTitleFormat();
+      dayFormat.value = s.getDayFormat();
+      weekFormat.value = s.getWeekFormat();
       trashCleanupInterval.value = s.getTrashCleanupInterval();
       defaultNotebook.value = s.getDefaultNotebook();
       profile.value = s.getProfile();
@@ -117,6 +122,26 @@ export const useSettingsStore = defineStore("settings", () => {
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[settings] setTitleFormat failed:", e);
+    }
+  }
+
+  async function setDayFormat(format: DayFormat): Promise<void> {
+    try {
+      await getDatabase().settings.setDayFormat(format);
+      dayFormat.value = format;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[settings] setDayFormat failed:", e);
+    }
+  }
+
+  async function setWeekFormat(format: WeekFormat): Promise<void> {
+    try {
+      await getDatabase().settings.setWeekFormat(format);
+      weekFormat.value = format;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[settings] setWeekFormat failed:", e);
     }
   }
 
@@ -162,6 +187,8 @@ export const useSettingsStore = defineStore("settings", () => {
     dateFormat,
     timeFormat,
     titleFormat,
+    dayFormat,
+    weekFormat,
     trashCleanupInterval,
     defaultNotebook,
     profile,
@@ -171,6 +198,8 @@ export const useSettingsStore = defineStore("settings", () => {
     setDateFormat,
     setTimeFormat,
     setTitleFormat,
+    setDayFormat,
+    setWeekFormat,
     setTrashCleanupInterval,
     setDefaultNotebook,
     setProfile,

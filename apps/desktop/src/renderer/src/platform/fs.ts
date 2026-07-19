@@ -144,6 +144,23 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
       throw new Error("deleteFile with requestOptions (sync) not implemented (Phase 6)");
     },
 
+    async bulkDeleteFiles(filenames, requestOptions?): Promise<boolean> {
+      if (requestOptions) {
+        // Server-side bulk delete (sync) — not implemented until Phase 6.
+        throw new Error("bulkDeleteFiles with requestOptions (sync) not implemented (Phase 6)");
+      }
+      // Local bulk delete: best-effort, returns true if every file was removed.
+      let all = true;
+      for (const f of filenames) {
+        try {
+          if ((await streamablefs.exists(f)) && !(await streamablefs.deleteFile(f))) all = false;
+        } catch {
+          all = false;
+        }
+      }
+      return all;
+    },
+
     async exists(filename): Promise<boolean> {
       const h = await streamablefs.readFile(filename);
       return !!h && h.file.size === (await h.size()) - h.chunks.length * ABYTES;

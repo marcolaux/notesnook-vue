@@ -5,7 +5,7 @@
  * `NNStorage` (M7) once the pipeline is proven.
  */
 import type { IStorage } from "@notesnook-vue/contracts";
-import type { Cipher, SerializedKey } from "@notesnook-vue/contracts";
+import type { Cipher, SerializedKey, SerializedKeyPair } from "@notesnook-vue/contracts";
 
 function notImplemented(name: string): never {
   throw new Error(`StubStorage.${name}() not implemented (M7 will provide real crypto)`);
@@ -68,5 +68,20 @@ export class StubStorage implements IStorage {
   }
   generateCryptoKey(_password: string, _salt?: string): Promise<SerializedKey> {
     return Promise.reject(notImplemented("generateCryptoKey"));
+  }
+  generateCryptoKeyFallback(_password: string, _salt?: string): Promise<SerializedKey> {
+    return Promise.reject(notImplemented("generateCryptoKeyFallback"));
+  }
+  deriveCryptoKeyFallback(_credentials: SerializedKey): Promise<void> {
+    return Promise.reject(notImplemented("deriveCryptoKeyFallback"));
+  }
+  generatePGPKeyPair(): Promise<SerializedKeyPair> {
+    return Promise.reject(notImplemented("generatePGPKeyPair"));
+  }
+  decryptPGPMessage(_privateKeyArmored: string, _encryptedMessage: string): Promise<string> {
+    return Promise.reject(notImplemented("decryptPGPMessage"));
+  }
+  validatePGPKeyPair(_keys: SerializedKeyPair): Promise<{ isValid: boolean; message: string }> {
+    return Promise.reject(notImplemented("validatePGPKeyPair"));
   }
 }

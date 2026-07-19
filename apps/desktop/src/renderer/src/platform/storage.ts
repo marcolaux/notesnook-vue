@@ -11,7 +11,7 @@ KV is backed by `IndexedDBKVStore` (renderer has IndexedDB); crypto by
 `safeStorage`).
 */
 import type { IStorage } from "@notesnook-vue/contracts";
-import type { Cipher, SerializedKey } from "@notesnook-vue/contracts";
+import type { Cipher, SerializedKey, SerializedKeyPair } from "@notesnook-vue/contracts";
 import {
   IndexedDBKVStore,
   MemoryKVStore,
@@ -96,6 +96,20 @@ export class NNStorage implements IStorage {
     return NNCrypto.exportKey(password, salt);
   }
 
+  /**
+   * Fallback crypto-key derivation (newer core `IStorage` requirement). Used
+   * when the primary derivation path is unavailable (e.g. account migration);
+   * for `NNCrypto` it is the same path as {@link generateCryptoKey}.
+   */
+  async generateCryptoKeyFallback(password: string, salt?: string): Promise<SerializedKey> {
+    return this.generateCryptoKey(password, salt);
+  }
+
+  /** Fallback crypto-key derivation (newer core `IStorage` requirement). */
+  async deriveCryptoKeyFallback(credentials: SerializedKey): Promise<void> {
+    return this.deriveCryptoKey(credentials);
+  }
+
   async hash(password: string, email: string): Promise<string> {
     return NNCrypto.hash(password, `${APP_SALT}${email}`);
   }
@@ -116,5 +130,20 @@ export class NNStorage implements IStorage {
   decryptMulti(key: SerializedKey, items: Cipher<"base64">[]): Promise<string[]> {
     for (const c of items) c.format = "base64";
     return NNCrypto.decryptMulti(key, items, "text");
+  }
+
+  // --- PGP inbox (Phase 6) — not supported yet; the newer core's `IStorage`
+  // requires these methods, but they are only exercised by the PGP inbox /
+  // monograph sharing flow, which we don't run. `validatePGPKeyPair` resolves
+  // (so a probing caller doesn't crash) with `isValid: false`; the others
+  // reject with a clear message so any real PGP usage surfaces immediately. ---
+  generatePGPKeyPair(): Promise<SerializedKeyPair> {
+    return Promise.reject(new Error("NNStorage.generatePGPKeyPair() not supported (PGP inbox = Phase 6)"));
+  }
+  decryptPGPMessage(_privateKeyArmored: string, _encryptedMessage: string): Promise<string> {
+    return Promise.reject(new Error("NNStorage.decryptPGPMessage() not supported (PGP inbox = Phase 6)"));
+  }
+  async validatePGPKeyPair(_keys: SerializedKeyPair): Promise<{ isValid: boolean; message: string }> {
+    return { isValid: false, message: "PGP inbox not supported (Phase 6)" };
   }
 }

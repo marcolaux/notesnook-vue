@@ -104,9 +104,9 @@ describe("server-config", () => {
     const h = resolveHosts({ profile: "notesnook" });
     expect(h.API_HOST).toBe(defaultHosts().API_HOST);
     expect(h.AUTH_HOST).toBe(defaultHosts().AUTH_HOST);
-    expect(Object.keys(h).sort()).toEqual(
-      ["API_HOST", "AUTH_HOST", "ISSUES_HOST", "SSE_HOST", "SUBSCRIPTIONS_HOST"]
-    );
+    // The host set is whatever the pinned core exports (derived dynamically in
+    // server-config); just assert it round-trips the full default bag intact.
+    expect(Object.keys(h).sort()).toEqual(Object.keys(defaultHosts()).sort());
   });
 
   it("merges a custom profile over the defaults", () => {
@@ -123,6 +123,7 @@ describe("server-config", () => {
 
   it("round-trips a custom config through localStorage", () => {
     const custom: Hosts = {
+      ...defaultHosts(),
       API_HOST: "https://api.example.com",
       AUTH_HOST: "https://auth.example.com",
       SSE_HOST: "https://events.example.com",

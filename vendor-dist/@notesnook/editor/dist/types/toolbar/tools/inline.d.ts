@@ -1,0 +1,11 @@
+import { ToolProps } from "../types.js";
+export declare function Italic(props: ToolProps): import("react/jsx-runtime").JSX.Element;
+export declare function Strikethrough(props: ToolProps): import("react/jsx-runtime").JSX.Element;
+export declare function Underline(props: ToolProps): import("react/jsx-runtime").JSX.Element;
+export declare function Code(props: ToolProps): import("react/jsx-runtime").JSX.Element;
+export declare function Bold(props: ToolProps): import("react/jsx-runtime").JSX.Element;
+export declare function Subscript(props: ToolProps): import("react/jsx-runtime").JSX.Element;
+export declare function Superscript(props: ToolProps): import("react/jsx-runtime").JSX.Element;
+export declare function ClearFormatting(props: ToolProps): import("react/jsx-runtime").JSX.Element;
+export declare function CodeRemove(props: ToolProps): import("react/jsx-runtime").JSX.Element | null;
+export declare function Math(props: ToolProps): import("react/jsx-runtime").JSX.Element;

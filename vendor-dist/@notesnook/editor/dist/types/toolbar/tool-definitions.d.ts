@@ -1,0 +1,8 @@
+import { ToolbarDefinition, ToolDefinition } from "./types.js";
+import { ToolId } from "./tools/index.js";
+export declare function getToolDefinition(id: ToolId): ToolDefinition;
+export declare function getAllTools(): Record<"bold" | "fontFamily" | "fontSize" | "underline" | "bulletList" | "code" | "italic" | "subscript" | "superscript" | "checkList" | "textDirection" | "highlight" | "removeAttachment" | "deleteColumn" | "deleteRow" | "deleteTable" | "mergeCells" | "math" | "none" | "copyLink" | "strikethrough" | "codeRemove" | "numberedList" | "textColor" | "openLink" | "linkSettings" | "webclipSettings" | "previewAttachment" | "imageSettings" | "rowProperties" | "insertRowBelow" | "insertRowAbove" | "moveRowDown" | "moveRowUp" | "columnProperties" | "insertColumnRight" | "insertColumnLeft" | "moveColumnRight" | "moveColumnLeft" | "cellProperties" | "cellBorderColor" | "splitCells" | "attachmentSettings" | "embedSettings" | "tableSettings" | "indent" | "outdent" | "clearformatting" | "addInternalLink" | "addLink" | "editLink" | "removeLink" | "insertBlock" | "headings" | "alignment" | "imageAlignCenter" | "imageAlignLeft" | "imageAlignRight" | "imageProperties" | "embedAlignCenter" | "embedAlignLeft" | "embedAlignRight" | "embedProperties" | "webclipFullScreen" | "webclipOpenExternal" | "webclipOpenSource" | "downloadAttachment" | "cellBackgroundColor" | "cellTextColor" | "cellBorderWidth" | "exportToCSV", ToolDefinition>;
+export declare function getDefaultPresets(): Record<"default" | "minimal", ToolbarDefinition>;
+export declare const STATIC_TOOLBAR_GROUPS: ToolbarDefinition;
+export declare const MOBILE_STATIC_TOOLBAR_GROUPS: ToolbarDefinition;
+export declare const READONLY_MOBILE_STATIC_TOOLBAR_GROUPS: ToolbarDefinition;
