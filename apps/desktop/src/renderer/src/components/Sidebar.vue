@@ -30,10 +30,17 @@ function isSelected(type: CollectionType, id: string): boolean {
   return collections.selected?.type === type && collections.selected.id === id;
 }
 
-/** Select a collection and show all-notes (filter-by-collection is the next
- * increment; selection is recorded for highlight + the future filter hook). */
-function selectCollection(type: CollectionType, id: string): void {
+/** "All Notes" drops any active collection filter + selection. */
+function showAllNotes(): void {
+  notes.clearCollectionFilter();
+  collections.clearSelection();
+}
+
+/** Select a collection, restrict the notes list to it, and show the notes
+ * view. */
+async function selectCollection(type: CollectionType, id: string): Promise<void> {
   collections.select(type, id);
+  await notes.filterByCollection(type, id);
   void router.push("/all");
 }
 </script>
@@ -51,6 +58,7 @@ function selectCollection(type: CollectionType, id: string): void {
           ? 'bg-white/15 text-white'
           : 'text-white/80 hover:bg-white/10'
       "
+      @click="v.name === 'all' ? showAllNotes() : undefined"
     >
       {{ v.label }}
     </RouterLink>

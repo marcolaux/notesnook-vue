@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { useNotesStore } from "@/stores/notes";
+import { useCollectionsStore } from "@/stores/collections";
 import { useShellStore } from "@/stores/shell";
 import type { SortKey } from "@/utils/notes-list";
 import type { NotePreview } from "@/utils/note-preview";
 
 const notes = useNotesStore();
+const collections = useCollectionsStore();
 const shell = useShellStore();
 
 const searchInput = ref<HTMLInputElement | null>(null);
@@ -20,6 +22,12 @@ function progressWidth(preview: NotePreview): number {
   const c = preview.checklist;
   if (!c || c.total === 0) return 0;
   return (c.checked / c.total) * 100;
+}
+
+/** Clear the active collection filter (chip × or "All Notes"). */
+function clearCollectionFilter(): void {
+  notes.clearCollectionFilter();
+  collections.clearSelection();
 }
 
 const sortKeys: { value: SortKey; label: string }[] = [
@@ -108,6 +116,23 @@ watch(
     </div>
     <div class="flex h-7 shrink-0 items-center gap-2 border-b border-white/10 px-3 text-[10px] text-white/50">
       <span class="shrink-0">{{ notes.visibleItems.length }}{{ notes.query ? ` / ${notes.count}` : "" }}</span>
+      <!-- Active collection filter (notebook/tag) with a clear (×) button. -->
+      <span
+        v-if="notes.collectionFilter && collections.selectedLabel"
+        class="titlebar-no-drag flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-1.5 py-0.5 text-white/70"
+      >
+        <span class="max-w-[10rem] truncate">{{ collections.selectedLabel }}</span>
+        <button
+          class="grid h-3.5 w-3.5 place-items-center rounded-full text-white/60 hover:bg-white/20 hover:text-white"
+          title="Clear collection filter"
+          @click="clearCollectionFilter()"
+        >
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </span>
       <span class="ml-auto flex items-center gap-1">
         <select
           class="titlebar-no-drag rounded-sm border border-white/10 bg-white/5 px-1 py-0.5 text-white/70 focus:outline-none"

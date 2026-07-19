@@ -58,6 +58,17 @@ export const useCollectionsStore = defineStore("collections", () => {
     sortCollections(tags.value, sortKey.value, sortDir.value)
   );
 
+  /** Human label of the selected collection (for the notes-list filter chip),
+   * or `null` when nothing is selected. */
+  const selectedLabel = computed<string | null>(() => {
+    const s = selected.value;
+    if (!s) return null;
+    if (s.type === "notebook") {
+      return notebooks.value.find((n) => n.id === s.id)?.title ?? "Notebook";
+    }
+    return tags.value.find((t) => t.id === s.id)?.title ?? "Tag";
+  });
+
   /** Load notebooks, tags and the trash count in parallel. */
   async function load(): Promise<void> {
     const db = getDatabase();
@@ -102,6 +113,7 @@ export const useCollectionsStore = defineStore("collections", () => {
     selected,
     sortedNotebooks,
     sortedTags,
+    selectedLabel,
     load,
     toggleSection,
     setSortKey,

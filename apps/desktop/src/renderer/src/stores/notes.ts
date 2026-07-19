@@ -15,6 +15,17 @@ import {
   EMPTY_PREVIEW,
   type NotePreview
 } from "@/utils/note-preview";
+import type { CollectionType } from "@/stores/collections";
+
+/** A collection filter applied to the notes list (sidebar selection). The
+ * `noteIds` set is resolved up-front from `@notesnook/core` (notebooks via
+ * `db.notebooks.notes(id)`, tags via `db.relations`), then `visibleItems`
+ * filters by membership — no per-render re-query. */
+export interface CollectionFilter {
+  type: CollectionType;
+  id: string;
+  noteIds: Set<string>;
+}
 
 export interface NoteListItem {
   id: string;
@@ -79,6 +90,10 @@ export const useNotesStore = defineStore("notes", () => {
    * focus the search input (DOM focus is an on-site visual gate). */
   const focusSearchSignal = ref(0);
 
+  /** Active sidebar-collection filter (notebook/tag → a set of note IDs the
+   * list is restricted to). `null` = show all. */
+  const collectionFilter = ref<CollectionFilter | null>(null);
+
   // Per-note list previews (Phase 3.3 follow-up): thumbnail + checklist
   // progress, derived from each note's HTML body. Populated lazily and cached
   // by `loadPreview` so the list renders fast and previews trickle in.
@@ -88,10 +103,14 @@ export const useNotesStore = defineStore("notes", () => {
 
   const count = computed(() => items.value.length);
 
-  /** The list the `NotesList` renders: filtered by `query`, then sorted. */
-  const visibleItems = computed<NoteListItem[]>(() =>
-    sortNotes(filterNotes(items.value, query.value, { regex: regexSearch.value }), sortKey.value, sortDir.value)
-  );
+  /** The list the `NotesList` renders: restricted to the active collection
+   * filter (if any), then filtered by `query`, then sorted. */
+  const visibleItems = computed<NoteListItem[]>(() => {
+    const base = collectionFilter.value
+      ? items.value.filter((n) => collectionFilter.value!.noteIds.has(n.id))
+      : items.value;
+    return sortNotes(filterNotes(base, query.value, { regex: regexSearch.value }), sortKey.value, sortDir.value);
+  });
 
   const activeTab = computed(() => openTabs.value.find((t) => t.id === activeTabId.value) ?? null);
   const activeNote = computed(() =>
@@ -153,6 +172,30 @@ export const useNotesStore = defineStore("notes", () => {
   /** Palette "Search notes" command → bump the focus signal. */
   function focusSearch(): void {
     focusSearchSignal.value += 1;
+  }
+
+  /**
+   * Restrict the notes list to a sidebar collection. Resolves the member note
+   * IDs up-front from `@notesnook/core` (notebooks via `db.notebooks.notes(id)`,
+   * tags via `db.relations`) and stores them so `visibleItems` filters by
+   * membership without a per-render re-query. `All Notes` clears it via
+   * {@link clearCollectionFilter}.
+   */
+  async function filterByCollection(type: CollectionType, id: string): Promise<void> {
+    const db = getDatabase();
+    let noteIds: string[];
+    if (type === "notebook") {
+      noteIds = await db.notebooks.notes(id);
+    } else {
+      const tagged = await db.relations.to({ type: "tag", id }, "note").resolve();
+      noteIds = tagged.map((n) => n.id);
+    }
+    collectionFilter.value = { type, id, noteIds: new Set(noteIds) };
+  }
+
+  /** Clear the collection filter (back to all notes). */
+  function clearCollectionFilter(): void {
+    collectionFilter.value = null;
   }
 
   /** Load all notes from the database into the list. */
@@ -298,6 +341,7 @@ export const useNotesStore = defineStore("notes", () => {
     sortDir,
     focusSearchSignal,
     previews,
+    collectionFilter,
     openTab,
     closeTab,
     selectNote,
@@ -306,6 +350,8 @@ export const useNotesStore = defineStore("notes", () => {
     loadPreview,
     loadActiveContent,
     saveContent,
+    filterByCollection,
+    clearCollectionFilter,
     setQuery,
     toggleRegex,
     setSortKey,
