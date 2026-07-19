@@ -30,9 +30,12 @@ import {
 } from "@notesnook-vue/editor-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorStore } from "@/stores/editor";
+import { useStatusStore } from "@/stores/status";
+import { readEditorStats } from "@/utils/status";
 
 const notes = useNotesStore();
 const editorStore = useEditorStore();
+const status = useStatusStore();
 
 // `useEditor` returns a ShallowRef<Editor | undefined>; in the template it
 // auto-unwraps, so `:editor="editor"` passes the Editor instance.
@@ -125,10 +128,32 @@ watch(
 
 // Publish the editor instance to the cross-component channel so the command
 // palette + editor-command registry can reach `editor.chain()`. The ref is
-// shallow; only presence/identity changes republish.
-watch(editor, (e) => editorStore.set(e ?? undefined), { immediate: true });
+// shallow; only presence/identity changes republish. On the same edge, attach
+// the status-bar listeners (word count + cursor position refresh on every
+// edit and caret move) and push an initial reading.
+function refreshStatus(): void {
+  const inst = editor.value;
+  if (inst) status.setEditorStats(readEditorStats(inst));
+}
+watch(
+  editor,
+  (e) => {
+    editorStore.set(e ?? undefined);
+    if (e) {
+      e.on("update", refreshStatus);
+      e.on("selectionUpdate", refreshStatus);
+      refreshStatus();
+    }
+  },
+  { immediate: true }
+);
 
 onBeforeUnmount(() => {
+  const inst = editor.value;
+  if (inst) {
+    inst.off("update", refreshStatus);
+    inst.off("selectionUpdate", refreshStatus);
+  }
   void flushSave();
   editorStore.clear();
 });

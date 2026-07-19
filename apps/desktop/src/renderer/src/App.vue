@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
 import { useAuthStore } from "@/stores/auth";
+import { useStatusStore } from "@/stores/status";
 import { bootstrap } from "@/platform/bootstrap";
 import { useCommandPalette } from "@/composables/use-command-palette";
 import CommandPalette from "@/components/CommandPalette.vue";
@@ -14,6 +15,7 @@ const bootState = ref<"loading" | "ready" | "error">("loading");
 const bootError = ref<string>("");
 
 const auth = useAuthStore();
+const status = useStatusStore();
 
 // Command palette hotkey (Ctrl/Cmd+Shift+P) toggles the palette store; the
 // <CommandPalette> overlay below renders the store's items.
@@ -25,6 +27,12 @@ onMounted(async () => {
   try {
     await bootstrap();
     await auth.init();
+    // Bind sync events once (idempotent) and seed the status bar's sync
+    // state from `db.lastSynced()`; safe even when not logged in — the view
+    // renders "Local only" until login, and `refreshSync` only queries the
+    // local lastSynced timestamp.
+    status.bindSyncEvents();
+    void status.refreshSync();
     if (auth.showShell) {
       await notes.load();
       void collections.load();
@@ -45,7 +53,8 @@ onMounted(async () => {
 });
 
 // Load notes the first time the shell becomes visible (logged in, or the user
-// chose local-only via "Continue without account").
+// chose local-only via "Continue without account"). Also re-seed the sync
+// status — after a login `lastSynced` may have changed.
 const notesLoaded = ref(false);
 watch(
   () => auth.showShell,
@@ -54,6 +63,7 @@ watch(
       notesLoaded.value = true;
       await useNotesStore().load();
       void useCollectionsStore().load();
+      void status.refreshSync();
     }
   }
 );
