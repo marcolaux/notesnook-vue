@@ -501,7 +501,7 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
 | 6 | **MVP-Editor-Umfang** | 46 Extensions → wie viele im MVP? | ~18: paragraph, heading, bold/italic/underline/strike, link, bullet/ordered/task/check-list, blockquote, code-block, highlight, image, attachment, table, math |
 | 7 | **`@notesnook/desktop`-Type-Quelle** | Nicht auf npm, nur als Type-Import nötig | Eigener Vertrag in `apps/desktop/src/contracts/router.ts` (bereits angelegt) |
 | 8 | **Mobile / Tablet** | Hauptrepo hat Mobile-Slider; Vue-Äquivalent? | Später — Desktop zuerst |
-| 9 | **`@tiptap/*`-Versionskollision** | `@notesnook/editor@2.1.3` pinnt `@tiptap/core@2.6.6` exact, aber seine `^2.6.6`-Extension-Deps resolven auf gehoistete **2.27.2** (peer `@tiptap/core@^2.7.0`). npm hoisted `core@2.27.2` nach Root + nested `core@2.6.6` unter `apps/desktop` + `@notesnook/editor`. Zwei `Node`-Klassen → Schema-Bruch, wenn gemischt. | **Aktuell:** nur aus `@tiptap/vue-3` + `@tiptap/starter-kit` importieren (beide resolven intern auf Root-`core@2.27.2`), **nie** `@tiptap/core` direkt aus dem Renderer. **Langfristig (vor 2.4):** per `overrides` alle `@tiptap/*` auf eine Version zwingen — entweder alles 2.6.6 (matcht editor exact, Editor-Port baut gegen 2.6.6) oder alles 2.27.2. Empfehlung: **2.6.6-Override**, damit der Editor-Port gegen dieselbe Core-Version wie `@notesnook/editor` gebaut wird. |
+| 9 | **`@tiptap/*`-Versionskollision** ✅ gelöst | `@notesnook/editor@2.1.3` pinnt `@tiptap/core@2.6.6` exact, aber seine `^2.6.6`-Extension-Deps resolven auf gehoistete **2.27.2** (peer `@tiptap/core@^2.7.0`). npm hoisted `core@2.27.2` nach Root + nested `core@2.6.6` unter `apps/desktop` + `@notesnook/editor`. Zwei `Node`-Klassen → Schema-Bruch, wenn gemischt. | **Gelöst 2026-07-19:** Root-`package.json` `overrides` zwingt alle `@tiptap/*` auf `2.6.6` (matcht editor exact). Clean Re-Resolution (`rm -rf node_modules/@tiptap package-lock.json && npm install`) — nun single `core@2.6.6`, keine nested Copies, 0× `2.27.2` im Lockfile. Typecheck + build + 36 Tests clean. Editor-Port baut ab 2.4 gegen dieselbe Core-Version wie `@notesnook/editor`. |
 
 ---
 
@@ -714,7 +714,41 @@ werden (Neustart → Edit noch da). In dieser Session nicht gestartet
 (Node-View-Ports) — nach Nutzerpriorisierung. Vor 2.4 das
 `@tiptap/*`-Override (Entscheidung #9) klären.
 
+### 2026-07-19 — Entscheidung #9 gelöst: `@tiptap/*`-Override auf 2.6.6
+
+Direkt im Anschluss an 2.1 die Versionskollision ausgeräumt (vor 2.4, solange
+der Kontext frisch war — De-Risk-First).
+
+**Erledigt & verifiziert** (typecheck node+web clean, build clean, 36
+Contract-Tests grün):
+
+- Root-`package.json` `overrides`-Block (40 Einträge) zwingt jedes
+  `@tiptap/*` auf `2.6.6` — die exakte Version, gegen die `@notesnook/editor
+  @2.1.3` gebaut ist (`@tiptap/core`/`pm`/`starter-kit` exact, Extension-Deps
+  teils `^2.6.6`, die zu 2.27.2 drifteten).
+- **Clean Re-Resolution nötig:** bloßes `npm install` (auch `--force`) trug
+  die Overrides *nicht* in die Reifikation — npm meldete "up to date", weil
+  das alte `node_modules/@tiptap` (2.27.2) die Re-Resolution dirigierte und
+  der Lockfile keine `overrides`-Sektion schrieb. Lösung:
+  `rm -rf node_modules/@tiptap package-lock.json && npm install`. Danach:
+  single `core@2.6.6`, **keine** nested Copies (weder unter `apps/desktop`
+  noch `@notesnook/editor`), 0× `2.27.2` im Lockfile, alle Extension-Packages
+  2.6.6.
+- **Keine Patches verloren:** weder `@notesnook/editor` noch das Root-Repo
+  haben `.patch`-Dateien, die `@tiptap/*` referenzieren → frische 2.6.6-Install
+  ist unbedenklich.
+
+**Konsequenz für 2.4+:** Der Editor-Port baut jetzt gegen dieselbe
+`@tiptap/core@2.6.6` wie `@notesnook/editor`. Die 2.1-Spike-Regel "nur aus
+`@tiptap/vue-3` + `@tiptap/starter-kit` importieren" war eine Workaround-Regel
+für die Split-Versions-Situation — sie ist nicht mehr zwingend (nur noch eine
+Core-Kopie), bleibt aber gute Hygiene. Renderer-Bundle 4.811 kB (−88 kB,
+single core).
+
+**Nächster Schritt:** Phase 2.2 (Tailwind-Token-Adapter) oder 2.4
+(Node-View-Ports) — nach Nutzerpriorisierung.
+
 ---
 
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 komplett + Phase 2.1 TipTap-Spike. 36 Contract-Tests grün, typecheck (node+web) + build clean. Editor läuft mit `@tiptap/vue-3` + StarterKit, Content-HTML round-trip via `db.content`/`db.notes.add`. Runtime-Check `npm run dev` auf User-Maschine offen. `@tiptap/*`-Versionskollision als Entscheidung #9 offen (vor 2.4 aufräumen)._
+_Status: Phase 1 komplett + Phase 2.1 TipTap-Spike + Entscheidung #9 gelöst (`@tiptap/*` alle 2.6.6, single core). 36 Contract-Tests grün, typecheck (node+web) + build clean. Editor läuft mit `@tiptap/vue-3` + StarterKit, Content-HTML round-trip via `db.content`/`db.notes.add`. Runtime-Check `npm run dev` auf User-Maschine offen. Bereit für 2.2 oder 2.4._
