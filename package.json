@@ -69,6 +69,7 @@
   "devDependencies": {
     "@electron/rebuild": "^3.6.1",
     "@types/node": "^22.10.0",
+    "@vue/test-utils": "^2.4.0",
     "eslint": "^9.10.0",
     "happy-dom": "^15.0.0",
     "patch-package": "^8.0.0",

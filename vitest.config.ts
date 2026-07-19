@@ -32,7 +32,9 @@ export default defineConfig({
       "@notesnook-vue/editor-vue": resolve(__dirname, "packages/editor-vue/src/index.ts"),
       "@notesnook-vue/editor-vue/*": resolve(__dirname, "packages/editor-vue/src/*"),
       "@notesnook-vue/theme-vue": resolve(__dirname, "packages/theme-vue/src/index.ts"),
-      "@notesnook-vue/theme-vue/*": resolve(__dirname, "packages/theme-vue/src/*")
+      "@notesnook-vue/theme-vue/*": resolve(__dirname, "packages/theme-vue/src/*"),
+      "@notesnook-vue/ui-vue": resolve(__dirname, "packages/ui-vue/src/index.ts"),
+      "@notesnook-vue/ui-vue/*": resolve(__dirname, "packages/ui-vue/src/*")
     }
   }
 });

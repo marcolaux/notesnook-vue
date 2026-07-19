@@ -1,0 +1,22 @@
+{
+  "name": "@notesnook-vue/ui-vue",
+  "version": "0.0.1",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "tailwind-merge": "^3.0.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

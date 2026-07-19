@@ -6,7 +6,9 @@
     "baseUrl": ".",
     "paths": {
       "@notesnook-vue/contracts": ["../packages/contracts/src/index.ts"],
-      "@notesnook-vue/contracts/*": ["../packages/contracts/src/*"]
+      "@notesnook-vue/contracts/*": ["../packages/contracts/src/*"],
+      "@notesnook-vue/ui-vue": ["../packages/ui-vue/src/index.ts"],
+      "@notesnook-vue/ui-vue/*": ["../packages/ui-vue/src/*"]
     }
   },
   "include": ["**/*.ts"]
