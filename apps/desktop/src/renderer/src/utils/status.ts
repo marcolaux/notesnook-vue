@@ -100,17 +100,21 @@ export function formatSyncRelative(lastSynced: number, now: number = Date.now())
 /**
  * Compose the full sync-status string the bar shows. Local-only (not logged
  * in) always reads "Local only" regardless of the stored sync lifecycle; an
- * in-progress or aborted sync overrides the relative timestamp.
+ * in-progress or aborted sync overrides the relative timestamp. When the
+ * store reports unsynced local changes, a `• unsynced` marker follows the
+ * relative time (or `Unsynced` when never synced yet).
  */
 export function syncStatusText(
   isLoggedIn: boolean,
   state: SyncState,
   lastSynced: number,
+  hasUnsynced: boolean,
   now: number = Date.now()
 ): string {
   if (!isLoggedIn) return "Local only";
   if (state === "syncing") return "Syncing…";
   if (state === "error") return "Sync error";
-  if (state === "idle" && !lastSynced) return "Never synced";
-  return formatSyncRelative(lastSynced, now);
+  if (!lastSynced) return hasUnsynced ? "Unsynced" : "Never synced";
+  const relative = formatSyncRelative(lastSynced, now);
+  return hasUnsynced ? `${relative} • unsynced` : relative;
 }

@@ -18,8 +18,10 @@ import { syncStatusText } from "@/utils/status";
 const status = useStatusStore();
 const auth = useAuthStore();
 
+// `status.now` is a reactive wall-clock (bumped by the status store's
+// interval) so the relative sync time stays accurate without a store nudge.
 const syncText = computed(() =>
-  syncStatusText(auth.isLoggedIn, status.syncState, status.lastSynced)
+  syncStatusText(auth.isLoggedIn, status.syncState, status.lastSynced, status.hasUnsyncedChanges, status.now)
 );
 </script>
 

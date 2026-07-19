@@ -14,9 +14,11 @@ import { useStatusStore } from "@/stores/status";
 // status.ts imports `getDatabase` from bootstrap; stub it so the platform
 // graph (sodium/crypto/bridge) isn't loaded for a pure store-logic test.
 let lastSyncedMock = 0;
+let hasUnsyncedMock = false;
 vi.mock("@/platform/bootstrap", () => ({
   getDatabase: () => ({
-    lastSynced: async () => lastSyncedMock
+    lastSynced: async () => lastSyncedMock,
+    hasUnsyncedChanges: async () => hasUnsyncedMock
   }),
   bootstrap: vi.fn()
 }));
@@ -133,24 +135,29 @@ describe("syncStatusText", () => {
   const NOW = new Date(2026, 6, 19, 12, 0, 0).getTime();
 
   it("not logged in → Local only (regardless of state)", () => {
-    expect(syncStatusText(false, "syncing", 0, NOW)).toBe("Local only");
-    expect(syncStatusText(false, "synced", NOW - 1000, NOW)).toBe("Local only");
+    expect(syncStatusText(false, "syncing", 0, false, NOW)).toBe("Local only");
+    expect(syncStatusText(false, "synced", NOW - 1000, true, NOW)).toBe("Local only");
   });
 
   it("syncing → Syncing…", () => {
-    expect(syncStatusText(true, "syncing", 0, NOW)).toBe("Syncing…");
+    expect(syncStatusText(true, "syncing", 0, false, NOW)).toBe("Syncing…");
   });
 
   it("error → Sync error", () => {
-    expect(syncStatusText(true, "error", 0, NOW)).toBe("Sync error");
+    expect(syncStatusText(true, "error", 0, false, NOW)).toBe("Sync error");
   });
 
-  it("idle + never synced → Never synced", () => {
-    expect(syncStatusText(true, "idle", 0, NOW)).toBe("Never synced");
+  it("idle + never synced → Never synced (or Unsynced with local changes)", () => {
+    expect(syncStatusText(true, "idle", 0, false, NOW)).toBe("Never synced");
+    expect(syncStatusText(true, "idle", 0, true, NOW)).toBe("Unsynced");
   });
 
   it("synced → relative time", () => {
-    expect(syncStatusText(true, "synced", NOW - 5 * 60_000, NOW)).toBe("5m ago");
+    expect(syncStatusText(true, "synced", NOW - 5 * 60_000, false, NOW)).toBe("5m ago");
+  });
+
+  it("synced + unsynced changes → relative • unsynced", () => {
+    expect(syncStatusText(true, "synced", NOW - 5 * 60_000, true, NOW)).toBe("5m ago • unsynced");
   });
 });
 
@@ -158,12 +165,14 @@ describe("useStatusStore", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     lastSyncedMock = 0;
+    hasUnsyncedMock = false;
   });
 
-  it("defaults to idle/never + origin cursor", () => {
+  it("defaults to idle/never + origin cursor + no unsynced", () => {
     const s = useStatusStore();
     expect(s.syncState).toBe("idle");
     expect(s.lastSynced).toBe(0);
+    expect(s.hasUnsyncedChanges).toBe(false);
     expect(s.wordCount).toBe(0);
     expect(s.cursorLine).toBe(1);
     expect(s.cursorColumn).toBe(1);
@@ -194,6 +203,16 @@ describe("useStatusStore", () => {
     expect(s.syncState).toBe("idle");
   });
 
+  it("refreshSync reads hasUnsyncedChanges", async () => {
+    const s = useStatusStore();
+    hasUnsyncedMock = true;
+    await s.refreshSync();
+    expect(s.hasUnsyncedChanges).toBe(true);
+    hasUnsyncedMock = false;
+    await s.refreshSync();
+    expect(s.hasUnsyncedChanges).toBe(false);
+  });
+
   it("bindSyncEvents is idempotent (no throw on repeat calls)", () => {
     const s = useStatusStore();
     expect(() => {
@@ -201,5 +220,35 @@ describe("useStatusStore", () => {
       s.bindSyncEvents();
       s.bindSyncEvents();
     }).not.toThrow();
+  });
+
+  it("startClock sets `now` and ticks it on the interval; stopClock halts it", () => {
+    vi.useFakeTimers();
+    try {
+      const s = useStatusStore();
+      const t0 = 1_000_000;
+      vi.setSystemTime(t0);
+      s.startClock(1000);
+      expect(s.now).toBe(t0);
+      // advanceTimersByTime also advances the faked Date, so the handler
+      // re-reads Date.now() at the new wall time.
+      vi.advanceTimersByTime(1000);
+      expect(s.now).toBe(t0 + 1000);
+      vi.advanceTimersByTime(4000);
+      expect(s.now).toBe(t0 + 5000);
+      s.stopClock();
+      vi.advanceTimersByTime(10_000);
+      expect(s.now).toBe(t0 + 5000); // halted — no further ticks (Date is now t0+15000)
+      // startClock snapshots Date.now() and works again after stop.
+      s.startClock(1000);
+      expect(s.now).toBe(t0 + 15_000);
+      vi.advanceTimersByTime(1000);
+      expect(s.now).toBe(t0 + 16_000);
+      s.stopClock();
+    } finally {
+      // Ensure no dangling interval leaks into other test files.
+      useStatusStore().stopClock();
+      vi.useRealTimers();
+    }
   });
 });

@@ -24,11 +24,21 @@ import type { EditorStats, SyncState } from "@/utils/status";
 export const useStatusStore = defineStore("status", () => {
   const syncState = ref<SyncState>("idle");
   const lastSynced = ref<number>(0);
+  /** True when `db.hasUnsyncedChanges()` reports local changes not yet pushed
+   * (only meaningful when logged in; the view shows a `• unsynced` marker). */
+  const hasUnsyncedChanges = ref(false);
 
   const wordCount = ref(0);
   const charCount = ref(0);
   const cursorLine = ref(1);
   const cursorColumn = ref(1);
+
+  /** A reactive wall-clock the StatusBar reads so "5m ago" stays accurate
+   * without the user nudging the store. Bumped on an interval by
+   * {@link startClock}; tests can set it directly for determinism. */
+  const now = ref<number>(Date.now());
+  let clockHandle: ReturnType<typeof setInterval> | null = null;
+  let clockStarted = false;
 
   /** Push editor-derived stats (word/char count + cursor position). Called
    * by `Editor.vue` on `update` + `selectionUpdate`. */
@@ -61,9 +71,10 @@ export const useStatusStore = defineStore("status", () => {
   }
 
   /**
-   * Read `lastSynced` from the database and settle the sync state. Called on
-   * boot, after a completed sync, and when the shell becomes visible (post
-   * login). Never throws — a failure leaves the previous state intact.
+   * Read `lastSynced` + `hasUnsyncedChanges` from the database and settle the
+   * sync state. Called on boot, after a completed sync, and when the shell
+   * becomes visible (post login). Never throws — a failure leaves the
+   * previous state intact.
    */
   async function refreshSync(): Promise<void> {
     try {
@@ -71,21 +82,53 @@ export const useStatusStore = defineStore("status", () => {
       const ts = await db.lastSynced();
       lastSynced.value = ts ?? 0;
       syncState.value = ts ? "synced" : "idle";
+      // hasUnsyncedChanges is optional on the db shape — guard for safety.
+      if (typeof db.hasUnsyncedChanges === "function") {
+        hasUnsyncedChanges.value = await db.hasUnsyncedChanges();
+      }
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[status] refreshSync failed:", e);
     }
   }
 
+  /**
+   * Start the wall-clock interval that keeps `now` fresh so relative sync
+   * times don't go stale. Idempotent — safe to call from `App.vue` boot and
+   * tests. `stopClock` clears it (tests should stop the clock to avoid a
+   * dangling interval across files).
+   */
+  function startClock(intervalMs = 30_000): void {
+    if (clockStarted) return;
+    clockStarted = true;
+    now.value = Date.now();
+    clockHandle = setInterval(() => {
+      now.value = Date.now();
+    }, intervalMs);
+  }
+
+  /** Stop the wall-clock interval (mainly for tests). */
+  function stopClock(): void {
+    if (clockHandle !== null) {
+      clearInterval(clockHandle);
+      clockHandle = null;
+    }
+    clockStarted = false;
+  }
+
   return {
     syncState,
     lastSynced,
+    hasUnsyncedChanges,
+    now,
     wordCount,
     charCount,
     cursorLine,
     cursorColumn,
     setEditorStats,
     refreshSync,
-    bindSyncEvents
+    bindSyncEvents,
+    startClock,
+    stopClock
   };
 });

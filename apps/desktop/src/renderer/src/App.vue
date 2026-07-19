@@ -36,8 +36,10 @@ onMounted(async () => {
     // Bind sync events once (idempotent) and seed the status bar's sync
     // state from `db.lastSynced()`; safe even when not logged in — the view
     // renders "Local only" until login, and `refreshSync` only queries the
-    // local lastSynced timestamp.
+    // local lastSynced timestamp. Start the wall-clock so relative sync
+    // times stay accurate.
     status.bindSyncEvents();
+    status.startClock();
     void status.refreshSync();
     if (auth.showShell) {
       await notes.load();
