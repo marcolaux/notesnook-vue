@@ -1,0 +1,31 @@
+{
+  "name": "notesnook-vue",
+  "version": "0.0.1",
+  "private": true,
+  "description": "A from-scratch Vue 3 + Tailwind + Glassmorphism rewrite of the Notesnook desktop frontend.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/desktop",
+    "build": "npm run build --workspace=apps/desktop",
+    "typecheck": "npm run typecheck --workspace=apps/desktop --if-present && npm run typecheck --workspace=packages/contracts --if-present",
+    "test:contract": "vitest run --dir tests/contract",
+    "test:contract:watch": "vitest --dir tests/contract",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "eslint": "^9.10.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

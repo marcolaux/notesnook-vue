@@ -1,0 +1,20 @@
+# Code
+*.ts
+*.vue
+*.tsx
+*.js
+*.cjs
+*.mjs
+*.json
+*.jsonc
+*.css
+*.html
+*.md
+*.yaml
+*.yml
+
+# Don't format build artifacts
+dist
+dist-electron
+release
+node_modules

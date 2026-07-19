@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/renderer/src/*"],
+      "@contracts/*": ["src/contracts/*"],
+      "@platform/*": ["src/renderer/src/platform/*"],
+      "@notesnook-vue/contracts": ["../../packages/contracts/src/index.ts"],
+      "@notesnook-vue/contracts/*": ["../../packages/contracts/src/*"],
+      "@notesnook-vue/shared": ["../../packages/shared/src/index.ts"]
+    }
+  },
+  "include": ["src/renderer/**/*", "src/renderer/**/*.vue"]
+}

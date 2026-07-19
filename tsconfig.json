@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "useDefineForClassFields": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": false,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@notesnook-vue/contracts": ["packages/contracts/src/index.ts"],
+      "@notesnook-vue/contracts/*": ["packages/contracts/src/*"],
+      "@notesnook-vue/shared": ["packages/shared/src/index.ts"]
+    }
+  },
+  "include": [],
+  "exclude": ["node_modules", "dist", "dist-electron", "build", "release", "out", "coverage"]
+}
