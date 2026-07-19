@@ -67,6 +67,14 @@ async function seedIfEmpty(db: Database): Promise<void> {
     title: "Phase 1 pipeline",
     content: { type: "tiptap", data: "<p>Renderer holds the Database; SQL is compiled by Kysely and forwarded over the tRPC bridge to Main's better-sqlite3-multiple-ciphers, which writes an encrypted .sql file in userData.</p>" }
   });
+  // Phase 3.2 demo — a notebook + a tag so the sidebar's Notebooks/Tags
+  // sections show real collections. Group the two welcome notes under the
+  // notebook; the tag is listed in the Tags section (note-filtering by
+  // collection is the next increment).
+  const nbId = await db.notebooks.add({ title: "Getting started" });
+  const welcomeNotes = (await db.notes.all.items()).slice(0, 2).map((n) => n.id);
+  if (nbId) await db.notes.addToNotebook(nbId, ...welcomeNotes);
+  await db.tags.add({ title: "phase-3" });
   // Phase 2.4 demo — a checklist (task-list + task-item node-views) and an
   // attachment chip (attachment node-view), so `npm run dev` shows the
   // ported node-views immediately. The attachment uses a fake hash (the real

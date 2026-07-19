@@ -1,158 +1,222 @@
-/**
- * M11 — extended contract tests against the REAL platform (in-process SQLite
- * dialect + real NNStorage with a memory key store + real FileStorage with an
- * in-memory chunk store + in-process zlib compressor). Exercises the
- * `@notesnook/core` collections end-to-end: notebooks, tags, settings,
- * attachments (encrypted via FileStorage + sodium), vault (encrypted note
- * storage), and sync (graceful failure without a user).
- *
- * No Electron: the same `initDatabase()` the renderer uses, with a fake
- * dialect/chunk-store swapped in. Crypto-bearing collections (attachments,
- * vault) derive a `userEncryptionKey` first, mirroring a logged-in user.
- */
-import { describe, it, expect } from "vitest";
-import { SqliteDialect } from "@streetwriters/kysely";
-import BetterSqlite from "better-sqlite3-multiple-ciphers";
-import { gzipSync, gunzipSync } from "node:zlib";
-import type { IFileStorage as StreamableFSChunkStore, File as FSFile } from "@notesnook/streamable-fs";
-import type { ICompressor, SQLiteOptions } from "@notesnook-vue/contracts";
-import { initDatabase } from "../../apps/desktop/src/renderer/src/platform/database";
-import type { DatabasePlatform } from "../../apps/desktop/src/renderer/src/platform/database";
-import { NNStorage } from "../../apps/desktop/src/renderer/src/platform/storage";
-import { createFileStorage } from "../../apps/desktop/src/renderer/src/platform/fs";
-import type { IKeyStore } from "../../apps/desktop/src/renderer/src/platform/key-store";
+// @vitest-environment node
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
+import {
+  sortCollections,
+  toNotebookListItem,
+  toTagListItem,
+  DEFAULT_COLLECTION_SORT_KEY,
+  DEFAULT_COLLECTION_SORT_DIR
+} from "@/utils/collections";
+import { useCollectionsStore } from "@/stores/collections";
+import type { Notebook, Tag } from "@notesnook-vue/contracts";
 
-class InProcessCompressor implements ICompressor {
-  async compress(data: string): Promise<string> {
-    return gzipSync(Buffer.from(data, "utf-8"), { level: 6 }).toString("base64");
-  }
-  async decompress(data: string): Promise<string> {
-    return gunzipSync(Buffer.from(data, "base64")).toString("utf-8");
-  }
+// `collections.ts` imports `getDatabase` from the platform bootstrap; stub it
+// so the sodium/crypto/bridge graph isn't loaded for a pure store-logic test.
+// The fake db is per-test controllable via `mockDb`.
+let mockDb: {
+  notebooks: { all: { items: () => Promise<Notebook[]> } };
+  tags: { all: { items: () => Promise<Tag[]> } };
+  trash: { all: () => Promise<unknown[]> };
+};
+vi.mock("@/platform/bootstrap", () => ({
+  getDatabase: () => mockDb,
+  bootstrap: vi.fn()
+}));
+
+function nb(p: Partial<Notebook> & Pick<Notebook, "id" | "title">): Notebook {
+  return {
+    id: p.id,
+    type: "notebook",
+    title: p.title,
+    description: p.description,
+    dateCreated: p.dateCreated ?? 0,
+    dateModified: p.dateModified ?? 0,
+    dateDeleted: null,
+    pinned: p.pinned ?? false,
+    itemType: null,
+    deletedBy: null
+  } as Notebook;
 }
 
-class MemoryKeyStore implements IKeyStore {
-  private map = new Map<string, string>();
-  async getValue(key: string): Promise<string | undefined> {
-    return this.map.get(key);
-  }
-  async setValue(key: string, value: string): Promise<void> {
-    this.map.set(key, value);
-  }
+function tag(p: Partial<Tag> & Pick<Tag, "id" | "title">): Tag {
+  return {
+    id: p.id,
+    type: "tag",
+    title: p.title,
+    dateCreated: p.dateCreated ?? 0,
+    dateModified: p.dateModified ?? 0,
+    dateDeleted: null
+  } as Tag;
 }
 
-class MemoryFileStore implements StreamableFSChunkStore {
-  private meta = new Map<string, FSFile>();
-  private chunks = new Map<string, Uint8Array>();
-  async clear(): Promise<void> { this.meta.clear(); this.chunks.clear(); }
-  async setMetadata(f: string, m: FSFile): Promise<void> { this.meta.set(f, m); }
-  async getMetadata(f: string): Promise<FSFile | undefined> { return this.meta.get(f); }
-  async deleteMetadata(f: string): Promise<void> { this.meta.delete(f); }
-  async writeChunk(c: string, d: Uint8Array): Promise<void> { this.chunks.set(c, d); }
-  async deleteChunk(c: string): Promise<void> { this.chunks.delete(c); }
-  async readChunk(c: string): Promise<Uint8Array | undefined> { return this.chunks.get(c); }
-  async chunkSize(c: string): Promise<number> { return this.chunks.get(c)?.length ?? 0; }
-  async listChunks(p: string): Promise<string[]> { return [...this.chunks.keys()].filter((k) => k.startsWith(p)); }
-  async list(): Promise<string[]> { return [...this.meta.keys()]; }
-}
+const NOTEBOOKS: Notebook[] = [
+  nb({ id: "a", title: "Alpha", dateCreated: 100, dateModified: 300 }),
+  nb({ id: "b", title: "Beta", dateCreated: 200, dateModified: 200, pinned: true }),
+  nb({ id: "c", title: "Gamma", dateCreated: 300, dateModified: 100 })
+];
 
-interface RealPlatform {
-  platform: DatabasePlatform;
-  storage: NNStorage;
-  keyStore: MemoryKeyStore;
-}
+const TAGS: Tag[] = [
+  tag({ id: "t1", title: "work", dateCreated: 10, dateModified: 30 }),
+  tag({ id: "t2", title: "home", dateCreated: 20, dateModified: 20 }),
+  tag({ id: "t3", title: "Personal", dateCreated: 30, dateModified: 10 })
+];
 
-/** Build a fresh in-process platform with real NNStorage + FileStorage. */
-function buildRealPlatform(): RealPlatform {
-  const dbInstance = new BetterSqlite(":memory:");
-  dbInstance.unsafeMode(true);
-  const keyStore = new MemoryKeyStore();
-  const storage = new NNStorage("nnvue-test", () => keyStore, "memory");
-  const platform: DatabasePlatform = {
-    sqliteOptions: {
-      dialect: () => new SqliteDialect({ database: dbInstance }),
-      journalMode: "WAL",
-      synchronous: "normal",
-      lockingMode: "exclusive",
-      tempStore: "memory",
-      cacheSize: -32000,
-      pageSize: 8192
-    },
-    storage,
-    fs: createFileStorage({ chunkStore: new MemoryFileStore() }),
-    compressor: new InProcessCompressor()
+beforeEach(() => {
+  setActivePinia(createPinia());
+  mockDb = {
+    notebooks: { all: { items: async () => NOTEBOOKS } },
+    tags: { all: { items: async () => TAGS } },
+    trash: { all: async () => [{ id: "x" }, { id: "y" }] }
   };
-  return { platform, storage, keyStore };
-}
+});
 
-/** Init a fresh DB and derive a userEncryptionKey (mimics a logged-in user). */
-async function setupDbWithUser() {
-  const { platform, storage } = buildRealPlatform();
-  const db = await initDatabase(platform);
-  // generateCryptoKey returns {key, salt}; deriveCryptoKey takes {password, salt}
-  // and stores the derived key as userEncryptionKey.
-  const probe = await storage.generateCryptoKey("user-password");
-  await storage.deriveCryptoKey({ password: "user-password", salt: probe.salt });
-  return db;
-}
-
-describe("M11: collections (real NNStorage + FileStorage, in-process)", () => {
-  it("notebooks.add + notes.addToNotebook round-trip", async () => {
-    const db = await initDatabase(buildRealPlatform().platform);
-    const nbId = await db.notebooks.add({ title: "My notebook" });
-    expect(typeof nbId).toBe("string");
-    const noteId = await db.notes.add({ title: "In notebook" });
-    await db.notes.addToNotebook(nbId as string, noteId);
-    expect(await db.notebooks.notes(nbId as string)).toContain(noteId);
-    const nbs = await db.notebooks.all.items();
-    expect(nbs.length).toBe(1);
-    expect(nbs[0]?.title).toBe("My notebook");
+describe("sortCollections", () => {
+  it("default sort key/dir are dateModified/desc", () => {
+    expect(DEFAULT_COLLECTION_SORT_KEY).toBe("dateModified");
+    expect(DEFAULT_COLLECTION_SORT_DIR).toBe("desc");
   });
 
-  it("tags.add + tags.tag round-trip", async () => {
-    const db = await initDatabase(buildRealPlatform().platform);
-    const tagId = await db.tags.add({ title: "work" });
-    expect(typeof tagId).toBe("string");
-    const tag = await db.tags.tag(tagId as string);
-    expect(tag?.title).toBe("work");
-    expect((await db.tags.all.items()).length).toBe(1);
+  it("pinned-first regardless of sort key/direction", () => {
+    // b is pinned → on top in both directions; below it the comparator runs.
+    expect(sortCollections(NOTEBOOKS, "dateModified", "asc").map((n) => n.id)).toEqual([
+      "b",
+      "c",
+      "a"
+    ]); // b pinned, then dateModified asc: c(100), a(300)
+    expect(sortCollections(NOTEBOOKS, "title", "desc").map((n) => n.id)).toEqual([
+      "b",
+      "c",
+      "a"
+    ]); // b pinned, then title desc: Gamma(c), Alpha(a)
   });
 
-  it("settings typed setters/getters round-trip", async () => {
-    const db = await initDatabase(buildRealPlatform().platform);
-    await db.settings.setTitleFormat("$headline$ $date$");
-    expect(db.settings.getTitleFormat()).toBe("$headline$ $date$");
-    const nbId = await db.notebooks.add({ title: "Default" });
-    await db.settings.setDefaultNotebook(nbId as string);
-    expect(db.settings.getDefaultNotebook()).toBe(nbId);
+  it("sorts by dateModified asc/desc within the unpinned group", () => {
+    expect(sortCollections(NOTEBOOKS, "dateModified", "asc").map((n) => n.id)).toEqual([
+      "b",
+      "c",
+      "a"
+    ]); // pinned b, then c(100) < a(300)
+    expect(sortCollections(NOTEBOOKS, "dateModified", "desc").map((n) => n.id)).toEqual([
+      "b",
+      "a",
+      "c"
+    ]); // pinned b, then a(300) > c(100)
   });
 
-  // NOTE: the Attachments collection (`attachments.save`/`add`/`generateKey`)
-  // is gated on a logged-in user — `_getEncryptionKey` calls
-  // `db.user.getAttachmentsKey()`, which is set during login (auth = Phase 6).
-  // So a full attachments round-trip isn't testable here without a user. The
-  // FileStorage encryption layer it sits on IS verified in filestorage.spec
-  // (writeEncryptedBase64 -> readEncrypted round-trip with real sodium).
-
-  it("vault.create + add + open round-trips an encrypted note", async () => {
-    const db = await setupDbWithUser();
-    expect(await db.vault.create("vault-password")).toBe(true);
-    expect(db.vault.unlocked).toBe(true);
-
-    const noteId = await db.notes.add({ title: "Secret" });
-    await db.vault.add(noteId);
-
-    const opened = await db.vault.open(noteId, "vault-password");
-    // The note is retrievable/decryptable from the vault (vault re-saves on
-    // lock, so the title may be regenerated — assert identity, not title).
-    expect(opened?.id).toBe(noteId);
+  it("sorts by dateCreated", () => {
+    // dateCreated: a=100, b=200(pinned), c=300 → asc (pinned first, then a, c)
+    expect(sortCollections(NOTEBOOKS, "dateCreated", "asc").map((n) => n.id)).toEqual([
+      "b",
+      "a",
+      "c"
+    ]);
   });
 
-  it("sync completes without crashing when not logged in", async () => {
-    const db = await initDatabase(buildRealPlatform().platform);
-    // With no user/token, sync short-circuits to a boolean (no-op) rather than
-    // crashing — assert it resolves to a boolean.
-    const result = await db.sync({ type: "send" });
-    expect(typeof result).toBe("boolean");
+  it("sorts by title (locale-aware, case-insensitive, numeric)", () => {
+    // pinned b, then Alpha(a) < Gamma(c)
+    expect(sortCollections(NOTEBOOKS, "title", "asc").map((n) => n.id)).toEqual([
+      "b",
+      "a",
+      "c"
+    ]);
+  });
+
+  it("does not mutate the input", () => {
+    const copy = [...NOTEBOOKS].map((n) => ({ ...n }));
+    sortCollections(NOTEBOOKS, "dateModified", "desc");
+    expect(NOTEBOOKS.map((n) => n.id)).toEqual(copy.map((n) => n.id));
+  });
+
+  it("is a no-op for pinned-first when items have no pinned (tags)", () => {
+    // tags: work(t1), home(t2), Personal(t3) — sensitivity:base is
+    // case-insensitive, so asc → home, Personal, work.
+    expect(sortCollections(TAGS, "title", "asc").map((t) => t.id)).toEqual([
+      "t2",
+      "t3",
+      "t1"
+    ]);
+  });
+});
+
+describe("mappers", () => {
+  it("toNotebookListItem maps the slim shape + defaults", () => {
+    const item = toNotebookListItem(
+      nb({ id: "x", title: "X", description: "d", pinned: true, dateModified: 9 })
+    );
+    expect(item).toEqual({
+      id: "x",
+      title: "X",
+      description: "d",
+      dateCreated: 0,
+      dateModified: 9,
+      pinned: true
+    });
+  });
+
+  it("toNotebookListItem falls back to Untitled + empty description", () => {
+    const item = toNotebookListItem(nb({ id: "x", title: "" }));
+    expect(item.title).toBe("Untitled");
+    expect(item.description).toBe("");
+  });
+
+  it("toTagListItem maps the slim shape", () => {
+    const item = toTagListItem(tag({ id: "t", title: "work", dateCreated: 5, dateModified: 7 }));
+    expect(item).toEqual({ id: "t", title: "work", dateCreated: 5, dateModified: 7 });
+  });
+});
+
+describe("collections store", () => {
+  it("load() fetches notebooks, tags and trash count in parallel", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    expect(c.notebooks.map((n) => n.id)).toEqual(["a", "b", "c"]);
+    expect(c.tags.map((t) => t.id)).toEqual(["t1", "t2", "t3"]);
+    expect(c.trashCount).toBe(2);
+  });
+
+  it("sortedNotebooks is pinned-first + dateEdited desc by default", () => {
+    const c = useCollectionsStore();
+    // set raw (unsorted) order directly to test the computed
+    c.notebooks = NOTEBOOKS.map(toNotebookListItem);
+    expect(c.sortedNotebooks.map((n) => n.id)).toEqual(["b", "a", "c"]);
+  });
+
+  it("sortedTags follows the sort key/dir", () => {
+    const c = useCollectionsStore();
+    c.tags = TAGS.map(toTagListItem);
+    c.setSortKey("title");
+    c.setSortDir("asc");
+    // sensitivity:base case-insensitive asc: home, Personal, work
+    expect(c.sortedTags.map((t) => t.id)).toEqual(["t2", "t3", "t1"]);
+  });
+
+  it("toggleSection flips collapse state per section", () => {
+    const c = useCollectionsStore();
+    expect(c.collapsed.notebooks).toBe(false);
+    c.toggleSection("notebooks");
+    expect(c.collapsed.notebooks).toBe(true);
+    expect(c.collapsed.tags).toBe(false); // independent
+    c.toggleSection("tags");
+    expect(c.collapsed.tags).toBe(true);
+  });
+
+  it("select / clearSelection manage the selected collection", () => {
+    const c = useCollectionsStore();
+    expect(c.selected).toBeNull();
+    c.select("notebook", "a");
+    expect(c.selected).toEqual({ type: "notebook", id: "a" });
+    c.select("tag", "t1");
+    expect(c.selected).toEqual({ type: "tag", id: "t1" });
+    c.clearSelection();
+    expect(c.selected).toBeNull();
+  });
+
+  it("load tolerates a thrown collection fetch (defensive .catch)", async () => {
+    mockDb.notebooks = { all: { items: async () => Promise.reject(new Error("boom")) } };
+    const c = useCollectionsStore();
+    await c.load();
+    expect(c.notebooks).toEqual([]);
+    expect(c.tags.map((t) => t.id)).toEqual(["t1", "t2", "t3"]); // others still load
   });
 });

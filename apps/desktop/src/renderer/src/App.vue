@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useNotesStore } from "@/stores/notes";
+import { useCollectionsStore } from "@/stores/collections";
 import { useAuthStore } from "@/stores/auth";
 import { bootstrap } from "@/platform/bootstrap";
 import { useCommandPalette } from "@/composables/use-command-palette";
@@ -20,10 +21,14 @@ useCommandPalette();
 
 onMounted(async () => {
   const notes = useNotesStore();
+  const collections = useCollectionsStore();
   try {
     await bootstrap();
     await auth.init();
-    if (auth.showShell) await notes.load();
+    if (auth.showShell) {
+      await notes.load();
+      void collections.load();
+    }
     bootState.value = "ready";
     // Settle the initial route now that auth is resolved. During boot the
     // guard saw `status === "unknown"` and let the redirect to `/all` through;
@@ -48,6 +53,7 @@ watch(
     if (show && !notesLoaded.value) {
       notesLoaded.value = true;
       await useNotesStore().load();
+      void useCollectionsStore().load();
     }
   }
 );

@@ -595,10 +595,37 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
 
 - [ ] **3.1 Custom Titlebar** — macOS Traffic-Lights + Window Controls Overlay
   (Win/Linux), `vibrancy`/`acrylic`-Erkennung
-- [ ] **3.2 Sidebar** — VS-Code-Explorer-Metapher mit Collapse-Sektionen:
+- [~] **3.2 Sidebar** — VS-Code-Explorer-Metapher mit Collapse-Sektionen:
   - All Notes, Notebooks (rekursiv mit Icons), Tags (rekursiv mit Icons),
     Monographs, Archive, Trash (unten), Settings (unten)
   - Sortable via `vue-draggable-plus`
+  - **Status 2026-07-19 (Teil 1 — collections headless core):** die Sidebar
+    zeigt jetzt **echte** Notebooks + Tags aus `@notesnook/core` statt der
+    Placeholder-RouterLinks. Neues `utils/collections.ts` (generisches
+    `sortCollections` — pinned-first-Präfix + title/dateModified/dateCreated
+    asc/desc, non-mutating; `NotebookListItem`/`TagListItem`-Mapper; `dateModified`
+    als gemeinsamer "recently changed"-Key, da `Tag` kein `dateEdited` hat).
+    Neuer `stores/collections.ts` (Pinia): lädt notebooks/tags/trashCount per
+    `Promise.all` (defensiv per `.catch`), hält Sort-State, per-Section-Collapse
+    (`notebooks`/`tags`) + `selected`-Collection, expostiert `sortedNotebooks`
+    /`sortedTags`-Computeds + `load`/`toggleSection`/`select`/`clearSelection`.
+    `Sidebar.vue` neu: expandierbare Notebooks- + Tags-Sektionen (Chevron-Toggle,
+    Item-Liste pinned-first mit Empty-State, Auswahl-Highlight) statt der
+    Placeholder-Routerlinks; All Notes / Monographs / Archive / Trash(+Count)
+    / Settings bleiben `RouterLink`s. Auswahl eines Notebook/Tag →
+    `collections.select` + `router.push('/all')` (Note-Filterung nach
+    Collection = Folge-Inkrement, braucht `db.notebooks.notes(id)` +
+    Notes-Store-Filter-by-idSet). `App.vue` lädt Collections neben Notes (onMounted
+    + showShell-watch). `bootstrap.ts` seeedt ein Notebook + Tag. 16 neue
+    Contract-Tests in `collections.spec.ts` (node, bootstrap gemockt). **240
+    Contract-Tests grün**, typecheck (node+web) + build clean, 0
+    React/theme-ui/zustand-Leck (Renderer 5,24 MB, +3 KB, kein neuer Dep).
+    **Aufgeschoben:** rekursive Subnotebooks/Subtags (API hat keinen
+    sichtbaren Parent-Link auf `Notebook`, `Topic` ist `@deprecated`; Tags flach
+    — keine Subtag-API), Icon-per-Item (Picker = on-site), Drag-Sort via
+    `vue-draggable-plus` (on-site), Note-Filterung nach Collection (Folge-Inkrement).
+    **On-Site-Gate:** Sektionen expandieren/kollabieren, Notebooks/Tags listen,
+    Auswahl highlightet + routet nach /all, Trash-Count zeigt.
 - [~] **3.3 Notes List** — Suchleiste mit Regex, Sort/Group-Controls, New-Note,
   Collapse-Sidebar, List-Entries mit Thumbnail + Progress-Bar + Tags
   - **Status 2026-07-19 (search + regex + sort done, headless):** die bisher
@@ -2397,5 +2424,97 @@ ohne Neustart.
 
 ---
 
+## Phase 3.2 (Teil 1) — Sidebar: echte Notebooks + Tags Collections (2026-07-19)
+
+Erstes 3.2-Inkrement (Roadmap §4.1/§5). Die Sidebar zeigt jetzt **echte**
+Notebooks + Tags aus `@notesnook/core` statt der bisherigen
+Placeholder-Routerlinks. Reine Collections-Logik, vollständig headless
+verifizierbar.
+
+**Neue Dateien:**
+- `apps/desktop/src/renderer/src/utils/collections.ts` — generisches
+  `sortCollections<T>(items, key, dir)` mit **pinned-first-Präfix**
+  (unabhängig vom Sort-Key/Dir, wie Notesnook), dann Komparator
+  (`title` via `localeCompare` numeric+sensitivity:base; `dateModified`;
+  `dateCreated`), asc/desc, **non-mutating** (spread+sort). `pinned` ist
+  optional im Constraint → Tags (kein `pinned`) → pinned-first ist ein
+  No-op. **`dateModified` als gemeinsamer "recently changed"-Key**, weil
+  `Tag` (via `BaseItem`) `dateModified`+`dateCreated` hat, aber **kein
+  `dateEdited`** (`Notebook` hat beide). Mapper `toNotebookListItem`/
+  `toTagListItem` (slim Shape, Untitled-Fallback). `NotebookListItem`/
+  `TagListItem`/`SortableCollectionItem`/`CollectionSortKey`/`SortDir` +
+  `DEFAULT_COLLECTION_SORT_KEY/DIR` exportiert.
+- `apps/desktop/src/renderer/src/stores/collections.ts` — Pinia-Store:
+  `notebooks`/`tags`/`trashCount`, `sortKey`/`sortDir`, per-Section-Collapse
+  `collapsed` (`notebooks`/`tags`, default expandiert), `selected`
+  (`{type:'notebook'|'tag', id}|null`). `load()` = `Promise.all` über
+  `db.notebooks.all.items()` / `db.tags.all.items()` / `db.trash.all()`
+  (jeder Zweig defensiv per `.catch(() => [])` → ein kaputter Fetch leert
+  nicht die anderen). Computeds `sortedNotebooks`/`sortedTags`. Aktionen
+  `load`/`toggleSection`/`setSortKey`/`setSortDir`/`select`/`clearSelection`.
+
+**Geänderte Dateien:**
+- `components/Sidebar.vue` — neu: expandierbare **Notebooks**- +
+  **Tags**-Sektionen (Chevron-Toggle via `collections.collapsed`,
+  Item-Liste pinned-first mit Empty-State, Auswahl-Highlight via
+  `isSelected`) ersetzen die Placeholder-Routerlinks für Notebooks/Tags.
+  All Notes / Monographs / Archive / Trash (mit Count-Badge) / Settings
+  bleiben `RouterLink`s (gefiltert aus `topViews`/`bottomViews`). Auswahl
+  eines Notebooks/Tags → `collections.select(type,id)` + `router.push
+  ('/all')` — Note-Filterung nach Collection ist das Folge-Inkrement;
+  `selected` wird jetzt für Highlight + den künftigen Filter-Hook gesetzt.
+  Alle Controls tragen `titlebar-no-drag`.
+- `App.vue` — lädt Collections neben Notes: im `onMounted` (wenn
+  `showShell`) und im `showShell`-watch (`void collections.load()`,
+  nicht awaited → blockiert nicht den Shell-Render).
+- `platform/bootstrap.ts` — seeedt ein Notebook "Getting started" (mit
+  den zwei Willkommens-Notes verlinkt via `db.notes.addToNotebook`) + einen
+  Tag "phase-3", damit die Sektionen on-device nicht leer sind.
+
+**Verifiziert (headless):** `tests/contract/collections.spec.ts` (16 Tests,
+node, `@/platform/bootstrap` gemockt) — `sortCollections` (default
+dateModified/desc, pinned-first über Keys/Dirs, dateModified asc/desc,
+dateCreated, title locale-aware case-insensitive, non-mutation,
+tags-no-pinned-no-op) + Mapper + Store (`load` parallel, `sortedNotebooks`
+pinned-first, `sortedTags` folgt Sort, `toggleSection` per-Section
+unabhängig, `select`/`clearSelection`, defensive `.catch` bei geworfenem
+Fetch). **240 Contract-Tests grün**; typecheck (node+web) clean;
+`electron-vite build` clean (Renderer 5,24 MB, +3 KB — kein neuer Dep,
+0 React/theme-ui/zustand-Leck).
+
+**Wichtige Erkenntnisse:**
+1. **`Tag` hat kein `dateEdited`.** Nur `BaseItem`-`dateModified`+
+   `dateCreated`; `Notebook` hat zusätzlich `dateEdited`. → gemeinsamer
+   "recently changed"-Sort-Key ist `dateModified`, sonst compiliert der
+   generische Sorter nicht für Tags. (Bei Notes war `dateEdited` der
+   Haupt-Key; Collections sind anders.)
+2. **Notebooks + Tags sind flach im aktuellen API.** `Notebooks.roots`
+   existiert (impliziert Nestung), aber `Notebook` trägt keinen
+   sichtbaren Parent-Link; `Topic` ist `@deprecated`; Tags haben keine
+   Hierarchie. → rekursive Subnotebooks/Subtags aufgeschoben, bis die
+   Nestungs-API geklärt ist (ggf. Phase 6). Sort + Mapper sind so
+   geschrieben, dass ein späterer Tree-Pass die Leaf-Shape nicht ändert.
+3. **`localeCompare` mit `sensitivity:"base"` ist case-insensitiv.**
+   `home < Personal < work` (nicht `Personal < home`), da `h`<`p`<`w`.
+   Test dokumentiert das.
+4. **Auswahl ohne Filterung ist jetzt schon nützlich.** `selected`
+   treibt Highlight + ist der Haken für das nächste Inkrement (Notes nach
+   Collection filtern via `db.notebooks.notes(id)` + Notes-Store-
+   Filter-by-idSet). Gleiche "Signal setzen, Aktion on-site"-Form wie
+   `focusSearchSignal`.
+
+**Aufgeschoben (Phase 3.2 Folge-Inkremente):** rekursive Subnotebooks/
+Subtags (API unklar); Icon-per-Notebook/Tag (Picker = on-site);
+Drag-Sort via `vue-draggable-plus` (on-site); Note-Filterung nach
+ausgewählter Collection (Folge-Inkrement, entblockt echte
+"Notes-in-Notebook"-Views + 3.3 Grouping-by-Notebook/Tag).
+
+**On-Site-Gate (physische Anwesenheit, per Memory gebatcht):**
+Notebooks/Tags-Sektionen expandieren/kollabieren (Chevron); Liste zeigt
+die geseedeten Collections (Notebook "Getting started" + Tag "phase-3");
+Auswahl highlightet + routet nach /all; Trash-Count-Badge zeigt.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)** + **Phase 3.5 (Vue Router klassische Route-Tabelle: `createAppRouter`+`createMemoryHistory`+Auth-Guard; `ShellLayout`/`NotesView`/`PlaceholderView`/`SettingsView`; `useShellStore`; Sidebar-`RouterLink` über `VIEWS`; `app:goto-*`-Palette-Commands; lazy Views → Code-Split)** + **Phase 2.5b (Command-Palette Overlay `CommandPalette.vue`: Teleport-to-body, Input→`setQuery`, Arrow/Enter/Esc, Hover/Klick→`setActiveIndex`+`execute`, Autofocus via `flush:"post"`, scoped Theme-Tokens; Store um `setActiveIndex` erweitert)** + **Phase 3.3 (Teil 1): Notes List Search + Regex + Sort — `utils/notes-list.ts` (`filterNotes` plain/regex-invalid-fallback, `sortNotes` dateEdited/dateCreated/title asc/desc pinned-first) + `notes`-Store View-State (`visibleItems` computed) + `NotesList.vue` verdrahtet (Search-Input, Regex-Toggle, Sort-`<select>`+Dir, Clear, Count, Empty-State) + `app:search-notes`-Palette-Command (`focusSearchSignal`)** + **Phase 3.3 (Teil 2): Notes List Thumbnail + Checklist-Fortschrittsbalken — `utils/note-preview.ts` (`extractNotePreview` first-img-src/DOM-Klassen-Zählung via DOMParser, never-throws) + `notes`-Store `previews`-Cache + `loadPreview(id)` (lazy/cached/idempotent/locked-safe) + `load()` fire-and-forget + `saveContent` re-deriviert Preview live + `NotesList.vue` Thumbnail-`<img>` + Fortschrittsbalken (`previewOf`/`progressWidth`-Helper)**. **229 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive + 6 registry + 9 palette + 4 editor-store + 10 tool-definitions + 7 slash-commands + 11 router + 9 command-palette-overlay + 23 notes-list + 20 note-preview)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`; Routing via `vue-router@4` (Memory-History, Auth-Guard, `VIEWS`-getrieben); Command-Palette Overlay via `CommandPalette.vue` (Store/Registry/Hotkey aus Phase 2.5 = Backend). **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay-Render, Sidebar-Nav-Active/View-Wechsel/login↔shell-Übergang/Go-to-Commands, + Notes-Search/Regex/Sort/Clear/Search-notes-Focus, + List-Thumbnail-Render/Checklist-Fortschrittsbalken-Render/live-Update-bei-Edit) brauchen physische Anwesenheit.**_
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)** + **Phase 3.5 (Vue Router klassische Route-Tabelle: `createAppRouter`+`createMemoryHistory`+Auth-Guard; `ShellLayout`/`NotesView`/`PlaceholderView`/`SettingsView`; `useShellStore`; Sidebar-`RouterLink` über `VIEWS`; `app:goto-*`-Palette-Commands; lazy Views → Code-Split)** + **Phase 2.5b (Command-Palette Overlay `CommandPalette.vue`: Teleport-to-body, Input→`setQuery`, Arrow/Enter/Esc, Hover/Klick→`setActiveIndex`+`execute`, Autofocus via `flush:"post"`, scoped Theme-Tokens; Store um `setActiveIndex` erweitert)** + **Phase 3.3 (Teil 1): Notes List Search + Regex + Sort — `utils/notes-list.ts` (`filterNotes` plain/regex-invalid-fallback, `sortNotes` dateEdited/dateCreated/title asc/desc pinned-first) + `notes`-Store View-State (`visibleItems` computed) + `NotesList.vue` verdrahtet (Search-Input, Regex-Toggle, Sort-`<select>`+Dir, Clear, Count, Empty-State) + `app:search-notes`-Palette-Command (`focusSearchSignal`)** + **Phase 3.3 (Teil 2): Notes List Thumbnail + Checklist-Fortschrittsbalken — `utils/note-preview.ts` (`extractNotePreview` first-img-src/DOM-Klassen-Zählung via DOMParser, never-throws) + `notes`-Store `previews`-Cache + `loadPreview(id)` (lazy/cached/idempotent/locked-safe) + `load()` fire-and-forget + `saveContent` re-deriviert Preview live + `NotesList.vue` Thumbnail-`<img>` + Fortschrittsbalken (`previewOf`/`progressWidth`-Helper)** + **Phase 3.2 (Teil 1): Sidebar echte Notebooks + Tags Collections — `utils/collections.ts` (generisches `sortCollections` pinned-first + title/dateModified/dateCreated, `dateModified` als gemeinsamer Key da `Tag` kein `dateEdited`, Mapper) + `stores/collections.ts` (load parallel/defensiv, sort/collapse/selected-State, sortedNotebooks/sortedTags) + `Sidebar.vue` expandierbare Notebooks/Tags-Sektionen mit Auswahl→`/all` (All/Monographs/Archive/Trash+Count/Settings bleiben RouterLinks) + `App.vue` lädt Collections neben Notes + `bootstrap.ts` seeedt Notebook+Tag**. **240 Contract-Tests grün über 22 Spec-Dateien (core-surface 7 + editor-html 27 + theme 11 + ui-primitives 41 + command-registry 6 + command-palette 9 + editor-store 4 + tool-definitions 10 + slash-commands 7 + router 11 + command-palette-overlay 9 + notes-list 23 + note-preview 20 + collections 16 + auth 15 + bridge-dialect 2 + data 4 + filestorage 4 + sqlite-engine 5 + database-encryption 2 + nnstorage 5 + bridge-router 2)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`; Routing via `vue-router@4` (Memory-History, Auth-Guard, `VIEWS`-getrieben); Command-Palette Overlay via `CommandPalette.vue` (Store/Registry/Hotkey aus Phase 2.5 = Backend). **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay-Render, Sidebar-Nav-Active/View-Wechsel/login↔shell-Übergang/Go-to-Commands, + Notes-Search/Regex/Sort/Clear/Search-notes-Focus, + List-Thumbnail-Render/Checklist-Fortschrittsbalken-Render/live-Update-bei-Edit, + Sidebar-Notebooks/Tags-Sektionen-expand-collapse/Listen-Render/Auswahl-Highlight+Route/Trash-Count) brauchen physische Anwesenheit.**_
