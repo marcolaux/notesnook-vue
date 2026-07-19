@@ -25,11 +25,14 @@ import {
   Table,
   TableRow,
   TableCell,
-  TableHeader
+  TableHeader,
+  SlashCommands
 } from "@notesnook-vue/editor-vue";
 import { useNotesStore } from "@/stores/notes";
+import { useEditorStore } from "@/stores/editor";
 
 const notes = useNotesStore();
+const editorStore = useEditorStore();
 
 // `useEditor` returns a ShallowRef<Editor | undefined>; in the template it
 // auto-unwraps, so `:editor="editor"` passes the Editor instance.
@@ -51,7 +54,8 @@ const editor = useEditor({
     Table.configure({ resizable: true, showResizeHandleOnSelection: true }),
     TableRow,
     TableCell,
-    TableHeader
+    TableHeader,
+    SlashCommands
   ],
   content: notes.activeContent || "",
   autofocus: false,
@@ -119,8 +123,14 @@ watch(
   { immediate: true }
 );
 
+// Publish the editor instance to the cross-component channel so the command
+// palette + editor-command registry can reach `editor.chain()`. The ref is
+// shallow; only presence/identity changes republish.
+watch(editor, (e) => editorStore.set(e ?? undefined), { immediate: true });
+
 onBeforeUnmount(() => {
   void flushSave();
+  editorStore.clear();
 });
 </script>
 

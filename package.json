@@ -17,6 +17,7 @@
     "@tiptap/pm": "2.6.6",
     "@tiptap/vue-3": "2.6.6",
     "@tiptap/starter-kit": "2.6.6",
+    "@tiptap/suggestion": "2.6.6",
     "@tiptap/extension-blockquote": "2.6.6",
     "@tiptap/extension-bold": "2.6.6",
     "@tiptap/extension-bubble-menu": "2.6.6",

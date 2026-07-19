@@ -572,10 +572,22 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     single bottomRight handle, kein Dep), `code-block/loader.ts` (297
     Literal-Import-Thunks, Vite-code-split).
     `downloader.ts`/`useObserver` folgen mit image (2.4e).
-- [ ] **2.5 Toolbar** als letztes (höchste Masse, geringstes Schema-Risiko):
+- [~] **2.5 Toolbar** als letztes (höchste Masse, geringstes Schema-Risiko):
   - Erst Command Palette (`Ctrl+Shift+P`) + Slash-Commands (`/`)
   - Dann klassische Toolbar-Buttons für die verbleibenden Aktionen
   - 8 Popups reduzieren auf 4–5: Link, Color, Image, Table, ggf. Embed
+  - **Status 2026-07-19 (headless core + slash-commands done):**
+    `useEditorStore` (Editor-Instanz cross-component) + `command-palette`-Store +
+    Command-Registry (`app-commands`/`editor-commands`) + `menu`-Filter +
+    `useCommandPalette`-Hotkey (`Ctrl/Cmd+Shift+P`) + `SlashCommands`-TipTap-
+    Extension via `@tiptap/suggestion@2.6.6` + `SlashMenu.vue` (VueRenderer +
+    Suggestion-Render-Contract) + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS`
+    (type-only `ToolId`-Parity aus `@notesnook/editor` → 0 React-Leck). 166
+    Contract-Tests grün (36 neu), typecheck+build clean. **Kein
+    `CommandPalette.vue`-Overlay dieses Inkrement** (Nutzer-Entscheidung: Palette
+    = nur Logic+Store+Hotkey; Overlay = Folge-Inkrement). Slash-Commands =
+    voll (Suggestion-Plugin + Render-Menü). Visuelle Gates (Slash-Menu am
+    Cursor, Ctrl+Shift+P-Palette-Overlay) = On-Site.
 - [ ] **2.6 `@notesnook/intl`-Quelle klären** — Lingui-Strings aus Hauptrepo
   kopieren oder eigene Fork publishen; vue-i18n-Konverter für `.po`-Files
 
@@ -1861,5 +1873,138 @@ contracts-eigenes tsconfig) — nicht durch diese Änderung verursacht.
 
 ---
 
+## Phase 2.5 — Command Palette (Headless Core) + Slash-Commands (2026-07-19)
+
+Erstes Toolbar-Inkrement (Roadmap §5: Command-Palette + Slash-Commands statt
+klassischer Ribbon-Toolbar). Nach Nutzer-Priorisierung mit **zwei
+Scope-Entscheidungen** gebaut: (a) **Command-Palette = nur Logic + Store +
+Hotkey, KEIN Overlay-Component** dieses Inkrements (`Ctrl/Cmd+Shift+P`
+toggelt den Palette-Store; das Overlay `CommandPalette.vue` ist ein
+deferred Visual-Follow-up); (b) **Slash-Commands = voll** —
+`@tiptap/suggestion` + Suggestion-Plugin + Vue-Render-Menü (`/` im Editor).
+
+**Prerequisite geklärt:** der TipTap-`Editor`-Instanz war bisher ein lokales
+`ShallowRef` in `Editor.vue` und **außen nicht erreichbar** (kein Store, kein
+provide/inject). Neue `useEditorStore` (Pinia, `shallowRef`) exponiert sie
+cross-component; `Editor.vue` published on create + cleared on unmount.
+
+**Neue Dateien (editor-vue):**
+- `packages/editor-vue/src/tool-definitions.ts` — vendored Editor-Action-Metadata
+  + `EDITOR_ACTIONS` (MVP-Subset: bold/italic/strike/code, headings 1-3,
+  bullet/numbered/task list, code block, blockquote, HR, image/table/embed,
+  undo/redo). `PARITY: ToolId[]` compile-checked gegen Upstream-`ToolId`
+  (**type-only** `import type { ToolId } from "@notesnook/editor"` → erased →
+  0 React-Leck, verifiziert via Bundle-grep; Spiegel von theme-vue's
+  `@notesnook/theme`-Pattern). `SLASH_ITEMS` = `slash:true`-Subset.
+- `packages/editor-vue/src/utils/filter.ts` — `subsequenceMatch`/`filterByKey`
+  (case-insensitiv, Titel-Match rangiert vor Keyword-Match) + `cycleIndex`
+  (wrapping). Geteilt von Palette + Slash-Menu.
+- `packages/editor-vue/src/extensions/slash-commands/` — `slash-commands.ts`
+  (TipTap-`Extension`, `addProseMirrorPlugins` → `Suggestion({char:"/",
+  items: filterSlashItems, command: deleteRange+run, render: slashMenuRenderer})`),
+  `SlashMenu.vue` (Teleport-to-body, fixed via `clientRect`, keyboard-nav
+  exponiert via `defineExpose` — folgt editor-vue's eigener Component-Konvention
+  mit scoped CSS, **nicht** ui-vue-Primitives, um editor-vue lower-layer zu
+  halten), `render.ts` (`VueRenderer` aus `@tiptap/vue-3` + Suggestion-Render-
+  Contract `onStart/onUpdate/onKeyDown/onExit`; Arrow/Enter → exponierte
+  `next/prev/selectActive`, Escape → `deleteRange` → `onExit`).
+
+**Neue Dateien (renderer):**
+- `stores/editor.ts` — `useEditorStore` (`editor`/`set`/`clear`/`isEditable`).
+- `stores/command-palette.ts` — `useCommandPaletteStore` (`open`/`query`/
+  `activeIndex`/`items` computed = `filterCommands(getCommands().filter(when),
+  query)`; Aktionen `openPalette`/`closePalette`/`setQuery`/`next`/`prev`/
+  `execute`).
+- `commands/registry.ts` — `Command`-Typ (`id`/`title`/`keywords?`/`group`/
+  `when?`/`run`), `CommandContext` (`editor`/`notes`/`auth`/`closePalette`),
+  `registerCommand(s)`/`getCommands`/`clearCommands` (module-`Map`, overwrite-by-id
+  = HMR-safe).
+- `commands/menu.ts` — `filterCommands` + `cycleCommandIndex` (re-export von
+  editor-vue's `filterByKey`/`cycleIndex`).
+- `commands/app-commands.ts` — App-Aktionen (new-note/close-tab/sign-in/out/reload)
+  mit `when`-Praedikaten (sign-in nur logged-out, sign-out nur logged-in,
+  close-tab nur wenn activeTabId).
+- `commands/editor-commands.ts` — ein Palette-Command pro `EDITOR_ACTIONS`
+  (`editor:<id>`, `when: !!ctx.editor`).
+- `commands/index.ts` — Side-effect-Import (registration at app load via
+  `main.ts`).
+- `composables/use-command-palette.ts` — globaler `keydown`-Listener:
+  `Ctrl/Cmd+Shift+P` toggelt, `Escape` schließt.
+
+**Geänderte Dateien:**
+- `packages/editor-vue/src/index.ts` — exportiert `SlashCommands`/`SlashMenu`/
+  `EDITOR_ACTIONS`/`SLASH_ITEMS`/`filterSlashItems`/`filterByKey`/…
+- `packages/editor-vue/package.json` + root `package.json` `overrides` —
+  `@tiptap/suggestion@2.6.6` (pin wie Entscheidung #9, single-core).
+- `Editor.vue` — import `SlashCommands` (extensions-Array) + `useEditorStore`
+  (`watch(editor, e => editorStore.set(e ?? undefined), {immediate:true})` +
+  `editorStore.clear()` im `onBeforeUnmount`).
+- `App.vue` — `useCommandPalette()`-Aufruf im script-setup.
+- `main.ts` — `import "./commands"` (Registration-Side-effect).
+
+**Vertragstests (5 Specs, 36 neu):**
+- `command-registry.spec.ts` (node, 6) — register/get/clear/dedup/when/run.
+- `command-palette.spec.ts` (node, 9) — open/close, setQuery filtert +
+  resettet index, next/prev wrap, execute läuft handler + schließt, editor-
+  Commands versteckt wenn kein editor, `closePalette` in ctx. Bootstrap gemockt.
+- `editor-store.spec.ts` (node, 4) — set/clear/isEditable (stub-Editor).
+- `tool-definitions.spec.ts` (happy-dom, 10) — PARITY/EDITOR_ACTIONS Shape,
+  `bold`/`headings-2`/`checkList`/`table` `run` ruft erwartete `editor.chain()`
+  -Commands (Proxy-Spy), SLASH_ITEMS-Subset, filterSlashItems.
+- `slash-commands.spec.ts` (happy-dom, 7) — SlashMenu mount (Teleport-to-body,
+  Item-pro-Button, active-Row, exponierte next/prev/selectActive, Click→command,
+  Empty→nichts) + filterSlashItems. Vollständiges Suggestion-Plugin-Wiring
+  (realer Editor-View, Cursor-Rect) = **On-Site**.
+
+**Wichtige Erkenntnisse:**
+1. **Editor-Instanz war nicht exposed.** `Editor.vue`'s `useEditor`-`ShallowRef`
+   war lokal. `useEditorStore` ist der cross-component Kanal (Pinia-idiomatisch);
+   Palette-Store + editor-commands + slash-handler lesen `editorStore.editor`.
+2. **`@tiptap/suggestion` war nicht installiert.** Slash-Commands greenfield;
+   `@tiptap/suggestion@2.6.6` + root-`overrides`-Pin hinzugefügt (single-core,
+   Entscheidung #9).
+3. **Core-vs-vue-3 `Editor`-Typ-Quirk.** `this.editor` (in `Extension.create`)
+   ist statisch core's base `Editor`; Suggestion's `editor`-Option resolved auf
+   `@tiptap/vue-3`'s ExtendedEditor (hat `reactiveState`/`appContext`). Runtime
+   ist es dieselbe Instanz → `as unknown as Editor`-Cast an der Suggestion-
+   Boundary (2 Stellen in `slash-commands.ts`).
+4. **Vite-String-Alias ist Prefix-Match.** Deep-Imports wie
+   `@notesnook-vue/editor-vue/utils/filter` brechen (der bare String-Alias
+   `@notesnook-vue/editor-vue` prefix-matcht und gewinnt →
+   `…/src/index.ts/utils/filter`). Nur der bare `@notesnook-vue/editor-vue`
+   resolve (editor-html.spec nutzt ihn). `menu.ts` importiert daher bare
+   (lädt den Index inkl. `.vue` — in node-env via vue-plugin fine, kein DOM bei
+   Modul-Load). Die `@/*`-RegExp alias funktioniert (kein bare `@`-Konkurrent).
+5. **Upstream hat keine Command-Palette / keinen CommandManager / keine
+   Slash-Commands.** "palette" upstream = Color-Picker. Parity-Quelle ist
+   `tool-definitions.ts` (`ToolId`-Union + `ToolDefinition`); type-only import
+   reicht (erased, 0 Leak).
+
+**Verifiziert (headless):** 166 Contract-Tests grün (36 neu); typecheck (node+web)
+clean; `electron-vite build` clean (renderer 5,37 MB); **Bundle-leak-grep: 0
+react/theme-ui/zustand, kein `@notesnook/editor` runtime** (type-only erased).
+
+**On-Site-Gate (physische Anwesenheit, per Memory gebatcht):**
+1. Slash-Commands: `/` im Editor → Menü am Cursor, tippt filtert (`/head` →
+   Heading-Einträge), ArrowUp/Down navigiert, Enter fügt Block ein, Escape
+   schließt; Menü repositioniert bei Scroll/Cursor-Bewegung.
+2. `Ctrl/Cmd+Shift+P` toggelt `commandPalette.open` (kein Overlay dieses
+   Inkrement — via Pinia-Inspector in DevTools verifizierbar; das Overlay ist
+   das Folge-Inkrement).
+3. Editor-Autosave weiterhin ungestört (der `watch(editor)` darf
+   `onNoteChange`/`setContent` nicht beeinflussen).
+
+**Aufgeschoben (Folge-Inkremente, kein Vertragsrisiko):**
+- `CommandPalette.vue`-Overlay (rendert `paletteStore.items`, input→`setQuery`,
+  keys→`next/prev/execute`). Store + Registry + Hotkey hier sind sein
+  fertiges Backend.
+- Unported Editor-Aktionen (subscript/superscript/highlight/textColor/fontFamily/
+  fontSize/math/textDirection/indent/outdent/link-prompt) → registriert wenn
+  jene Extensions landen.
+- Notes-Suche (NotesList-Search-Input ist inert; "Search notes"-Palette-Action
+  + Store-Filter = später). Slash-Item-Icons (MDI-Paths) = Visual-Polish.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + **2.3 (ui-vue: 7 Tailwind/Token-Primitive — Box/Flex/Text/Button/Input/Icon/Surface; `tailwind-merge`; 41 neue Contract-Tests)** + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)**. **115 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap gelöst (`a0f7f74`: `predev`→Electron-ABI, `pretest:contract`→System-Node-ABI). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9 portiert; audio + web-clip bleiben Phase-6-gated); Theme via `@notesnook-vue/theme-vue` (vendored `themeToCSS`-Port + `ThemeDark`/`ThemeLight` + Glassmorphism-Extension + Tailwind-`@theme inline`-Bridge; nur Type-Only-`@notesnook/theme`-Import → 0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue` (Token-Utilities + `glassStyle()` + `tailwind-merge`-Class-Merge; kein `sx`-Prop). Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; refractor-Highlighting mit 297 lazy-Literal-Import-Thunks; table via vendored prosemirror-tables-Fork; **image via `useObserver`-Lazy-Blob (`editor.storage.getAttachmentData` Phase-6-gated) + `Resizer` + vendored `dataurl.ts`/`downloader.ts` (statt `@notesnook/common` → 0 React-Leck)**. **Runtime-Check bootet bis `bootState ready` (6 Seed-Notizen, verschlüsselte SQLite in userData); visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount bei Notiz-Klick, Checklist-Toggle, Edit-Persistenz, image-Render/Resize) + 2.3-Visual-Integration brauchen physische Anwesenheit des Users.** Bereit für Login (Phase-6-Prerequisite, entblockt audio/web-clip/image-Blob) oder On-Site-Runtime-Check-Gate._ **Login-Logik (M2.6) gelandet: Notesnook-Default-Server + Self-Hosted (5 per-Komponent Host-Felder) am Login-Screen, optionaler Local-Only-Pfad; `useAuthStore` + `server-config.ts` + `LoginScreen.vue` + App-Gate; 130 Contract-Tests grün, typecheck+build clean; On-Site-Verifikation der Live-Logins/MFA/Self-Hosted-Switch steht aus.**
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)**. **166 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive + 6 registry + 9 palette + 4 editor-store + 10 tool-definitions + 7 slash-commands)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`. **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay) brauchen physische Anwesenheit.** Palette-Overlay (`CommandPalette.vue`) = Folge-Inkrement (Store/Registry/Hotkey hier sind sein Backend)._

@@ -8,6 +8,7 @@ import LoginScreen from "@/components/LoginScreen.vue";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
 import { bootstrap } from "@/platform/bootstrap";
+import { useCommandPalette } from "@/composables/use-command-palette";
 
 const sidebarCollapsed = ref(false);
 const listCollapsed = ref(false);
@@ -16,6 +17,10 @@ const bootState = ref<"loading" | "ready" | "error">("loading");
 const bootError = ref<string>("");
 
 const auth = useAuthStore();
+
+// Command palette hotkey (Ctrl/Cmd+Shift+P). The overlay render is a deferred
+// follow-up; this only wires the global key + palette store toggle.
+useCommandPalette();
 
 onMounted(async () => {
   const notes = useNotesStore();
