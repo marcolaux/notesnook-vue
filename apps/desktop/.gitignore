@@ -4,3 +4,5 @@ dist-electron
 release
 out
 *.tsbuildinfo
+*.mjs
+!src/preload/*.ts

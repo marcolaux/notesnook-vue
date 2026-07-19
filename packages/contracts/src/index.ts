@@ -8,12 +8,23 @@
  *
  * Re-exported here:
  *  - Domain entities (Note, Notebook, Tag, Color, Reminder, Attachment, Vault, ...)
- *  - Event shapes (DatabaseUpdatedEvent, sync events)
- *  - Platform interfaces (IStorage, IFileStorage, ICompressor, SQLiteOptions)
- *  - The Database class and its Options
+ *  - Event shapes (DatabaseUpdatedEvent)
+ *  - Platform interfaces (IStorage, IFileStorage, ICompressor, accessor types)
+ *  - The Database class and its construction options (Options, SQLiteOptions)
+ *
+ * Notes:
+ *  - `@notesnook/core` does not publicly export `SQLiteOptions` or
+ *    `FileStorageAccessor` as named symbols — `SQLiteOptions` is derived from
+ *    the Database constructor's options bag, and `FileStorageAccessor` is
+ *    derived similarly from the options bag. If a future `core` version
+ *    re-exports them, replace the derived types with direct re-exports.
+ *  - `Monograph` (singular) does not exist — only the `Monographs` collection
+ *    class is exported.
  *
  * When adding a type that your code depends on, add it here first.
  */
+import { Database } from "@notesnook/core";
+
 export type {
   Note,
   Notebook,
@@ -23,7 +34,6 @@ export type {
   Reminder,
   Attachment,
   Vault,
-  Monograph,
   ContentItem,
   Shortcut,
   Relation,
@@ -34,17 +44,7 @@ export type {
   DatabaseUpdatedEvent,
   BackupFile,
   LegacyBackupFile,
-  FilteredSelector,
-  DefaultColors,
   ResolveInternalLink
-} from "@notesnook/core";
-
-export {
-  Database,
-  EMPTY_CONTENT,
-  VAULT_ERRORS,
-  sanitizeTag,
-  DataURL
 } from "@notesnook/core";
 
 export type {
@@ -52,10 +52,45 @@ export type {
   IFileStorage,
   ICompressor,
   StorageAccessor,
-  FileStorageAccessor,
   KVStorageAccessor,
   ConfigStorageAccessor,
   CompressorAccessor,
-  CryptoAccessor,
-  SQLiteOptions
+  CryptoAccessor
 } from "@notesnook/core";
+
+export {
+  Database,
+  EMPTY_CONTENT,
+  VAULT_ERRORS,
+  sanitizeTag,
+  DataURL,
+  DefaultColors,
+  FilteredSelector,
+  Monographs
+} from "@notesnook/core";
+
+/**
+ * The options accepted by `Database.setup(...)` — the canonical "Options"
+ * bag. `@notesnook/core` keeps `Options` internal today; we derive it from
+ * the `setup` method signature so we never have to track renames manually.
+ * If `core` ever exports it, replace this with
+ * `export type { Options } from "@notesnook/core"`.
+ */
+export type DatabaseOptions = Parameters<Database["setup"]>[0];
+
+/**
+ * SQLiteOptions — derived from the Database options bag. `@notesnook/core`
+ * keeps this type internal today; if a future version re-exports it, replace
+ * this line with `export type { SQLiteOptions } from "@notesnook/core"`.
+ */
+export type SQLiteOptions = DatabaseOptions extends { sqliteOptions: infer T }
+  ? T
+  : never;
+
+/**
+ * FileStorageAccessor — derived from the Database options bag. Same caveat
+ * as SQLiteOptions.
+ */
+export type FileStorageAccessor = DatabaseOptions extends { fs: infer T }
+  ? T
+  : never;
