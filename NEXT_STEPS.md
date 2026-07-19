@@ -2135,5 +2135,74 @@ zustand-Leck):
 
 ---
 
+## Phase 2.5b — Command-Palette Overlay (`CommandPalette.vue`) (2026-07-19)
+
+Das in Phase 2.5 aufgeschobene Visual-Follow-up: das `CommandPalette.vue`-
+Overlay. Sein Backend (Store + Registry + `Ctrl/Cmd+Shift+P`-Hotkey) war in
+Phase 2.5 gebaut; dieses Inkrement fügt die sichtbare Oberfläche hinzu. Off-site
+durchgeführt nach dem Phase-3.5-Commit (`66eea8b`); visuelle Gates bleiben
+batched.
+
+**Erledigt & deterministisch verifiziert** (typecheck node+web clean, build
+clean, 186 Contract-Tests grün — 177 + 9 neue overlay-Cases; 0 React/theme-ui/
+zustand-Leck im Renderer-Bundle; Main-Chunk +4 KB):
+
+- **`stores/command-palette.ts`** — um `setActiveIndex(i)` (geclamped) erweitert:
+  der Overlay braucht einen direkten Setter für Maus-Hover/Klick (Store owned
+  bisher nur `next`/`prev`); `execute()` liest ohnehin `items[activeIndex]`,
+  also Klick = `setActiveIndex(i)` + `execute()`. Doc-Kommentar aktualisiert
+  (Overlay ist nicht länger „deferred").
+- **`components/CommandPalette.vue`** — VS-Code-artige, zentrierte Palette,
+  Teleport-to-`<body>` (floatet über Shell UND Login-Screen). Rendert nur wenn
+  `palette.open`; Input an `setQuery` gebunden (`@input`); Liste aus
+  `palette.items` mit Group-Tag rechts; Arrow-Down/Up → `next`/`prev`, Enter →
+  `execute`, Escape → `closePalette` via `@keydown` am Root (bubbelt vom Input);
+  Hover → `setActiveIndex`, Klick → `setActiveIndex`+`execute`. **Autofocus**:
+  `watch(palette.open, {flush:"post"})` fokussiert das Input direkt nach dem
+  DOM-Update (kein verschachteltes `nextTick` → eine Test-Tick reicht). Active-
+  Row scrollt via `scrollIntoView({block:"nearest"})` (gleichfalls
+  `flush:"post"`). Scoped CSS konsumiert die `theme-vue`-Tokens
+  (`--color-surface-solid`/`--color-border`/`--color-heading`/`--color-text`/
+  `--color-text-muted`/`--color-placeholder`/`--color-hover`/`--backdrop-blur-base`).
+- **`App.vue`** — `<CommandPalette />` im Root gemountet (immer gemountet, also
+  auf Shell + Login verfügbar; Teleport macht die Baum-Position visuell egal).
+- **Vertragstest** `tests/contract/command-palette-overlay.spec.ts` (9,
+  happy-dom, `@vue/test-utils` mount): rendert nichts while closed; Input + 1
+  Row pro sichtbarem Item when open (erste aktiv); Autofocus; Tippen filtert
+  (subsequence); ArrowDown/Up mit Wrap; Enter läuft aktiven Command + schließt;
+  Escape schließt; Hover setzt aktiv + Klick läuft diesen; Empty-State bei
+  keinem Match. Bootstrap gemockt (wie `command-palette.spec`).
+
+**Wichtige Erkenntnisse:**
+
+1. **Store-Computed cacht `visibleCommands`** — `getCommands()` liest das
+   Modul-`Map` (nicht reaktiv), also propagiert eine Mid-Test-Registry-Mutation
+   NICHT in `items`. Der Store-Spec umgeht das, indem er VOR dem Store-Bau
+   registriert. Der Overlay-Spec registriert daher in `beforeEach` einmal und
+   nutzt die **erfassten Spy-Runs** der Fake-Commands statt mid-test neu zu
+   registrieren.
+2. **`flush:"post"` statt verschachteltem `nextTick` für Autofocus.** Ein
+   `watch` mit Default-`flush:"pre"` läuft VOR dem Re-Render → `input.value`
+   ist noch null → braucht ein inneres `nextTick` → der Test müsste 2 Ticks
+   awaiten. `flush:"post"` läuft NACH dem DOM-Update → `input.value` da →
+   `focus()` direkt → eine `await nextTick()` reicht.
+3. **`@input`-Binding war der erste Bug.** `onInput` war definiert aber nicht
+   ans `<input>` gebunden → Tippen änderte nie `query`. (Arrow/Enter/Escape
+   liefen, weil `@keydown` am Root hing.) Contract-Test fing es sofort.
+
+**Aufgeschoben (Polish, kein Vertragsrisiko):**
+- Kürzel-Hint rechts pro Command (z.B. `↵` Enter, `Esc`), Group-Header statt
+  Tags, MRU-Ranking (Most-Recently-Used) → Visual-Polish.
+- Maus-Klick außerhalb schließt (Backdrop-Click) → folgt mit der
+  Popover/Outside-Click-Infra (Phase 3/5). Aktuell: nur Escape/Hotkey/Auswahl
+  schließen.
+- Themable `error`/`success`-Akzent für aktive Row jenseits `--color-hover`.
+
+**On-Site-Gate (physische Anwesenheit, per Memory gebatcht):** `Ctrl/Cmd+Shift+P`
+öffnet das zentrierte Overlay, Tippen filtert live, Arrow/Enter/Esc navigieren,
+Hover/Klick wählen, Input ist fokussiert; Overlay floatet über Shell + Login.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)** + **Phase 3.5 (Vue Router klassische Route-Tabelle: `createAppRouter`+`createMemoryHistory`+Auth-Guard; `ShellLayout`/`NotesView`/`PlaceholderView`/`SettingsView`; `useShellStore`; Sidebar-`RouterLink` über `VIEWS`; `app:goto-*`-Palette-Commands; lazy Views → Code-Split)**. **177 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive + 6 registry + 9 palette + 4 editor-store + 10 tool-definitions + 7 slash-commands + 11 router)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`; Routing via `vue-router@4` (Memory-History, Auth-Guard, `VIEWS`-getrieben). **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay, + jetzt Sidebar-Nav-Active/View-Wechsel/login↔shell-Übergang/Go-to-Commands) brauchen physische Anwesenheit.** Palette-Overlay (`CommandPalette.vue`) = Folge-Inkrement (Store/Registry/Hotkey hier sind sein Backend)._
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)** + **Phase 3.5 (Vue Router klassische Route-Tabelle: `createAppRouter`+`createMemoryHistory`+Auth-Guard; `ShellLayout`/`NotesView`/`PlaceholderView`/`SettingsView`; `useShellStore`; Sidebar-`RouterLink` über `VIEWS`; `app:goto-*`-Palette-Commands; lazy Views → Code-Split)** + **Phase 2.5b (Command-Palette Overlay `CommandPalette.vue`: Teleport-to-body, Input→`setQuery`, Arrow/Enter/Esc, Hover/Klick→`setActiveIndex`+`execute`, Autofocus via `flush:"post"`, scoped Theme-Tokens; Store um `setActiveIndex` erweitert)**. **186 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive + 6 registry + 9 palette + 4 editor-store + 10 tool-definitions + 7 slash-commands + 11 router + 9 command-palette-overlay)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`; Routing via `vue-router@4` (Memory-History, Auth-Guard, `VIEWS`-getrieben); Command-Palette Overlay via `CommandPalette.vue` (Store/Registry/Hotkey aus Phase 2.5 = Backend). **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay-Render, + Sidebar-Nav-Active/View-Wechsel/login↔shell-Übergang/Go-to-Commands) brauchen physische Anwesenheit.**_

@@ -5,6 +5,7 @@ import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
 import { bootstrap } from "@/platform/bootstrap";
 import { useCommandPalette } from "@/composables/use-command-palette";
+import CommandPalette from "@/components/CommandPalette.vue";
 
 const router = useRouter();
 
@@ -13,8 +14,8 @@ const bootError = ref<string>("");
 
 const auth = useAuthStore();
 
-// Command palette hotkey (Ctrl/Cmd+Shift+P). The overlay render is a deferred
-// follow-up; this only wires the global key + palette store toggle.
+// Command palette hotkey (Ctrl/Cmd+Shift+P) toggles the palette store; the
+// <CommandPalette> overlay below renders the store's items.
 useCommandPalette();
 
 onMounted(async () => {
@@ -88,6 +89,10 @@ watch(
           </template>
         </div>
       </div>
+
+      <!-- Command palette overlay (Ctrl/Cmd+Shift+P). Teleports to <body>;
+           stays mounted so it is available on the shell and login screen. -->
+      <CommandPalette />
     </div>
   </div>
 </template>
