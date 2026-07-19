@@ -107,6 +107,42 @@ function requireSafeStorage(): SafeStorageServer {
 }
 
 // ---------------------------------------------------------------------------
+// File storage (attachments) — Main node-fs chunk store backing
+// `@notesnook/streamable-fs`. The renderer's `NodeFSFileStore` forwards each
+// chunk-store method here. `FSFile` mirrors streamable-fs's `File` metadata
+// (plain, serialisable object) so contracts doesn't depend on streamable-fs.
+// ---------------------------------------------------------------------------
+
+export interface FSFile {
+  filename: string;
+  size: number;
+  type: string;
+  additionalData?: Record<string, unknown> | undefined;
+}
+
+export interface FileStorageServer {
+  clear(): Promise<void>;
+  setMetadata(filename: string, metadata: FSFile): Promise<void>;
+  getMetadata(filename: string): Promise<FSFile | undefined>;
+  deleteMetadata(filename: string): Promise<void>;
+  writeChunk(chunkName: string, data: Uint8Array): Promise<void>;
+  deleteChunk(chunkName: string): Promise<void>;
+  readChunk(chunkName: string): Promise<Uint8Array | undefined>;
+  chunkSize(chunkName: string): Promise<number>;
+  listChunks(chunkPrefix: string): Promise<string[]>;
+  list(): Promise<string[]>;
+}
+
+let fileStorageServer: FileStorageServer | undefined;
+export function registerFileStorageServer(server: FileStorageServer): void {
+  fileStorageServer = server;
+}
+function requireFileStorage(): FileStorageServer {
+  if (!fileStorageServer) throw new Error("File storage server not registered (main boot incomplete)");
+  return fileStorageServer;
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -190,6 +226,36 @@ export const appRouter = t.router({
     remove: t.procedure
       .input(z.object({ key: z.string() }))
       .mutation(({ input }) => requireSafeStorage().remove(input.key))
+  }),
+
+  // File storage — node-fs chunk store for attachments (streamable-fs backing)
+  fs: t.router({
+    clear: t.procedure.mutation(() => requireFileStorage().clear()),
+    setMetadata: t.procedure
+      .input(z.object({ filename: z.string(), metadata: z.object({ filename: z.string(), size: z.number(), type: z.string(), additionalData: z.record(z.string(), z.unknown()).optional() }) }))
+      .mutation(({ input }) => requireFileStorage().setMetadata(input.filename, input.metadata)),
+    getMetadata: t.procedure
+      .input(z.object({ filename: z.string() }))
+      .query(({ input }) => requireFileStorage().getMetadata(input.filename)),
+    deleteMetadata: t.procedure
+      .input(z.object({ filename: z.string() }))
+      .mutation(({ input }) => requireFileStorage().deleteMetadata(input.filename)),
+    writeChunk: t.procedure
+      .input(z.object({ chunkName: z.string(), data: z.custom<Uint8Array>((v) => v instanceof Uint8Array) }))
+      .mutation(({ input }) => requireFileStorage().writeChunk(input.chunkName, input.data)),
+    deleteChunk: t.procedure
+      .input(z.object({ chunkName: z.string() }))
+      .mutation(({ input }) => requireFileStorage().deleteChunk(input.chunkName)),
+    readChunk: t.procedure
+      .input(z.object({ chunkName: z.string() }))
+      .query(({ input }) => requireFileStorage().readChunk(input.chunkName)),
+    chunkSize: t.procedure
+      .input(z.object({ chunkName: z.string() }))
+      .query(({ input }) => requireFileStorage().chunkSize(input.chunkName)),
+    listChunks: t.procedure
+      .input(z.object({ chunkPrefix: z.string() }))
+      .query(({ input }) => requireFileStorage().listChunks(input.chunkPrefix)),
+    list: t.procedure.query(() => requireFileStorage().list())
   }),
 
   // Updater — matches upstream apps/desktop/src/api/updater.ts

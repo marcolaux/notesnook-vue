@@ -28,7 +28,7 @@ import type {
 import { createDialect } from "./sqlite-dialect";
 import { Compressor } from "./compressor";
 import { NNStorage } from "./storage";
-import { StubFileStorage } from "./stub-fs";
+import { createFileStorage } from "./fs";
 import { getDatabaseKey, databaseKeyToPassword, SafeStorageKeyStore } from "./key-store";
 
 export interface DatabasePlatform {
@@ -59,10 +59,10 @@ export async function initDatabase(platform: DatabasePlatform): Promise<Database
 
 /**
  * Production platform: bridge dialect + real compressor + real `NNStorage`
- * (IndexedDB KV + sodium crypto + safeStorage key store). Derives (or
+ * (IndexedDB KV + sodium crypto + safeStorage key store) + real `FileStorage`
+ * (streamable-fs over Main node-fs, sodium streaming encryption). Derives (or
  * retrieves) the `databaseKey` and sets `sqliteOptions.password` so the on-disk
- * DB is encrypted. M8 replaces the stub `IFileStorage` with the real
- * `FileStorage`.
+ * DB is encrypted.
  */
 export async function createDesktopPlatform(): Promise<DatabasePlatform> {
   const key = await getDatabaseKey();
@@ -80,7 +80,7 @@ export async function createDesktopPlatform(): Promise<DatabasePlatform> {
   return {
     sqliteOptions,
     storage: new NNStorage("Notesnook", () => keyStore),
-    fs: new StubFileStorage(),
+    fs: createFileStorage(),
     compressor: new Compressor()
   };
 }

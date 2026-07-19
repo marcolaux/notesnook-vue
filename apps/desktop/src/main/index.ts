@@ -5,6 +5,7 @@ import { attachTRPC } from "./ipc";
 import { registerSQLite } from "./sqlite";
 import { registerCompressor } from "./compress";
 import { registerSafeStorage } from "./safe-storage";
+import { registerFileStorage } from "./file-storage";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -57,6 +58,7 @@ void app.whenReady().then(() => {
   registerSQLite();
   registerCompressor();
   registerSafeStorage();
+  registerFileStorage();
 
   createMainWindow();
 
