@@ -1,6 +1,9 @@
 import { app, BrowserWindow, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { attachTRPC } from "./ipc";
+import { registerSQLite } from "./sqlite";
+import { registerCompressor } from "./compress";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -29,6 +32,10 @@ function createMainWindow(): BrowserWindow {
 
   window.on("ready-to-show", () => window.show());
 
+  // Wire the tRPC IPC bridge for this window. Must happen after the window
+  // exists so `createIPCHandler` can attach its `ipcMain.handle` listener.
+  attachTRPC(window);
+
   window.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
@@ -44,6 +51,11 @@ function createMainWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(() => {
+  // Register main-process capability impls before the window/bridge is
+  // created so procedures are ready when the renderer first calls them.
+  registerSQLite();
+  registerCompressor();
+
   createMainWindow();
 
   app.on("activate", () => {

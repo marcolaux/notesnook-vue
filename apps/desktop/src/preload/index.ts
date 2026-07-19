@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { exposeElectronTRPC } from "electron-trpc/main";
 
 /**
  * Preload bridge — exposes a tiny, typed surface to the renderer via
@@ -7,6 +8,10 @@ import { contextBridge, ipcRenderer } from "electron";
  *
  * Security: contextIsolation:true, nodeIntegration:false. The renderer only
  * sees what is exposed here — no require, no ipcRenderer.invoke.
+ *
+ * `exposeElectronTRPC()` exposes `window.trpc`, which `ipcLink()` in the
+ * renderer uses to reach the main-process tRPC router. It must run after the
+ * preload's `loaded` event so the Electron globals are available.
  */
 
 const appEvents = {
@@ -38,3 +43,10 @@ const appEvents = {
 
 void contextBridge.exposeInMainWorld("appEvents", appEvents);
 void contextBridge.exposeInMainWorld("os", process.platform);
+
+// Expose the tRPC IPC bridge as `window.trpc`. `electron-trpc` registers its
+// own contextBridge call internally; we just trigger it once the preload is
+// loaded. `process` is available because `sandbox: false` in webPreferences.
+process.once("loaded", () => {
+  exposeElectronTRPC();
+});

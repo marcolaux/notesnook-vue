@@ -66,8 +66,34 @@ export {
   DataURL,
   DefaultColors,
   FilteredSelector,
-  Monographs
+  Monographs,
+  hosts
 } from "@notesnook/core";
+
+export type {
+  Cipher,
+  SerializedKey,
+  DataFormat
+} from "@notesnook/crypto";
+
+export type {
+  RequestOptions,
+  Output,
+  FileEncryptionMetadata,
+  FileEncryptionMetadataWithHash,
+  FileEncryptionMetadataWithOutputType
+} from "@notesnook/core";
+
+/**
+ * `Cancellable<T>` — `@notesnook/core` defines this but does not publicly
+ * re-export it. Mirrored here from `core/dist/index.d.ts` so `IFileStorage`
+ * consumers don't need a private import. If core ever exports it, replace
+ * this with `export type { Cancellable } from "@notesnook/core"`.
+ */
+export type Cancellable<T> = {
+  execute(): Promise<T>;
+  cancel(reason?: string): Promise<void>;
+};
 
 /**
  * The options accepted by `Database.setup(...)` — the canonical "Options"

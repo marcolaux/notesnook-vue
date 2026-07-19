@@ -1,0 +1,268 @@
+/*
+This file is part of the Notesnook project (https://notesnook.com/)
+
+Copyright (C) 2023 Streetwriters (Private) Limited
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/**
+ * Main-process SQLite engine — a thin wrapper around
+ * `better-sqlite3-multiple-ciphers` exposed to the renderer over the tRPC
+ * bridge (`sqlite.open/run/close/delete`). Ported from upstream
+ * `apps/desktop/src/api/sqlite-kysely.ts`.
+ *
+ * The renderer holds the Kysely `Database` and compiles queries to SQL+params;
+ * Main just prepares+runs them. PRAGMA `key` (decryption) and the other
+ * `SQLiteOptions` PRAGMAs are applied by `@notesnook/core` over this channel
+ * before any user query. FTS5 loadable extensions (`sqlite-better-trigram`,
+ * `sqlite3-fts5-html`) are loaded after the database is first decrypted.
+ */
+import { app } from "electron";
+import path from "node:path";
+import { statSync } from "node:fs";
+import { createRequire } from "node:module";
+import Database from "better-sqlite3-multiple-ciphers";
+import {
+  registerSQLiteServer
+} from "../contracts/router";
+import type {
+  SQLiteParameter,
+  SQLiteQueryResult,
+  SQLiteServer
+} from "../contracts/router";
+
+type SqliteDB = Database.Database;
+type SqliteStatement = Database.Statement<unknown[], unknown>;
+
+const require_ = createRequire(import.meta.url);
+
+/**
+ * Set to `true` in M4 once the FTS5 extension packages are installed. Until
+ * then `loadExtensions` is skipped so the engine works for non-FTS queries
+ * (and `db.init()` migrations that need `trigram` will fail — which is exactly
+ * what M4 fixes).
+ */
+const LOAD_FTS5_EXTENSIONS = false;
+
+class SQLite {
+  private sqlite?: SqliteDB;
+  private initialized = false;
+  private readonly preparedStatements = new Map<string, SqliteStatement>();
+  private readonly retryCounter: Record<string, number> = {};
+  private extensionsLoaded = false;
+  private filePath?: string;
+
+  async open(filename: string): Promise<string> {
+    if (this.sqlite) {
+      throw new Error("Database is already initialized");
+    }
+
+    this.filePath =
+      filename === ":memory:"
+        ? filename
+        : path.join(app.getPath("userData"), filename) + ".sql";
+    if (!isPathAllowed(this.filePath))
+      throw new Error("Database path is not allowed: " + this.filePath);
+    this.sqlite = new Database(this.filePath).unsafeMode(true);
+    return filename; // id == the filename requested (matches upstream: handle = filePath)
+  }
+
+  /**
+   * Prepare a statement, caching it. Retries up to 5 times on flaky failures.
+   */
+  private async prepare(sql: string): Promise<SqliteStatement | undefined> {
+    if (!this.sqlite) throw new Error("Database is not initialized.");
+    try {
+      const cached = this.preparedStatements.get(sql);
+      if (cached !== undefined) return cached;
+
+      const prepared = this.sqlite.prepare(sql) as SqliteStatement;
+      if (!prepared) return;
+
+      this.preparedStatements.set(sql, prepared);
+      this.retryCounter[sql] = 0;
+      return prepared;
+    } catch (ex) {
+      console.error(ex);
+      if ((this.retryCounter[sql] ?? 0) < 5) {
+        this.retryCounter[sql] = (this.retryCounter[sql] ?? 0) + 1;
+        console.warn("Failed to prepare statement. Retrying:", sql);
+        return this.prepare(sql);
+      }
+      this.retryCounter[sql] = 0;
+      if (ex instanceof Error) ex.message += ` (query: ${sql})`;
+      throw ex;
+    }
+  }
+
+  async run<R>(
+    id: string,
+    sql: string,
+    parameters: SQLiteParameter[] = []
+  ): Promise<SQLiteQueryResult<R>> {
+    if (!this.sqlite) throw new Error("No database is opened.");
+    const prepared = await this.prepare(sql);
+    if (!prepared) return { rows: [] as R[] };
+    try {
+      if (prepared.reader) {
+        return { rows: prepared.all(parameters) as R[] };
+      } else {
+        const { changes, lastInsertRowid } = prepared.run(parameters);
+        const numAffectedRows =
+          changes !== undefined && changes !== null && !Number.isNaN(changes)
+            ? BigInt(changes)
+            : undefined;
+        return {
+          numAffectedRows,
+          insertId:
+            lastInsertRowid !== undefined && lastInsertRowid !== null
+              ? typeof lastInsertRowid === "bigint"
+                ? lastInsertRowid
+                : BigInt(lastInsertRowid as number)
+              : undefined,
+          rows: [] as R[]
+        };
+      }
+    } catch (e) {
+      if (e instanceof Error) throw rewriteError(e, `${e.message} (query: ${sql})`);
+      throw e;
+    } finally {
+      // SQLite3MC v2 needs the DB decrypted before FTS5 extensions can load.
+      if (LOAD_FTS5_EXTENSIONS && !this.extensionsLoaded && (await this.isDatabaseReady())) {
+        this.loadExtensions();
+      }
+    }
+  }
+
+  async close(): Promise<void> {
+    if (!this.sqlite) return;
+    this.preparedStatements.clear();
+    this.sqlite.close();
+    this.sqlite = undefined;
+  }
+
+  async delete(): Promise<void> {
+    if (!this.filePath) return;
+    await this.close();
+    const { rm } = await import("node:fs/promises");
+    await rm(this.filePath, { force: true, maxRetries: 5, retryDelay: 500 });
+  }
+
+  private loadExtensions(): void {
+    this.sqlite?.loadExtension(getExtensionPath("sqlite-better-trigram", "better-trigram"));
+    this.sqlite?.loadExtension(getExtensionPath("sqlite3-fts5-html", "fts5-html"));
+    this.extensionsLoaded = true;
+  }
+
+  /**
+   * Executes `SELECT 1` to confirm the database is ready. On an encrypted DB
+   * this fails until `PRAGMA key` has decrypted it.
+   */
+  private async isDatabaseReady(): Promise<boolean> {
+    if (!this.sqlite) return false;
+    try {
+      (this.sqlite.prepare("SELECT 1;") as SqliteStatement).run();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function getExtensionPath(extensionName: string, entryPoint: string): string {
+  const os = process.platform === "win32" ? "windows" : process.platform;
+  const packageName = `${extensionName}-${os}-${process.arch}`;
+  const extensionSuffix =
+    process.platform === "win32" ? "dll" : process.platform === "darwin" ? "dylib" : "so";
+  let loadablePath = path.join(
+    require_.resolve(extensionName),
+    "..",
+    "..",
+    packageName,
+    `${entryPoint}.${extensionSuffix}`
+  );
+
+  if (loadablePath.includes(".asar"))
+    loadablePath = loadablePath
+      .replace("electron.asar", "app.asar")
+      .replace(".asar", ".asar.unpacked");
+
+  if (!statSync(loadablePath, { throwIfNoEntry: false }))
+    throw new Error(`${extensionName} not found at ${loadablePath}.`);
+  return loadablePath;
+}
+
+function rewriteError(e: Error, message: string): Error {
+  const error = new Error(message);
+  error.stack = e.stack;
+  error.name = e.name;
+  error.cause = e.cause;
+  return error;
+}
+
+function isPathAllowed(databasePath: string): boolean {
+  if (databasePath === ":memory:") return true;
+  const base = app.getPath("userData");
+  const resolved = path.resolve(databasePath);
+  return resolved.startsWith(base + path.sep);
+}
+
+/**
+ * Registry of open databases keyed by the id returned from `open` (the
+ * requested filename). Mirrors upstream `databases` map.
+ */
+const databases = new Map<string, SQLite>();
+
+export const sqliteServer: SQLiteServer = {
+  async open(filePath) {
+    const existing = databases.get(filePath);
+    if (existing) return filePath;
+    const sqlite = new SQLite();
+    await sqlite.open(filePath);
+    databases.set(filePath, sqlite);
+    return filePath;
+  },
+  async run(id, sql, parameters) {
+    const sqlite = databases.get(id);
+    if (!sqlite) throw new Error("Database not found for id: " + id);
+    return sqlite.run(id, sql, parameters);
+  },
+  async close(id) {
+    const sqlite = databases.get(id);
+    if (!sqlite) throw new Error("Database not found for id: " + id);
+    await sqlite.close();
+    databases.delete(id);
+  },
+  async delete(id) {
+    const sqlite = databases.get(id);
+    if (!sqlite) throw new Error("Database not found for id: " + id);
+    await sqlite.delete();
+    databases.delete(id);
+  }
+};
+
+export function registerSQLite(): void {
+  registerSQLiteServer(sqliteServer);
+}
+
+app.on("before-quit", async () => {
+  for (const db of databases.values()) {
+    try {
+      await db.close();
+    } catch (e) {
+      console.error("Error closing database:", e);
+    }
+  }
+});

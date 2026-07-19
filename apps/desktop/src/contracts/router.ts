@@ -1,21 +1,108 @@
 /**
  * Contract for the Electron main <-> renderer tRPC router.
  *
- * We mirror the upstream `apps/desktop` AppRouter shape procedure-by-procedure
- * so the renderer can later swap in `electron-trpc` without changing call
- * sites. For now this is a placeholder — add procedures here as features land
- * (window.open, sqlite.run, updater.check, etc.).
+ * This file is the single source of truth for the bridge procedure shapes. It
+ * is imported as a *value* by the main process (which builds and serves it) and
+ * as a *type* by the renderer (`import type { AppRouter }`). Therefore it MUST
+ * stay free of Node-only imports (better-sqlite3, electron, node:fs, …) so the
+ * renderer's web typecheck never has to resolve them.
  *
- * The type-only import of the upstream AppRouter is optional and only used
- * when @notesnook/desktop becomes available as a published package. Until then
- * this file is the single source of truth for the router contract.
+ * Main-process capabilities that need Node-only deps are implemented in
+ * `src/main/*` and injected here via registration functions (`registerSQLiteServer`,
+ * `registerCompressorServer`, …). Each capability declares a structural server
+ * interface below; the procedures delegate to the registered impl. The renderer
+ * sees fully typed procedures without any Node module in its type graph.
+ *
+ * Procedures mirror the upstream `apps/desktop` AppRouter shape so call sites
+ * stay compatible.
  */
 import { initTRPC } from "@trpc/server";
 import { z } from "zod";
 
 const t = initTRPC.create();
 
+// ---------------------------------------------------------------------------
+// SQLite — matches upstream apps/desktop/src/api/sqlite-kysely.ts
+// ---------------------------------------------------------------------------
+
+/**
+ * Values bindable as SQL parameters. Mirrors better-sqlite3's accepted types.
+ * `bigint` is included because Kysely returns `numAffectedRows`/`insertId` as
+ * bigint; Electron IPC uses structured clone, which serialises bigint natively.
+ */
+export type SQLiteParameter = number | string | Uint8Array | number[] | bigint | null;
+
+/**
+ * Structural subset of `@streetwriters/kysely`'s `QueryResult` that crosses the
+ * bridge. Defined here (not imported from kysely) to keep the renderer's type
+ * graph free of the kysely dependency.
+ */
+export interface SQLiteQueryResult<R = unknown> {
+  rows: R[];
+  numAffectedRows?: bigint;
+  insertId?: bigint;
+}
+
+export interface SQLiteServer {
+  /** Open (or reuse) a database file. `":memory:"` is allowed. Returns an id. */
+  open(filePath: string): Promise<string>;
+  /** Execute a compiled SQL statement with the given parameters. */
+  run<R = unknown>(id: string, sql: string, parameters?: SQLiteParameter[]): Promise<SQLiteQueryResult<R>>;
+  close(id: string): Promise<void>;
+  /** Close and remove the underlying database file. */
+  delete(id: string): Promise<void>;
+}
+
+let sqliteServer: SQLiteServer | undefined;
+
+/** Called by the main process at boot to inject the real SQLite implementation. */
+export function registerSQLiteServer(server: SQLiteServer): void {
+  sqliteServer = server;
+}
+
+function requireSQLite(): SQLiteServer {
+  if (!sqliteServer) throw new Error("SQLite server not registered (main boot incomplete)");
+  return sqliteServer;
+}
+
+// ---------------------------------------------------------------------------
+// Compressor — matches upstream apps/web/src/utils/compressor.ts (desktop path)
+// ---------------------------------------------------------------------------
+
+export interface CompressorServer {
+  gzip(data: string, level?: number): Promise<string>;
+  gunzip(data: string): Promise<string>;
+}
+
+let compressorServer: CompressorServer | undefined;
+export function registerCompressorServer(server: CompressorServer): void {
+  compressorServer = server;
+}
+function requireCompressor(): CompressorServer {
+  if (!compressorServer) throw new Error("Compressor server not registered (main boot incomplete)");
+  return compressorServer;
+}
+
+// ---------------------------------------------------------------------------
+// Router
+// ---------------------------------------------------------------------------
+
 export const appRouter = t.router({
+  // Connectivity smoke check — renderer calls this to confirm the bridge is
+  // wired before attempting any real procedure.
+  ping: t.procedure.query(() => ({ ok: true as const, ts: Date.now() })),
+
+  // Renderer → main stdout log. A minimal dev diagnostic so bootstrap can
+  // report Database init progress/failure to the main process console (the
+  // renderer's own console is only visible in DevTools).
+  log: t.procedure
+    .input(z.object({ level: z.enum(["info", "warn", "error"]), message: z.string() }))
+    .mutation(({ input }) => {
+      const fn = input.level === "error" ? console.error : input.level === "warn" ? console.warn : console.log;
+      fn(`[renderer] ${input.message}`);
+      return { ok: true as const };
+    }),
+
   // Window management — matches upstream apps/desktop/src/api/window.ts
   window: t.router({
     open: t.procedure
@@ -36,9 +123,36 @@ export const appRouter = t.router({
 
   // SQLite — matches upstream apps/desktop/src/api/sqlite-kysely.ts
   sqlite: t.router({
-    open: t.procedure.input(z.object({ path: z.string(), password: z.string() })).mutation(() => ({ ok: true as const })),
-    run: t.procedure.input(z.object({ sql: z.string(), params: z.array(z.unknown()).optional() })).mutation(() => ({ rows: [] as unknown[] })),
-    close: t.procedure.mutation(() => ({ ok: true as const }))
+    open: t.procedure
+      .input(z.object({ filePath: z.string() }))
+      .mutation(({ input }) => requireSQLite().open(input.filePath)),
+    run: t.procedure
+      .input(
+        z.object({
+          id: z.string(),
+          sql: z.string(),
+          parameters: z.array(z.custom<SQLiteParameter>()).optional()
+        })
+      )
+      .mutation(({ input }) =>
+        requireSQLite().run(input.id, input.sql, input.parameters)
+      ),
+    close: t.procedure
+      .input(z.object({ id: z.string() }))
+      .mutation(({ input }) => requireSQLite().close(input.id)),
+    delete: t.procedure
+      .input(z.object({ id: z.string() }))
+      .mutation(({ input }) => requireSQLite().delete(input.id))
+  }),
+
+  // Compressor — node zlib in main
+  compress: t.router({
+    gzip: t.procedure
+      .input(z.object({ data: z.string(), level: z.number().optional() }))
+      .mutation(({ input }) => requireCompressor().gzip(input.data, input.level)),
+    gunzip: t.procedure
+      .input(z.object({ data: z.string() }))
+      .mutation(({ input }) => requireCompressor().gunzip(input.data))
   }),
 
   // Updater — matches upstream apps/desktop/src/api/updater.ts

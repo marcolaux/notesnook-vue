@@ -14,4 +14,13 @@ interface Window {
     onExternalDrop(listener: (paths: string[]) => void): () => void;
   };
   os: string;
+  /**
+   * Exposed by `exposeElectronTRPC()` in the preload. `ipcLink()` reads this
+   * global to route tRPC calls over Electron IPC. Structural type mirrors
+   * `RendererGlobalElectronTRPC` from `electron-trpc` (not publicly exported).
+   */
+  electronTRPC: {
+    sendMessage: (args: unknown) => void;
+    onMessage: (callback: (args: unknown) => void) => void;
+  };
 }
