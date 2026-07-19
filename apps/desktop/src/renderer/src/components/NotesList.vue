@@ -1,9 +1,19 @@
 <script setup lang="ts">
+import { ref, watch } from "vue";
 import { useNotesStore } from "@/stores/notes";
 import { useShellStore } from "@/stores/shell";
+import type { SortKey } from "@/utils/notes-list";
 
 const notes = useNotesStore();
 const shell = useShellStore();
+
+const searchInput = ref<HTMLInputElement | null>(null);
+
+const sortKeys: { value: SortKey; label: string }[] = [
+  { value: "dateEdited", label: "Modified" },
+  { value: "dateCreated", label: "Created" },
+  { value: "title", label: "Title" }
+];
 
 function formatDate(ts: number): string {
   if (!ts) return "";
@@ -19,6 +29,15 @@ function formatDate(ts: number): string {
     year: sameYear ? undefined : "numeric"
   });
 }
+
+// "Search notes" palette command bumps `focusSearchSignal`; focus the input.
+// DOM focus is a no-op in headless tests, so this is gated for on-site review.
+watch(
+  () => notes.focusSearchSignal,
+  () => {
+    if (notes.focusSearchSignal > 0) searchInput.value?.focus();
+  }
+);
 </script>
 
 <template>
@@ -36,10 +55,33 @@ function formatDate(ts: number): string {
         </svg>
       </button>
       <input
+        ref="searchInput"
         type="text"
+        :value="notes.query"
         placeholder="Search…"
-        class="min-w-0 flex-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80 placeholder:text-white/30 focus:border-white/20 focus:outline-none"
+        class="titlebar-no-drag min-w-0 flex-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80 placeholder:text-white/30 focus:border-white/20 focus:outline-none"
+        :title="notes.regexSearch ? 'Regex search' : 'Search title / headline / tags'"
+        @input="notes.setQuery(($event.target as HTMLInputElement).value)"
       />
+      <button
+        class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-xs"
+        :class="notes.regexSearch ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10'"
+        :title="notes.regexSearch ? 'Regex search on' : 'Regex search off'"
+        @click="notes.toggleRegex()"
+      >
+        .*
+      </button>
+      <button
+        v-if="notes.query"
+        class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-white/70 hover:bg-white/10"
+        title="Clear search"
+        @click="notes.clearSearch()"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
       <button
         class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-white/70 hover:bg-white/10"
         title="New Note"
@@ -51,9 +93,32 @@ function formatDate(ts: number): string {
         </svg>
       </button>
     </div>
+    <div class="flex h-7 shrink-0 items-center gap-2 border-b border-white/10 px-3 text-[10px] text-white/50">
+      <span class="shrink-0">{{ notes.visibleItems.length }}{{ notes.query ? ` / ${notes.count}` : "" }}</span>
+      <span class="ml-auto flex items-center gap-1">
+        <select
+          class="titlebar-no-drag rounded-sm border border-white/10 bg-white/5 px-1 py-0.5 text-white/70 focus:outline-none"
+          :value="notes.sortKey"
+          title="Sort by"
+          @change="notes.setSortKey(($event.target as HTMLSelectElement).value as SortKey)"
+        >
+          <option v-for="k in sortKeys" :key="k.value" :value="k.value">{{ k.label }}</option>
+        </select>
+        <button
+          class="titlebar-no-drag grid h-5 w-5 place-items-center rounded-sm text-white/70 hover:bg-white/10"
+          :title="notes.sortDir === 'asc' ? 'Ascending' : 'Descending'"
+          @click="notes.toggleSortDir()"
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path v-if="notes.sortDir === 'asc'" d="M12 19V5M5 12l7-7 7 7" />
+            <path v-else d="M12 5v14M5 12l7 7 7-7" />
+          </svg>
+        </button>
+      </span>
+    </div>
     <div class="min-h-0 flex-1 overflow-y-auto p-1">
       <button
-        v-for="note in notes.items"
+        v-for="note in notes.visibleItems"
         :key="note.id"
         class="block w-full rounded-md px-2 py-1.5 text-left hover:bg-white/10"
         :class="notes.activeNote?.id === note.id ? 'bg-white/15' : ''"
@@ -74,7 +139,10 @@ function formatDate(ts: number): string {
           >#{{ tag }}</span>
         </div>
       </button>
-      <div v-if="notes.items.length === 0" class="px-2 py-4 text-center text-[10px] text-white/30">
+      <div v-if="notes.visibleItems.length === 0 && notes.query" class="px-2 py-4 text-center text-[10px] text-white/30">
+        No notes match “{{ notes.query }}”
+      </div>
+      <div v-else-if="notes.items.length === 0" class="px-2 py-4 text-center text-[10px] text-white/30">
         No notes yet
       </div>
     </div>

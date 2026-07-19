@@ -2,6 +2,14 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { Note } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
+import {
+  filterNotes,
+  sortNotes,
+  DEFAULT_SORT_KEY,
+  DEFAULT_SORT_DIR,
+  type SortKey,
+  type SortDir
+} from "@/utils/notes-list";
 
 export interface NoteListItem {
   id: string;
@@ -55,7 +63,23 @@ export const useNotesStore = defineStore("notes", () => {
   const saveState = ref<SaveState>("idle");
   const lastSavedAt = ref<number | null>(null);
 
+  // Notes-list view state (Phase 3.3): search query + regex flag + sort. The
+  // `visibleItems` computed is what the list renders; `items` stays the raw
+  // collection so filtering/sorting never throws away data.
+  const query = ref("");
+  const regexSearch = ref(false);
+  const sortKey = ref<SortKey>(DEFAULT_SORT_KEY);
+  const sortDir = ref<SortDir>(DEFAULT_SORT_DIR);
+  /** Incremented by the "Search notes" palette command; the list watches it to
+   * focus the search input (DOM focus is an on-site visual gate). */
+  const focusSearchSignal = ref(0);
+
   const count = computed(() => items.value.length);
+
+  /** The list the `NotesList` renders: filtered by `query`, then sorted. */
+  const visibleItems = computed<NoteListItem[]>(() =>
+    sortNotes(filterNotes(items.value, query.value, { regex: regexSearch.value }), sortKey.value, sortDir.value)
+  );
 
   const activeTab = computed(() => openTabs.value.find((t) => t.id === activeTabId.value) ?? null);
   const activeNote = computed(() =>
@@ -85,6 +109,38 @@ export const useNotesStore = defineStore("notes", () => {
   function selectNote(id: string): void {
     const item = items.value.find((n) => n.id === id);
     if (item) openTab(item);
+  }
+
+  /** Update the search query (plain or regex per `regexSearch`). */
+  function setQuery(q: string): void {
+    query.value = q;
+  }
+
+  /** Toggle regex mode for the search query. */
+  function toggleRegex(): void {
+    regexSearch.value = !regexSearch.value;
+  }
+
+  function setSortKey(key: SortKey): void {
+    sortKey.value = key;
+  }
+
+  function setSortDir(dir: SortDir): void {
+    sortDir.value = dir;
+  }
+
+  /** Flip asc↔desc for the current sort key. */
+  function toggleSortDir(): void {
+    sortDir.value = sortDir.value === "asc" ? "desc" : "asc";
+  }
+
+  function clearSearch(): void {
+    query.value = "";
+  }
+
+  /** Palette "Search notes" command → bump the focus signal. */
+  function focusSearch(): void {
+    focusSearchSignal.value += 1;
   }
 
   /** Load all notes from the database into the list. */
@@ -177,6 +233,7 @@ export const useNotesStore = defineStore("notes", () => {
 
   return {
     items,
+    visibleItems,
     openTabs,
     activeTabId,
     activeTab,
@@ -186,12 +243,24 @@ export const useNotesStore = defineStore("notes", () => {
     contentState,
     saveState,
     lastSavedAt,
+    query,
+    regexSearch,
+    sortKey,
+    sortDir,
+    focusSearchSignal,
     openTab,
     closeTab,
     selectNote,
     load,
     create,
     loadActiveContent,
-    saveContent
+    saveContent,
+    setQuery,
+    toggleRegex,
+    setSortKey,
+    setSortDir,
+    toggleSortDir,
+    clearSearch,
+    focusSearch
   };
 });

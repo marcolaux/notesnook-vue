@@ -57,6 +57,16 @@ const appCommands: Command[] = [
     run: () => {
       location.reload();
     }
+  },
+  {
+    id: "app:search-notes",
+    title: "Search notes",
+    keywords: ["find", "filter", "list"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => {
+      ctx.notes.focusSearch();
+    }
   }
 ];
 

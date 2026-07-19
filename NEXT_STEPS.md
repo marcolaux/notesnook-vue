@@ -599,8 +599,28 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
   - All Notes, Notebooks (rekursiv mit Icons), Tags (rekursiv mit Icons),
     Monographs, Archive, Trash (unten), Settings (unten)
   - Sortable via `vue-draggable-plus`
-- [ ] **3.3 Notes List** — Suchleiste mit Regex, Sort/Group-Controls, New-Note,
+- [~] **3.3 Notes List** — Suchleiste mit Regex, Sort/Group-Controls, New-Note,
   Collapse-Sidebar, List-Entries mit Thumbnail + Progress-Bar + Tags
+  - **Status 2026-07-19 (search + regex + sort done, headless):** die bisher
+    inerte Search-Leiste in `NotesList.vue` ist jetzt verdrahtet. Pure
+    View-Logik in `utils/notes-list.ts` (`filterNotes` plain + regex mit
+    Invalid-Regex-Fallback auf Substring, `sortNotes` nach `dateEdited`/
+    `dateCreated`/`title` asc/desc, **pinned-first** unabhängig vom Sort-Key),
+    compont zu `visibleItems` im `notes`-Store (`query`/`regexSearch`/
+    `sortKey`/`sortDir` + `setQuery`/`toggleRegex`/`setSortKey`/`setSortDir`/
+    `toggleSortDir`/`clearSearch`). `NotesList.vue` bindet das Search-Input an
+    `setQuery`, hat Regex-Toggle (`.*`), Clear-Button, Sort-`<select>` +
+    Dir-Toggle und zeigt `N / total`-Count + Empty-State. Palette-Command
+    `app:search-notes` (`when: showShell`) bump-t `focusSearchSignal`; die
+    Liste watch-t es und fokussiert das Input (DOM-Focus = On-Site-Gate).
+    23 neue Contract-Tests in `notes-list.spec.ts` (filter plain/regex/invalid
+    fallback, sort keys/dir/pinned-first/non-mutation, store `visibleItems`
+    compose). 209 Contract-Tests grün (186 + 23), typecheck (node+web) + build
+    clean. **Aufgeschoben:** Grouping nach Datum/Notebook/Tag/Custom,
+    Thumbnail (erstes Bild) + Progress-Bar (x/y checked) in List-Entries →
+    Folge-Inkremente (brauchen Collection-Views Phase 3.2 + Content-Parse).
+    **On-Site-Gate:** Tippen filtert live, Regex-Toggle, Sort-Wechsel, Clear,
+    `Ctrl+Shift+P` "Search notes" fokussiert das Input.
 - [ ] **3.4 StatusBar unten** — Sync-Status, Wortzahl, Cursor-Position
 - [x] **3.5 Vue Router** — file-based via `unplugin-vue-router` oder klassisch;
   ersetzt den dual-Router-Ansatz des Hauptrepos
@@ -2204,5 +2224,89 @@ Hover/Klick wählen, Input ist fokussiert; Overlay floatet über Shell + Login.
 
 ---
 
+## Phase 3.3 (Teil 1) — Notes List: Search + Regex + Sort (2026-07-19)
+
+Erstes `NotesList`-Inkrement der Phase 3.3 (Roadmap §4.2/§5). Die bisher inerte
+Search-Leiste (`placeholder="Search…"`, kein Binding) wird verdrahtet — reine
+View-Logik, vollständig headless verifizierbar. Grouping, Thumbnail (erstes
+Bild) und Progress-Bar (x/y checked) in den List-Entries sind Folge-Inkremente
+(brauchen Collection-Views Phase 3.2 + Content-Parse).
+
+**Neue Dateien:**
+- `apps/desktop/src/renderer/src/utils/notes-list.ts` — reine View-Logik:
+  `filterNotes(items, query, {regex})` (case-insensitiv über Titel+Headline+
+  Tags; Regex-Modus via `new RegExp(q, "u")` mit **Invalid-Regex-Fallback auf
+  Substring** — keine leere Liste beim Mid-Tippen eines kaputten Patterns;
+  Whitespace-Only-Query = "leer" → alle), `sortNotes(items, key, dir)` nach
+  `dateEdited`/`dateCreated`/`title` (asc/desc, Title via `localeCompare` mit
+  `numeric:true` + `sensitivity:"base"`), **pinned-first** (pinned-Gruppe
+  immer oben, unabhängig vom Sort-Key — Notesnook-Sticky-Pinned-Verhalten),
+  `DEFAULT_SORT_KEY="dateEdited"`/`DEFAULT_SORT_DIR="desc"`. Nicht-mutierend
+  (spread + sort).
+
+**Geänderte Dateien:**
+- `stores/notes.ts` — um View-State erweitert: `query`/`regexSearch`/`sortKey`/
+  `sortDir`/`focusSearchSignal` + `visibleItems`-Computed (= `sortNotes(
+  filterNotes(items, query, {regex}), sortKey, sortDir)`). Aktionen `setQuery`/
+  `toggleRegex`/`setSortKey`/`setSortDir`/`toggleSortDir`/`clearSearch`/
+  `focusSearch`. `items` bleibt die rohe Collection → Filter/Sort verwirft nie
+  Daten. Return-Objekt um `visibleItems` + View-State/Aktionen ergänzt.
+- `components/NotesList.vue` — Search-Input an `:value="notes.query"` +
+  `@input→setQuery` gebunden (vorher inert); Regex-Toggle-Button (`.*`,
+  aktiv-hervorgehoben); Clear-Button (nur bei nicht-leerem Query); Sort-`<select>`
+  (Modified/Created/Title) + Dir-Toggle-Pfeil in einer zweiten Toolbar-Zeile;
+  `N / total`-Count (nur bei aktivem Filter mit `/ total`); Empty-State
+  "No notes match …" vs "No notes yet"; rendert `notes.visibleItems` statt
+  `notes.items`. Template-Ref `searchInput` + `watch(focusSearchSignal)` →
+  `focus()` (DOM-Focus in headless = no-op → On-Site-Gate). Alle Buttons/
+  Inputs tragen `titlebar-no-drag` (wie schon der New-Note-Button).
+- `commands/app-commands.ts` — neuer `app:search-notes`-Command
+  (`when: ctx.auth.showShell`, `run: ctx.notes.focusSearch()`). Schließt die
+  "Search notes"-Palette-Action, die in Phase 2.5 als aufgeschoben markiert war.
+
+**Verifiziert (headless):** `tests/contract/notes-list.spec.ts` (23 Tests,
+node, bootstrap gemockt) — `filterNotes` (empty/plain title/headline/tag/no-
+match/regex/invalid-fallback/whitespace), `sortNotes` (defaults/dateEdited
+asc+desc/dateCreated/title asc/non-mutation/pinned-first über beide Dir),
+Store `visibleItems` (mirror/filter/regex-toggle/sort-change/toggleSortDir/
+clearSearch/focusSearch-signal/filter+sort compose). 209 Contract-Tests grün
+(186 + 23); typecheck (node+web) clean; `electron-vite build` clean (Renderer
+~5,24 MB, unverändert — keine neuen Deps, kein React/theme-ui/zustand-Leak).
+
+**Wichtige Erkenntnisse:**
+1. **Pinned-first ist ein Sort-Präfix, kein eigener Sort-Key.** Statt pinned
+   als vierten `SortKey` aufzunehmen, trennt `sortNotes` zuerst nach
+   `a.pinned !== b.pinned` und wendet den Komparator nur *innerhalb* jeder
+   Gruppe an → Sort-Key/Dir wirken erwartungsgemäß, pinned bleibt sticky. Die
+   Notesnook-Liste verhält sich genauso.
+2. **Invalid-Regex-Fallback statt Exception.** `new RegExp("(unclosed","u")`
+   wirft → Mid-Tippen eines Patterns würde die Liste leerlegen + crashen. Try/
+   catch fällt auf `plainFilter` zurück → kein Datenverlust, keine Exception
+   im Render-Pfad.
+3. **`focusSearchSignal` statt direktem Ref-Zugriff.** Der Palette-Command
+   kennt die Liste nicht (Registry → CommandContext.notes). Ein inkrementeller
+   Signal-Counter ist der entkoppelte Kanal; die Liste watch-t ihn. Gleiche
+   Form wie der `showShell`-watch im Router — Aktion löst Signal aus, View
+   reagiert. DOM-Focus ist in `node` eine no-op, also headless-sicher testbar
+   (nur der Zähler wird assertiert).
+
+**Aufgeschoben (Phase 3.3 Folge-Inkremente, kein Vertragsrisiko):**
+- Grouping nach Datum/Notebook/Tag/Custom Groups → braucht Collection-Views
+  (Phase 3.2 Notebooks/Tags).
+- List-Entry Thumbnail (erstes Bild der Note) + Progress-Bar (x/y Checklist-
+  Items checked) → braucht Content-Parse der Note-HTML (Bild-extract /
+  TaskList-stats aus dem ProseMirror-Doc).
+- Search-Highlight (Match in Titel/Headline hervorheben) → Visual-Polish.
+
+**On-Site-Gate (physische Anwesenheit, per Memory gebatcht):**
+1. Tippen im Search-Input filtert die Liste live (case-insensitiv über Titel/
+   Headline/Tags); `N / total`-Count aktualisiert.
+2. Regex-Toggle `.*` → Pattern-Matching (z.B. `^A`); Clear-Button leert.
+3. Sort-`<select>` (Modified/Created/Title) + Dir-Pfeil reordern die Liste;
+   pinned Notes bleiben oben.
+4. `Ctrl/Cmd+Shift+P` "Search notes" fokussiert das Search-Input.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)** + **Phase 3.5 (Vue Router klassische Route-Tabelle: `createAppRouter`+`createMemoryHistory`+Auth-Guard; `ShellLayout`/`NotesView`/`PlaceholderView`/`SettingsView`; `useShellStore`; Sidebar-`RouterLink` über `VIEWS`; `app:goto-*`-Palette-Commands; lazy Views → Code-Split)** + **Phase 2.5b (Command-Palette Overlay `CommandPalette.vue`: Teleport-to-body, Input→`setQuery`, Arrow/Enter/Esc, Hover/Klick→`setActiveIndex`+`execute`, Autofocus via `flush:"post"`, scoped Theme-Tokens; Store um `setActiveIndex` erweitert)**. **186 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive + 6 registry + 9 palette + 4 editor-store + 10 tool-definitions + 7 slash-commands + 11 router + 9 command-palette-overlay)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`; Routing via `vue-router@4` (Memory-History, Auth-Guard, `VIEWS`-getrieben); Command-Palette Overlay via `CommandPalette.vue` (Store/Registry/Hotkey aus Phase 2.5 = Backend). **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay-Render, + Sidebar-Nav-Active/View-Wechsel/login↔shell-Übergang/Go-to-Commands) brauchen physische Anwesenheit.**_
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)** + **Phase 3.5 (Vue Router klassische Route-Tabelle: `createAppRouter`+`createMemoryHistory`+Auth-Guard; `ShellLayout`/`NotesView`/`PlaceholderView`/`SettingsView`; `useShellStore`; Sidebar-`RouterLink` über `VIEWS`; `app:goto-*`-Palette-Commands; lazy Views → Code-Split)** + **Phase 2.5b (Command-Palette Overlay `CommandPalette.vue`: Teleport-to-body, Input→`setQuery`, Arrow/Enter/Esc, Hover/Klick→`setActiveIndex`+`execute`, Autofocus via `flush:"post"`, scoped Theme-Tokens; Store um `setActiveIndex` erweitert)** + **Phase 3.3 (Teil 1): Notes List Search + Regex + Sort — `utils/notes-list.ts` (`filterNotes` plain/regex-invalid-fallback, `sortNotes` dateEdited/dateCreated/title asc/desc pinned-first) + `notes`-Store View-State (`visibleItems` computed) + `NotesList.vue` verdrahtet (Search-Input, Regex-Toggle, Sort-`<select>`+Dir, Clear, Count, Empty-State) + `app:search-notes`-Palette-Command (`focusSearchSignal`)**. **209 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive + 6 registry + 9 palette + 4 editor-store + 10 tool-definitions + 7 slash-commands + 11 router + 9 command-palette-overlay + 23 notes-list)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`; Routing via `vue-router@4` (Memory-History, Auth-Guard, `VIEWS`-getrieben); Command-Palette Overlay via `CommandPalette.vue` (Store/Registry/Hotkey aus Phase 2.5 = Backend). **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay-Render, Sidebar-Nav-Active/View-Wechsel/login↔shell-Übergang/Go-to-Commands, + Notes-Search/Regex/Sort/Clear/Search-notes-Focus) brauchen physische Anwesenheit.**_
