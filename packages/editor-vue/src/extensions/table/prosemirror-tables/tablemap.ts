@@ -9,8 +9,8 @@
 // document-relative positions. So code that uses them will typically
 // compute the start position of the table and offset positions passed
 // to or gotten from this structure by that amount.
-import { Attrs, Node } from "@tiptap/pm/model";
-import { CellAttrs } from "./util.js";
+import { type Attrs, Node } from "@tiptap/pm/model";
+import { type CellAttrs } from "./util.js";
 
 /**
  * @public

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Node } from "@tiptap/pm/model";
-import { NodeView } from "@tiptap/pm/view";
-import { CellAttrs } from "./util.js";
+import { type NodeView } from "@tiptap/pm/view";
+import { type CellAttrs } from "./util.js";
 
 /**
  * @public

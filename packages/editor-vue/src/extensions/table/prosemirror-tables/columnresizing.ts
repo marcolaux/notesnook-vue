@@ -18,18 +18,18 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { Attrs, Node as ProsemirrorNode } from "@tiptap/pm/model";
+import { type Attrs, Node as ProsemirrorNode } from "@tiptap/pm/model";
 import { EditorState, Plugin, PluginKey, Transaction } from "@tiptap/pm/state";
 import {
   Decoration,
   DecorationSet,
   EditorView,
-  NodeView
+  type NodeView
 } from "@tiptap/pm/view";
 import { tableNodeTypes } from "./schema.js";
 import { TableMap } from "./tablemap.js";
 import { TableView, updateColumnsOnResize } from "./tableview.js";
-import { cellAround, CellAttrs, getClientX, isTouchEvent } from "./util.js";
+import { cellAround, type CellAttrs, getClientX, isTouchEvent } from "./util.js";
 
 /**
  * @public

@@ -21,7 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { keydownHandler } from "@tiptap/pm/keymap";
 import { Fragment, ResolvedPos, Slice } from "@tiptap/pm/model";
 import {
-  Command,
+  type Command,
   EditorState,
   Selection,
   TextSelection,

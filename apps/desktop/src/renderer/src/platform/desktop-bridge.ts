@@ -38,11 +38,16 @@ function getClient(): Desktop {
  * Lazy proxy: every property access forwards to the real client, which is
  * built on first access. Call sites use it exactly like a normal tRPC client
  * (`desktop.ping.query()`, `desktop.sqlite.run.mutate(...)`).
+ *
+ * The tRPC client is itself a callable recursive proxy (each property access
+ * returns another callable proxy). It must be forwarded VERBATIM — do NOT
+ * `.bind()` it: `proxy.bind` is intercepted by the tRPC proxy's own `get`
+ * trap, so `value.bind(c)` dispatches a tRPC call with path `["bind"]`,
+ * `clientCallTypeToProcedureType("bind")` becomes `undefined`, and the call
+ * throws `client[procedureType] is not a function`.
  */
 export const desktop = new Proxy({} as Desktop, {
-  get(_target, prop, receiver) {
-    const c = getClient();
-    const value = Reflect.get(c, prop, receiver);
-    return typeof value === "function" ? value.bind(c) : value;
+  get(_target, prop) {
+    return Reflect.get(getClient(), prop);
   }
 }) as Desktop;

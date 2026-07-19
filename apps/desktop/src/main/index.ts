@@ -27,7 +27,13 @@ function createMainWindow(): BrowserWindow {
     webPreferences: {
       preload: resolve(__dirname, "../preload/index.mjs"),
       contextIsolation: true,
-      nodeIntegration: false,
+      // `@notesnook/core` runs in the renderer (the renderer orchestrates the
+      // Database; storage/crypto/fs are shims that call the main process over
+      // tRPC). Core's browser build + the libsodium browser build reference
+      // node globals (`Buffer`, `process`) at module-eval time, so the
+      // renderer main world needs them. `contextIsolation` stays on so the
+      // preload/tRPC bridge remains in its own world.
+      nodeIntegration: true,
       sandbox: false
     }
   });
@@ -42,6 +48,22 @@ function createMainWindow(): BrowserWindow {
     shell.openExternal(url);
     return { action: "deny" };
   });
+
+  // Surface renderer console messages in the terminal during dev — the
+  // renderer is a separate page whose console otherwise only lives in
+  // DevTools, making boot/bootstrap failures invisible to `npm run dev`.
+  if (isDev) {
+    window.webContents.on("console-message", (_e, _level, message, line, source) => {
+      const loc = source ? ` @${source}:${line ?? "?"}` : "";
+      console.log(`[renderer] ${message}${loc}`);
+    });
+    window.webContents.on("did-fail-load", (_e, code, desc, url) => {
+      console.error(`[renderer] did-fail-load ${code} ${desc} ${url}`);
+    });
+    window.webContents.on("render-process-gone", (_e, details) => {
+      console.error(`[renderer] render-process-gone ${details.reason}`);
+    });
+  }
 
   if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
     void window.loadURL(process.env["ELECTRON_RENDERER_URL"]);

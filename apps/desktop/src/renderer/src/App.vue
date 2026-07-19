@@ -19,6 +19,8 @@ onMounted(async () => {
     await bootstrap();
     await notes.load();
     bootState.value = "ready";
+    // eslint-disable-next-line no-console
+    console.info(`[boot] ready — ${notes.count} notes loaded`);
   } catch (e) {
     bootState.value = "error";
     bootError.value = e instanceof Error ? e.message : String(e);

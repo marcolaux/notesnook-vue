@@ -10,7 +10,7 @@
  * source of truth shared (type-only) with the renderer.
  */
 import { BrowserWindow } from "electron";
-import { createIPCHandler } from "electron-trpc/main";
+import { createIPCHandler } from "../shared/electron-trpc-shim";
 import { appRouter } from "../contracts/router";
 
 /**

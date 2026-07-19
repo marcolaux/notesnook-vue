@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { exposeElectronTRPC } from "electron-trpc/main";
+import { exposeElectronTRPC } from "../shared/electron-trpc-shim";
 
 /**
  * Preload bridge — exposes a tiny, typed surface to the renderer via

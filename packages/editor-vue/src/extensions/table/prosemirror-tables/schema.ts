@@ -2,14 +2,14 @@
 // Helper for creating a schema that supports tables.
 
 import {
-  AttributeSpec,
-  Attrs,
+  type AttributeSpec,
+  type Attrs,
   Node,
-  NodeSpec,
+  type NodeSpec,
   NodeType,
   Schema
 } from "@tiptap/pm/model";
-import { CellAttrs, MutableAttrs } from "./util.js";
+import { type CellAttrs, type MutableAttrs } from "./util.js";
 
 function getCellAttrs(dom: HTMLElement | string, extraAttrs: Attrs): Attrs {
   if (typeof dom === "string") {

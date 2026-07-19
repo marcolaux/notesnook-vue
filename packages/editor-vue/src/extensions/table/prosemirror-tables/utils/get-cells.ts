@@ -2,7 +2,7 @@
 import type { Selection } from "@tiptap/pm/state";
 
 import { TableMap } from "../tablemap.js";
-import { FindNodeResult, findTable } from "./query.js";
+import { type FindNodeResult, findTable } from "./query.js";
 
 /**
  * Returns an array of cells in a column at the specified column index.

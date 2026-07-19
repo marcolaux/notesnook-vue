@@ -6,9 +6,9 @@
 
 import { Node } from "@tiptap/pm/model";
 import { EditorState, PluginKey, Transaction } from "@tiptap/pm/state";
-import { tableNodeTypes, TableRole } from "./schema.js";
+import { tableNodeTypes, type TableRole } from "./schema.js";
 import { TableMap } from "./tablemap.js";
-import { CellAttrs, removeColSpan } from "./util.js";
+import { type CellAttrs, removeColSpan } from "./util.js";
 import { changedDescendants } from "../../../utils/prosemirror";
 
 /**

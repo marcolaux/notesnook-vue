@@ -13,11 +13,11 @@ import {
   TextSelection,
   Transaction
 } from "@tiptap/pm/state";
-import { Decoration, DecorationSet, DecorationSource } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type DecorationSource } from "@tiptap/pm/view";
 
-import { Mappable } from "@tiptap/pm/transform";
+import { type Mappable } from "@tiptap/pm/transform";
 import { TableMap } from "./tablemap.js";
-import { CellAttrs, inSameTable, pointsAtCell, removeColSpan } from "./util.js";
+import { type CellAttrs, inSameTable, pointsAtCell, removeColSpan } from "./util.js";
 import { findParentNodeOfTypeClosestToPos } from "../../../utils/prosemirror";
 
 /**

@@ -9,7 +9,7 @@ import {
   Slice
 } from "@tiptap/pm/model";
 import {
-  Command,
+  type Command,
   EditorState,
   TextSelection,
   Transaction
@@ -17,12 +17,12 @@ import {
 
 import { CellSelection } from "./cellselection.js";
 import type { Direction } from "./input.js";
-import { tableNodeTypes, TableRole } from "./schema.js";
-import { Rect, TableMap } from "./tablemap.js";
+import { tableNodeTypes, type TableRole } from "./schema.js";
+import { type Rect, TableMap } from "./tablemap.js";
 import {
   addColSpan,
   cellAround,
-  CellAttrs,
+  type CellAttrs,
   cellWrapping,
   columnIsHeader,
   isInTable,

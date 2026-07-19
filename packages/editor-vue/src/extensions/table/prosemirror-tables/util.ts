@@ -20,10 +20,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { EditorState, NodeSelection, PluginKey } from "@tiptap/pm/state";
 
-import { Attrs, Node, ResolvedPos } from "@tiptap/pm/model";
+import { type Attrs, Node, ResolvedPos } from "@tiptap/pm/model";
 import { CellSelection } from "./cellselection.js";
 import { tableNodeTypes } from "./schema.js";
-import { Rect, TableMap } from "./tablemap.js";
+import { type Rect, TableMap } from "./tablemap.js";
 
 /**
  * @public

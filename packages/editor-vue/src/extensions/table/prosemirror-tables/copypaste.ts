@@ -17,8 +17,8 @@ import { Transform } from "@tiptap/pm/transform";
 import { EditorState, Transaction } from "@tiptap/pm/state";
 import { CellSelection } from "./cellselection.js";
 import { tableNodeTypes } from "./schema.js";
-import { ColWidths, Rect, TableMap } from "./tablemap.js";
-import { CellAttrs, removeColSpan } from "./util.js";
+import { type ColWidths, type Rect, TableMap } from "./tablemap.js";
+import { type CellAttrs, removeColSpan } from "./util.js";
 
 /**
  * @internal
