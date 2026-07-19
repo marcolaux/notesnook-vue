@@ -218,7 +218,7 @@ vollständiger Toolbar.
   debounced Autosave (800 ms) via `database.notes.add`. Store erweitert um
   `activeContent`, `contentState`, `saveState`, `loadActiveContent()`,
   `saveContent(noteId, html)`. ProseMirror-Base-CSS in `style.css`.
-  **Runtime-Check `npm run dev` offen** (User-Maschine).
+  **Runtime-Check: `npm run dev` bootet bis `bootState ready`** (siehe 2.5).
 - ✅ **Phase-2.4a/b/c/h Editor-Node-View-Port** — neues Workspace-Paket
   `packages/editor-vue` (`@notesnook-vue/editor-vue`, Source-as-Entry,
   pfad-aliasiert). 6 der 9 React-Node-Views portiert: `attachment`
@@ -244,7 +244,7 @@ vollständiger Toolbar.
   TaskListNode, TaskItemNode.configure({nested:true}), EmbedNode, CodeBlock,
   Table.configure({resizable:true, showResizeHandleOnSelection:true}), TableRow,
   TableCell, TableHeader]`.
-  **Runtime-Check offen.**
+  **Runtime-Check: bootet (2.5); visuelle Node-View-Gates brauchen On-Site-Review.**
 - ✅ **Phase-2.2 Tailwind-Token-Adapter** — neues Workspace-Paket
   `packages/theme-vue` (`@notesnook-vue/theme-vue`, Source-as-Entry,
   pfad-aliasiert). Vendored TS-Port von `@notesnook/theme`'s `themeToCSS`/
@@ -259,7 +259,18 @@ vollständiger Toolbar.
   `@theme inline`-Bridge in `style.css` + runtime `:root`-Bridge via
   `injectTheme()`. `bootstrap.ts` ruft `injectTheme(ThemeDark)` als Step 0.
   Vertragstest `tests/contract/theme.spec.ts` (11 Tests, happy-dom). 68
-  Contract-Tests grün, typecheck (node+web) + build clean. **Runtime-Check offen.**
+  Contract-Tests grün, typecheck (node+web) + build clean. **Runtime-Check: bootet (2.5); Theme-First-Paint braucht On-Site-Review.**
+- ✅ **Phase-2.5 Runtime-Check** — `npm run dev` bootet end-to-end (headless
+  verifiziert): tRPC-Bridge → `@notesnook/core` `new Database()` im Renderer
+  → Bridge-Dialect → Main `better-sqlite3-multiple-ciphers` → verschlüsseltes
+  `notesnook.sql` in userData → 6 Seed-Notizen → `bootState ready`
+  (`[boot] ready — 6 notes loaded`). 5 Boot-Blocker gelöst (Fork-Type-Imports,
+  Buffer/`process`-Polyfill, tRPC-`.bind`-Bug, native-ABI-Rebuild,
+  Console-Source-Logging) + `electron-trpc`-CJS-Shim (vorherige Session).
+  Dual-ABI native Module via Pre-Script-Rebuild-Swap (`predev`→Electron-ABI,
+  `pretest:contract`→System-Node-ABI). Commits `d381546` + `a0f7f74`. **Visuelle/
+  Interaktions-Gates (Theme-First-Paint, Editor-Mount bei Notiz-Klick,
+  Checklist-Toggle, Edit-Persistenz) brauchen physische Anwesenheit.**
 - ✅ **Phase-1-Plattform-Seam** in `apps/desktop/src/renderer/src/platform/`:
   `desktop-bridge.ts` (lazy tRPC-Client), `sqlite-dialect.ts` (Kysely-Dialect
   → `sqlite.run`), `compressor.ts`, `key-store.ts` (safeStorage), `key-value.ts`
@@ -439,7 +450,7 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
   `database.content.findByNoteId`, rendert per `<EditorContent>`,
   debounced Autosave (800 ms) via `database.notes.add` (Content-Upsert +
   `dateEdited`/`headline`-Bump). Build + typecheck (node+web) clean, 36
-  Contract-Tests grün. **Runtime-Check `npm run dev` offen** (User-Maschine).
+  Contract-Tests grün. **Runtime-Check: `npm run dev` bootet bis `ready` (2.5); visuelle Gates on-site.**
   ✅
 - [x] **2.2 Tailwind-Token-Adapter** — `@notesnook/theme`'s `ThemeDefinition.scopes`
   → Tailwind-CSS-Variablen (`--color-surface`, `--backdrop-blur-base`, …)
@@ -499,7 +510,7 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
      `columnResizing({View:null})`; RowProperties/TableProperties popups
      (insert/delete/move/toggle-header/merge/split/color/border). 57
      contract tests grün (8 neue table-Cases), typecheck+build clean.
-     **Runtime-Check offen.**
+     **Runtime-Check: bootet (2.5); visuelle Node-View-Gates on-site.**
   - **Wiederverwendbare Helfer** schon portiert: `getDataAttribute`,
     `prosemirror.ts` (`findParentNodeClosestToPos`/`hasSameAttributes`/
     `getExactChangedNodes`/`getDeletedNodes`/`getParentAttributes`/
@@ -1384,5 +1395,85 @@ steht.
 
 ---
 
+### 2026-07-19 — M2.5 Runtime-Check: `npm run dev` bootet end-to-end (headless)
+
+Der seit ~6 Sessions offene Runtime-Check steht: **`npm run dev` bootet bis
+`bootState=ready`**, das verschlüsselte SQLite-DB-File wird erzeugt
+(`~/Library/Application Support/notesnook-vue-desktop/notesnook.sql`), 6
+Seed-Notizen geladen. Letzte Renderer-Log-Zeile: `[boot] ready — 6 notes
+loaded`. User war off-device (nur Remote-Terminal) → Verifikation **headless**
+über `webContents.on("console-message")`-Output (DevTools-Console sonst
+unsichtbar). Visuelle/Interaktions-Gates (Dark-Theme-First-Paint, Notiz-Klick
+→ Editor+6-Node-Views mounten, Checklist-Toggle → Progress-Bar, Edits
+persistieren über Restart) brauchen die physische Anwesenheit des Users.
+
+**5 Blocker nacheinander gelöst (jeder war ein harter Stop):**
+
+1. **Vendored prosemirror-tables-Fork: Type-as-Value-Imports.** Die Fork-Files
+   (`packages/editor-vue/src/extensions/table/prosemirror-tables/`, alle
+   `// @ts-nocheck`) importieren Type-Only-`@tiptap/pm`-Symbole (`Attrs`,
+   `NodeSpec`, `AttributeSpec`, `Command`, `Mappable`, `DecorationSource`,
+   `NodeView`) + fork-lokale (`CellAttrs`, `MutableAttrs`, `Rect`,
+   `ColWidths`, `FindNodeResult`, `TableRole`) als **Werte**. tsc durchläuft
+   (kein `verbatimModuleSyntax`-Enforcement unter `@ts-nocheck`); **esbuild
+   (Vite dev) behält sie als Runtime-Named-Imports** → `SyntaxError: … does
+   not provide an export named 'X'`. Fix: inline-`type`-Modifier über 11
+   Fork-Files. **Lesson:** Single-Line-`grep 'import {[^}]*NAME'` verpasst
+   Multi-Line-Import-Blocks — `commands.ts` hatte `CellAttrs` auf eigener Zeile
+   in einem Block; kam erst nach den Single-Linern ans Licht. Multi-Line-Blocks
+   mit scannen.
+2. **`Buffer is not defined`.** Der Renderer läuft `@notesnook/core` **direkt**
+   (`platform/database.ts:47` macht `new Database()`; Storage/Crypto/FS sind
+   tRPC-Shims zum Main, aber Database-Orchestrator + libsodium-Browser-Build
+   leben im Renderer). Core-Browser-Build referenziert `Buffer`/`global`/
+   `process` als bare Globals; Electron 37 ESM-Renderer exponiert sie **nicht
+   mal mit `nodeIntegration: true`**. Fix: inline `<script type="module">`-
+   Polyfill in `index.html` **vor** `/src/main.ts` (Module-Scripts laufen in
+   Dokument-Reihenfolge) → `window.Buffer` (aus `buffer`-Pkg), `window.global`,
+   minimaler `window.process`-Shim; zusätzlich `nodeIntegration: true`
+   (`contextIsolation` bleibt an → Preload/tRPC-Bridge isoliert).
+3. **tRPC `client[procedureType] is not a function`.** `desktop-bridge.ts`'
+   Lazy-Proxy machte `value.bind(c)` auf forwarded Properties. Der tRPC-
+   Procedure-Client ist ein Callable-Recursive-Proxy, der `.bind`-Access
+   abfängt → `value.bind(c)` dispatcht einen tRPC-Call mit Path `["bind"]` →
+   `clientCallTypeToProcedureType("bind")` ist `undefined` → `client[undefined]`
+   ist keine Funktion. Fix: `.bind` weglassen, verbatim forwarden.
+4. **`better_sqlite3.node` ABI 147 vs 148.** Prebuilt war für System-Node
+   (MODULE_VERSION 147); Electron 43 braucht 148. `electron-rebuild -f`
+   reportete "Rebuild Complete" **ohne zu kompilieren** (mtime unverändert) —
+   erst nach `rm -rf build` + `--module-dir apps/desktop` kompilierte es
+   wirklich. Danach: `database initialised` + `notesnook.sql` erzeugt.
+5. **Renderer-Console-Source/Line** im `console-message`-Handler surfacen
+   (`@${source}:${line}`) + `[boot] ready — N notes loaded`-Marker in
+   `App.vue` (headless-Bestätigung).
+
+**Mitgeführt:** Vor-Session's `electron-trpc`-CJS-Shim
+(`shared/electron-trpc-shim.ts`) + `ipc.ts`/`preload`/`tsconfig.node.json`,
+die den `electron-trpc@0.7.1`-Top-Level-ESM-Import-Crash behoben.
+
+**Dual-ABI gelöst (Pre-Script-Rebuild-Swap):** Eine native `.node` trägt ein
+`NODE_MODULE_VERSION` — Electron 148 vs System-Node 147 schließen sich aus.
+Root-`package.json`: `predev` → `electron-rebuild -f -w better-sqlite3-
+multiple-ciphers --module-dir apps/desktop` (→148), `pretest:contract`/
+`pretest:contract:watch` → `npm rebuild better-sqlite3-multiple-ciphers`
+(→147). `@electron/rebuild` als direkter devDep deklariert. **Zwei
+Gotchas:** (1) `electron-rebuild` vom Repo-Root no-opt ("Rebuild Complete",
+kein Compile) weil es nur Root-`package.json`-Deps scannt — `--module-dir
+apps/desktop` Pflicht. (2) `npm rebuild` kompiliert verlässlich gegen
+System-Node (kein No-Op-Bug). Validiert: `npm run dev` → ready; `npm run
+test:contract` → 68/68. Kosten: ~10–15s Rebuild-Churn pro `dev`/`test:contract`.
+
+**Commits (`main`):**
+- `d381546` M2.5 runtime-check (5 Boot-Fixes + electron-trpc-Shim)
+- `a0f7f74` Dual-ABI via Pre-Script-Rebuild-Swap
+
+**Offen (User-Maschine, physische Anwesenheit nötig):** Visuelle/Interaktions-
+Gates — Dark-Theme-First-Paint, Notiz-Klick → TipTap+6-Node-Views mounten,
+Checklist-Toggle → Progress-Bar, Edits persistieren über Restart. Alles bis
+`bootState ready` log-bestätigt. Vor solchen Schritten künftig anfragen, ob der
+User on-site ist.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/h (editor-vue: attachment/task-item/task-list/embed/code-block/table) + 2.2 (theme-vue: Tailwind-Token-Adapter). 68 Contract-Tests grün (36 + 21 editor-html round-trip + 11 theme), typecheck (node+web) + build clean. Editor nutzt `@notesnook-vue/editor-vue`-Nodes; Theme via `@notesnook-vue/theme-vue` (vendored `themeToCSS`-Port + `ThemeDark`/`ThemeLight` + Glassmorphism-Extension + Tailwind-`@theme inline`-Bridge; nur Type-Only-`@notesnook/theme`-Import → 0 React/theme-ui-Leck). Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; refractor-Highlighting mit 297 lazy-Literal-Import-Thunks; table via vendored prosemirror-tables-Fork. Runtime-Check `npm run dev` offen. Bereit für 2.4e (Phase-6-gated), Login (Phase-6-Prerequisite), oder 2.3 Vue-Primitives._
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/h (editor-vue: attachment/task-item/task-list/embed/code-block/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)**. 68 Contract-Tests grün (36 + 21 editor-html round-trip + 11 theme), typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap gelöst (`a0f7f74`: `predev`→Electron-ABI, `pretest:contract`→System-Node-ABI). Editor nutzt `@notesnook-vue/editor-vue`-Nodes; Theme via `@notesnook-vue/theme-vue` (vendored `themeToCSS`-Port + `ThemeDark`/`ThemeLight` + Glassmorphism-Extension + Tailwind-`@theme inline`-Bridge; nur Type-Only-`@notesnook/theme`-Import → 0 React/theme-ui-Leck). Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; refractor-Highlighting mit 297 lazy-Literal-Import-Thunks; table via vendored prosemirror-tables-Fork. **Runtime-Check bootet bis `bootState ready` (6 Seed-Notizen, verschlüsselte SQLite in userData); visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount bei Notiz-Klick, Checklist-Toggle, Edit-Persistenz) brauchen physische Anwesenheit des Users.** Bereit für 2.4e (Phase-6-gated), Login (Phase-6-Prerequisite), oder 2.3 Vue-Primitives._
