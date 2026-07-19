@@ -19,7 +19,17 @@ import { describe, it, expect, afterAll } from "vitest";
 import { DOMParser, DOMSerializer } from "@tiptap/pm/model";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { AttachmentNode, TaskItemNode, TaskListNode, EmbedNode, CodeBlock } from "@notesnook-vue/editor-vue";
+import {
+  AttachmentNode,
+  TaskItemNode,
+  TaskListNode,
+  EmbedNode,
+  CodeBlock,
+  Table,
+  TableRow,
+  TableCell,
+  TableHeader
+} from "@notesnook-vue/editor-vue";
 
 const editor = new Editor({
   element: document.createElement("div"),
@@ -29,7 +39,14 @@ const editor = new Editor({
     TaskListNode,
     TaskItemNode.configure({ nested: true }),
     EmbedNode,
-    CodeBlock
+    CodeBlock,
+    // Table (2.4h) — mirrors Editor.vue. The columnResizing/tableEditing
+    // plugins are installed but inert here (no transactions during parse/
+    // serialize); the round-trip is governed purely by the node schema.
+    Table.configure({ resizable: true, showResizeHandleOnSelection: true }),
+    TableRow,
+    TableCell,
+    TableHeader
   ],
   content: ""
 });
@@ -48,7 +65,7 @@ function roundTrip(html: string): string {
   return out.innerHTML;
 }
 
-describe("editor node-view round-trip (2.4a + 2.4b + 2.4c)", () => {
+describe("editor node-view round-trip (2.4a + 2.4b + 2.4c + 2.4h)", () => {
   it("attachment chip preserves data-hash/filename/mime/size", () => {
     const html =
       '<p>see <span data-hash="abc" data-filename="readme.md" data-mime="text/markdown" data-size="2048"></span></p>';
@@ -184,5 +201,98 @@ describe("editor node-view round-trip (2.4a + 2.4b + 2.4c)", () => {
     const out = roundTrip(html);
     expect(out).toContain('class="language-ts"');
     expect(out).toContain("type X = 1;");
+  });
+
+  // --- 2.4h: table node-view round-trip -------------------------------------
+  // Table renderHTML emits <table style="width|min-width"><colgroup><col>…
+  // </colgroup><tbody>…</tbody></table>; cells render td/th with colspan/
+  // rowspan always present (defaults 1) — byte-stable upstream behaviour.
+
+  it("table with a header row round-trips (th + td + colgroup + min-width style)", () => {
+    const html =
+      "<table><tbody><tr><th>Feature</th><th>Status</th></tr><tr><td>Cell editing</td><td>works</td></tr></tbody></table>";
+    const out = roundTrip(html);
+    expect(out).toContain("<table");
+    expect(out).toContain("<colgroup>");
+    // 2 columns × cellMinWidth(25) → min-width: 50px (no explicit colwidths).
+    // (happy-dom serialises the style with a trailing `;`, so match the substring.)
+    expect(out).toContain("min-width: 50px");
+    expect(out).toContain("<tbody>");
+    expect(out).toContain("<th");
+    expect(out).toContain("<td");
+    expect(out).toContain("Cell editing");
+    // colspan/rowspan defaults render on every cell
+    expect((out.match(/colspan="1"/g) || []).length).toBe(4);
+    expect((out.match(/rowspan="1"/g) || []).length).toBe(4);
+  });
+
+  it("table preserves colspan/rowspan", () => {
+    const html =
+      '<table><tbody><tr><td colspan="2">merged</td></tr><tr><td>a</td><td>b</td></tr></tbody></table>';
+    const out = roundTrip(html);
+    expect(out).toContain('colspan="2"');
+    expect(out).toContain(">merged<");
+    // the merged cell still carries rowspan default
+    expect(out).toContain('colspan="2" rowspan="1"');
+  });
+
+  it("table preserves data-colwidth (column widths) + emits width style + col widths", () => {
+    const html =
+      '<table><tbody><tr><td data-colwidth="480">a</td><td data-colwidth="120">b</td></tr></tbody></table>';
+    const out = roundTrip(html);
+    expect(out).toContain('data-colwidth="480"');
+    expect(out).toContain('data-colwidth="120"');
+    // all cols have explicit widths → fixedWidth → width style (480+120=600)
+    expect(out).toContain("width: 600px");
+    expect(out).toContain("width: 480px");
+    expect(out).toContain("width: 120px");
+  });
+
+  it("table migrates the legacy colwidth attr to data-colwidth", () => {
+    const html =
+      '<table><tbody><tr><td colwidth="100">x</td></tr></tbody></table>';
+    const out = roundTrip(html);
+    // exactly one `colwidth="100"` substring — the migrated data-colwidth one
+    expect((out.match(/colwidth="100"/g) || []).length).toBe(1);
+    expect(out).toContain('data-colwidth="100"');
+  });
+
+  it("table cell border-width + border-style round-trip (stable values)", () => {
+    const html =
+      '<table><tbody><tr><td style="border-width: 2px; border-style: solid">x</td></tr></tbody></table>';
+    const out = roundTrip(html);
+    expect(out).toContain("border-width: 2px");
+    expect(out).toContain("border-style: solid");
+  });
+
+  it("table cell background-color round-trips and is idempotent", () => {
+    // browsers may normalise the colour value; assert presence + idempotency
+    // rather than an exact value.
+    const html =
+      '<table><tbody><tr><td style="background-color: red">x</td></tr></tbody></table>';
+    const out = roundTrip(html);
+    expect(out).toContain("background-color:");
+    expect(roundTrip(out)).toBe(out);
+  });
+
+  it("bare table seeds min-width style + colspan/rowspan defaults and is idempotent", () => {
+    const html = "<table><tbody><tr><td>a</td><td>b</td></tr></tbody></table>";
+    const out = roundTrip(html);
+    expect(out).toContain("min-width: 50px");
+    expect(out).toContain('colspan="1"');
+    // second pass is stable (defaults already seeded)
+    expect(roundTrip(out)).toBe(out);
+  });
+
+  it("table + checklist + embed + codeblock round-trip together (2.4h seed-shape)", () => {
+    const html =
+      '<p>Demo</p><table><tbody><tr><th>Feature</th><th>Status</th></tr><tr><td>Tables</td><td>works</td></tr></tbody></table><ul class="checklist" data-title="2.4h progress"><li class="checklist--item checked"><p>Row/col toolbars</p></li></ul><iframe src="https://example.com/embed" width="480" height="270"></iframe><pre class="language-typescript"><code>const x: number = 1;</code></pre>';
+    const out = roundTrip(html);
+    expect(out).toContain("<table");
+    expect(out).toContain("<colgroup>");
+    expect(out).toContain('data-title="2.4h progress"');
+    expect(out).toContain('src="https://example.com/embed"');
+    expect(out).toContain('class="language-typescript"');
+    expect(out).toContain("Row/col toolbars");
   });
 });

@@ -7,10 +7,11 @@ helpers (`getChangedRanges`) come from `@tiptap/vue-3` (re-export of
 */
 import { getChangedRanges } from "@tiptap/vue-3";
 import type { NodeWithPos } from "@tiptap/vue-3";
-import type { Editor } from "@tiptap/core";
+import { findParentNode, type Editor } from "@tiptap/core";
 import { DOMParser, Slice } from "@tiptap/pm/model";
 import type {
   Fragment,
+  NodeType,
   Node as ProsemirrorNode,
   NodeRange,
   ResolvedPos,
@@ -47,6 +48,81 @@ export function hasSameAttributes(prev: Record<string, unknown>, next: Record<st
     if (prev[key] !== next[key]) return false;
   }
   return true;
+}
+
+/** True if `node` matches `nodeType` (single type or one of an array). */
+function equalNodeType(nodeType: NodeType | NodeType[], node: ProsemirrorNode): boolean {
+  return (
+    (Array.isArray(nodeType) && nodeType.indexOf(node.type) > -1) ||
+    node.type === nodeType
+  );
+}
+
+/**
+ * Closest parent of `$pos` whose type matches `nodeType` (single or array).
+ * Ported verbatim from @notesnook/editor (GPL-3.0), utils/prosemirror.ts — used
+ * by the vendored prosemirror-tables fork (cellselection.ts).
+ */
+export function findParentNodeOfTypeClosestToPos(
+  $pos: ResolvedPos,
+  nodeType: NodeType | NodeType[]
+): NodeWithPosAndDepth | undefined {
+  return findParentNodeClosestToPos($pos, (node) => equalNodeType(nodeType, node));
+}
+
+/**
+ * Walks `old` vs `cur` and calls `f` for each changed descendant. Ported
+ * verbatim from @notesnook/editor (GPL-3.0), utils/prosemirror.ts — used by the
+ * vendored prosemirror-tables fork (fixtables.ts).
+ */
+export function changedDescendants(
+  old: ProsemirrorNode,
+  cur: ProsemirrorNode,
+  offset: number,
+  f: (newNode: ProsemirrorNode, pos: number, oldNode?: ProsemirrorNode) => void
+): void {
+  const oldSize = old.childCount,
+    curSize = cur.childCount;
+  outer: for (let i = 0, j = 0; i < curSize; i += 1) {
+    const child = cur.child(i);
+    for (let scan = j, e = Math.min(oldSize, i + 3); scan < e; scan += 1) {
+      if (old.child(scan) == child) {
+        j = scan + 1;
+        offset += child.nodeSize;
+        continue outer;
+      }
+    }
+    f(child, offset, i < oldSize ? old.child(i) : undefined);
+    if (j < oldSize && old.child(j).sameMarkup(child)) {
+      changedDescendants(old.child(j), child, offset + 1, f);
+    } else {
+      child.nodesBetween(
+        0,
+        child.content.size,
+        f as (node: ProsemirrorNode, pos: number) => void,
+        offset + 1
+      );
+    }
+    offset += child.nodeSize;
+  }
+}
+
+/**
+ * DOM node of the selected node (or nearest parent) whose type name is in
+ * `types`. Ported verbatim from @notesnook/editor (GPL-3.0), utils/prosemirror.ts
+ * — used by the table row/column toolbars to anchor on the active row/cell.
+ */
+export function findSelectedDOMNode(editor: Editor, types: string[]): HTMLElement | null {
+  const { $anchor } = editor.state.selection;
+
+  const selectedNode = editor.state.doc.nodeAt($anchor.pos);
+  const pos =
+    types.includes(selectedNode?.type.name || "")
+      ? $anchor.pos
+      : findParentNode((node) => types.includes(node.type.name))(editor.state.selection)?.pos;
+  if (!pos) return null;
+
+  return (editor.view.nodeDOM(pos) as HTMLElement) || null;
 }
 
 /** Changed block ranges in a transaction (via TipTap's `getChangedRanges`). */

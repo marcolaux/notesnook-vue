@@ -219,25 +219,31 @@ vollständiger Toolbar.
   `activeContent`, `contentState`, `saveState`, `loadActiveContent()`,
   `saveContent(noteId, html)`. ProseMirror-Base-CSS in `style.css`.
   **Runtime-Check `npm run dev` offen** (User-Maschine).
-- ✅ **Phase-2.4a/b/c Editor-Node-View-Port** — neues Workspace-Paket
+- ✅ **Phase-2.4a/b/c/h Editor-Node-View-Port** — neues Workspace-Paket
   `packages/editor-vue` (`@notesnook-vue/editor-vue`, Source-as-Entry,
-  pfad-aliasiert). 5 der 9 React-Node-Views portiert: `attachment`
+  pfad-aliasiert). 6 der 9 React-Node-Views portiert: `attachment`
   (inline Atom), `task-item` + `task-list` (Editable-Content +
   `appendTransaction`-Stats-Plugin → Progress-Bar), `embed` (sandboxed iframe
   + hand-rolled `Resizer.vue`, single bottomRight handle, kein neuer Dep),
   `code-block` (refractor-Syntax-Highlighting + Lazy-Lang-Loading via 297
-  Literal-Import-Thunks + caret/lines-Sync; StarterKit-`codeBlock` deaktiviert).
+  Literal-Import-Thunks + caret/lines-Sync; StarterKit-`codeBlock` deaktiviert),
+  `table` (vendored prosemirror-tables-Fork + `Table`/`TableCell`/`TableHeader`
+  Nodes + npm `TableRow` + Vue `TableComponent.vue` mit Row/Column-Toolbars +
+  RowProperties/TableProperties-Popups; `columnResizing({View:null})` →
+  Vue-Node-View via `addNodeView`; colwidth-Fingerprint-`update`).
   Schema/parseHTML/renderHTML **verbatim** vom Upstream
   (`streetwriters/notesnook`, Branch `master`) für Byte-stabilen HTML-Round-trip;
   React-Node-View-Layer → `VueNodeViewRenderer` + `NodeViewWrapper`/
   `NodeViewContent`. Wiederverwendbare Helfer: `getDataAttribute`,
   `prosemirror.ts`-Subset, `formatBytes`, `sandbox.ts` (`getSandboxFeatures`),
   `components/Resizer.vue`, `code-block/loader.ts`.
-  Round-trip-Vertragstest `tests/contract/editor-html.spec.ts` (13 Tests,
+  Round-trip-Vertragstest `tests/contract/editor-html.spec.ts` (21 Tests,
   happy-dom per File-Env-Override, Schema via leeren `Editor` gebaut).
-  49 Contract-Tests grün, typecheck (node+web) + build clean.
+  57 Contract-Tests grün, typecheck (node+web) + build clean.
   `Editor.vue` nutzt `[StarterKit.configure({codeBlock:false}), AttachmentNode,
-  TaskListNode, TaskItemNode.configure({nested:true}), EmbedNode, CodeBlock]`.
+  TaskListNode, TaskItemNode.configure({nested:true}), EmbedNode, CodeBlock,
+  Table.configure({resizable:true, showResizeHandleOnSelection:true}), TableRow,
+  TableCell, TableHeader]`.
   **Runtime-Check offen.**
 - ✅ **Phase-1-Plattform-Seam** in `apps/desktop/src/renderer/src/platform/`:
   `desktop-bridge.ts` (lazy tRPC-Client), `sqlite-dialect.ts` (Kysely-Dialect
@@ -432,7 +438,7 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
   Byte-stabilen Round-trip) + `Component.vue` (Vue-View via `VueNodeViewRenderer`
   + `NodeViewWrapper`/`NodeViewContent` aus `@tiptap/vue-3`). Importe NIE direkt
   von `@tiptap/core`, sondern von `@tiptap/vue-3` (re-exportiert core).
-  **Status 2026-07-19 (2.4a + 2.4b + 2.4c):**
+  **Status 2026-07-19 (2.4a + 2.4b + 2.4c + 2.4h):**
   1. [x] `attachment` (inline Atom, File-Chip aus Attrs; Blob = Phase 6) ✅
   6. [x] `task-item` + `task-list` (Checkbox-Toggle, Editable-Content via
      `NodeViewContent`, `appendTransaction`-Stats-Plugin → Progress-Bar) ✅
@@ -452,7 +458,16 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
   2. [ ] `audio` (blob URL + `<audio>`) — **Phase-6-gated** (attachments auth)
   3. [ ] `web-clip` (iframe + fullscreen listener) — **Phase-6-gated**
   5. [ ] `image` (IntersectionObserver + blob URL + alignment) — **Phase-6-gated**
-  8. [ ] `table` (vendored `prosemirror-tables` + row/column toolbars — am aufwendigsten)
+  8. [x] `table` (vendored `prosemirror-tables` + row/column toolbars) —
+     **2.4h done.** Vendored the customized GPL fork (re-pointed to
+     `@tiptap/pm/*`, `@ts-nocheck` per file to keep the renderer + our port
+     code strict while inheriting the fork's exported types); `Table`/
+     `TableCell`/`TableHeader` verbatim + npm `TableRow`; `TableComponent.vue`
+     owns `<table>`/`<colgroup>`/`<tbody>` via `addNodeView` +
+     `columnResizing({View:null})`; RowProperties/TableProperties popups
+     (insert/delete/move/toggle-header/merge/split/color/border). 57
+     contract tests grün (8 neue table-Cases), typecheck+build clean.
+     **Runtime-Check offen.**
   - **Wiederverwendbare Helfer** schon portiert: `getDataAttribute`,
     `prosemirror.ts` (`findParentNodeClosestToPos`/`hasSameAttributes`/
     `getExactChangedNodes`/`getDeletedNodes`/`getParentAttributes`/
@@ -1076,5 +1091,134 @@ parallel. Login-Logik fehlt noch (Phase-6-Prerequisite).
 
 ---
 
+### 2026-07-19 — Phase 2.4h: table node-view portiert (vendored prosemirror-tables + Vue node-view + toolbars + popups)
+
+9. der 9 React-Node-Views (zuvor 6 portiert: attachment, task-item/list, embed,
+code-block). Der komplexeste: statt npm `prosemirror-tables` wird die
+**customized GPL-Fork aus dem Upstream vendored** (21 Dateien, Re-pointing der
+Imports auf `@tiptap/pm/*`), weil (a) die Fork Notesnook-spezifische
+Verhaltensänderungen hat (`showResizeHandleOnSelection`-Hover-Handles, Touch +
+Auto-Scroll-Cell-Selection, `isTextSelectionAcrossCells`-Normalize-Fix) und
+(b) npm `prosemirror-tables@1.8.5` eine eigene `prosemirror-view@1.42.1`
+nested hat (Root ist 1.34.2) → `instanceof`-Footgun bei `Decoration`/`NodeView`;
+die Fork läuft gegen `@tiptap/pm/view` = Root-1.34.2 → eine view-Kopie.
+
+**Erledigt & deterministisch verifiziert** (typecheck node+web clean, build
+clean, 57 Contract-Tests grün — 49 + 8 neue table-Cases):
+
+- **Vendored fork** — `extensions/table/prosemirror-tables/` (21 Dateien:
+  `index`/`cellselection`/`columnresizing`/`commands`/`copypaste`/`fixtables`/
+  `input`/`schema`/`tablemap`/`tableview`/`util` + `utils/`-Subfolder). Importe
+  `prosemirror-*` → `@tiptap/pm/*`; out-of-folder-Helfer
+  (`findParentNodeOfTypeClosestToPos` in cellselection, `changedDescendants`
+  in fixtables) → `../../../utils/prosemirror`. **`// @ts-nocheck` pro Datei**
+  (184 Strict-Fehler der Fork unter unserem `noUncheckedIndexedAccess` +
+  `verbatimModuleSyntax` — Renderer + eigener Port-Code bleiben strict; die
+  Fork-Exporte bleiben typisiert für `table.ts`).
+- **TipTap-Nodes** — `Table`/`TableCell`/`TableHeader` Schema/parseHTML/
+  renderHTML **verbatim** vom Upstream (`["table",{style},colgroup,["tbody",0]]`,
+  `["td",attrs,0]`/`["th",attrs,0]`, `colwidth`→`data-colwidth` + Legacy-
+  Migration, Style-Attrs via `addStyleAttribute`). `tableRole` fließt via
+  `extendNodeSchema` in den PM-NodeSpec (core's Default-Schema-Builder hat es
+  NICHT — die Upstream-Override ist pflicht). `TableRow` aus npm
+  `@tiptap/extension-table-row@2.6.6` (neue Dep; Root-`overrides` pinnt 2.6.6).
+- **Vue-Node-View** — `TableComponent.vue` besitzt `<table>`+`<colgroup>`;
+  `<NodeViewContent as="tbody">` ist das contentDOM (ProseMirror owned die
+  Rows). `columnResizing({View:null})` → die Plugin-`init`-Guard überspringt
+  die Node-View-Registrierung → TipTaps `addNodeView` (`VueNodeViewRenderer`)
+  owns das DOM; die Plugin-Decorations (`.column-resize-handle`,
+  `.selectedCell`) + `displayColumnWidth` (läuft via `view.domAtPos`→
+  `parentNode` bis `TABLE`) funktionieren auf dem echten `<table>`.
+  `addProseMirrorPlugins`: `[columnResizing({cellMinWidth, View:null,
+  showResizeHandleOnSelection}), tableEditing({allowTableNodeSelection})]`
+  (columnResizing nur wenn `resizable && isEditable`).
+- **`update`-Callback mit colwidth-Fingerprint** — Upstreams `shouldUpdate`
+  (attrs + childCount + firstChild.childCount) verpasst reine
+  `colwidth`/`colspan`-Änderungen (Resize, Merge/Split) → colgroup wird stale.
+  Fix: Fingerprint aus der ersten Reihe (`colspan:colwidth|`) in den
+  `update`-Vergleich → Resize/Merge re-rendern → `updateColumnsOnResize`
+  re-synct `<col>`. Content-Edits (Tippen in Zelle) ändern weder childCount
+  noch Fingerprint → kein Re-render → kein Caret-Sprung. `updateColumnsOnResize`
+  läuft onMount + `watch(node)` + live beim Drag (`displayColumnWidth`).
+- **Row/Column-Toolbars + Properties-Popups** — `TableRowToolbar`/`
+  TableColumnToolbar` (absolut pos., `editor.on("selectionUpdate",reposition)`,
+  `findSelectedDOMNode` für aktive Row/Cell; Column-Toolbar repositioniert
+  zusätzlich auf `scroll` des `.scroll-bar`-Containers). `+`-Button (Insert
+  row/column) + `⋯`-Button → `RowPropertiesPopup`/`TablePropertiesPopup`
+  (Teleport-to-body `Popover.vue`, fixed-pos, close-on-outside/Esc): Insert/
+  Delete/Move/Toggle-Header für Row+Column, Merge/Split/Toggle-Header-Cell,
+  Background/Text/Border-Color + Border-Width/-Style via `setCellAttribute`.
+  Move-Helfer (`moveRowUp/Down`, `moveColumnLeft/Right`) aus `actions.ts`
+  portiert (CSV-Export/-Import bewusst weggelassen — `file-saver`+`papaparse`+
+  `hasPermission` → Polish).
+- **Helfer** — `utils/prosemirror.ts` um `findParentNodeOfTypeClosestToPos`,
+  `changedDescendants`, `findSelectedDOMNode` ergänzt (verbatim vom Upstream).
+- **Integration** — `Editor.vue` erweitert um `Table.configure({resizable:true,
+  showResizeHandleOnSelection:true})` + `TableRow`/`TableCell`/`TableHeader`;
+  `bootstrap.ts` seeedt eine Table-Willkommens-Note (Header-Row + Body);
+  `style.css` um globale Table-CSS ergänzt (`.selectedCell`, `.column-resize-
+  handle`(+`.active`), `.scroll-bar`, `--default-cell-min-width`, Base-Tabelle,
+  Toolbar-/Popup-Styles — Decorations landen auf Cell-DOM, müssen global sein).
+- **Vertragstest** — `editor-html.spec.ts` um 8 table-Cases erweitert (Header-
+  Row-Round-trip, colspan/rowspan, data-colwidth + width/col-Styles, Legacy-
+  `colwidth`→`data-colwidth`-Migration, Border-Width/-Style, Background-Color
+  idempotent, bare-Table-Defaults idempotent, mixed 2.4h-Seed-Shape).
+
+**Wichtige Erkenntnisse:**
+
+1. **`@tiptap/core@2.6.6`'s Default-Schema-Builder hat kein `tableRole`.** Nur
+   `content/marks/group/inline/atom/selectable/draggable/code/whitespace/
+   defining/isolating/attrs` fließen direkt; `tableRole` kommt NUR via
+   `extendNodeSchema` (extraNodeFields) — die Upstream-Override ist also
+   pflicht, sonst bricht `tableNodeTypes` (die Fork-Helfer nutzen
+   `nodeType.spec.tableRole`).
+2. **`Editor`-Typ-Falle.** `@tiptap/vue-3`'s `Editor`-Export ist die Vue-Subclass
+   (mit `reactiveState`/`contentComponent`/`appContext`); `NodeViewProps.editor`
+   ist aber core's `Editor`. Toolbar-/Popup-Props müssen als `NodeViewProps
+   ["editor"]` (oder `Editor` aus `@tiptap/core`) typisiert sein, sonst
+   "missing reactiveState"-Fehler beim `:editor`-Binding. `actions.ts` nutzt
+   daher `Editor` aus `@tiptap/core` (wie `utils/prosemirror.ts` schon vorher).
+3. **`columnResizing({View:null})` ist der Vue-Pfad.** Die Fork-`init`-Guard
+   `if (View && nodeViews)` überspringt die Plugin-Node-View-Registrierung,
+   sodass TipTaps `addNodeView` (`VueNodeViewRenderer`) owns — ohne dass das
+   Plugin eine konkurrierende Node-View installiert. Decorations + Drag-Math
+   laufen unverändert auf dem echten `<table>`-DOM.
+4. **`@ts-nocheck` pro Fork-Datei statt Strict-Fixes.** 184 Strict-Fehler
+   (`noUncheckedIndexedAccess`+`verbatimModuleSyntax`) in der vendored Fork —
+   per-Hand-`!`-Fixes wären 184 Abweichungen vom Verbatim + Behavior-Risiko. Ein
+   `// @ts-nocheck` pro Datei hält die Engine-Bytes (nur +1 Kommentar-Zeile),
+   lässt Renderer + eigenen Port-Code strict, und die Fork-Exporte bleiben
+   typisiert für `table.ts` (TS liest die Datei, unterdrückt nur Fehler).
+5. **Stile serialisieren mit `;`.** happy-dom gibt `style="width: 600px;"`
+   aus (trailing `;`) — Vertragstest-Assertionen matchen das Substring
+   (`width: 600px`) statt das gequotete `style="..."`.
+
+**Aufgeschoben (Polish, kein Schema-/Round-trip-Risiko):**
+- CSV-Export/-Import (`exportToCSV`/`importCsvToTable`) — `file-saver`+
+  `papaparse`+`hasPermission`/`useToolbarStore` (nicht Teil der Row/Column-
+  Popups).
+- Auto-`fixTables()` beim Content-Load (korrupte/Legacy-Table-Reparatur).
+- `@notesnook/intl`-Strings → hardcoded EN (Phase 7). `getPosition`-Parität
+  mit `@notesnook/ui`-Offsets → minimale Positionierung reicht; verfeinern in
+  Phase 2.5 (shared Toolbar/Popover-Infra). Mobile/Touch-Cell-Selection-
+  Auto-Scroll (`.scroll-bar`-Ancestor-Walk) → desktop-first, Fork-Touch-Code
+  bleibt, auf Touch ungetestet. Perf (`update`-Re-render-Scope) → Phase 7.
+
+**Offen (User-Maschine):** Runtime-Check `npm run dev` — Tabelle rendern, in
+Zellen tippen, Tab/Shift-Tab/Pfeil navigieren, Zellen drag-selecten
+(`.selectedCell`), Column-Resize-Handle ziehen (Hover rechte Kante der
+selektierten Spalte → live Preview, persistiert on Release), Row/Column-`+`
++ `⋯`-Toolbars (Insert/Delete/Move/Toggle-Header/Merge/Split/Color/Border),
+Edits persistieren (Neustart). In dieser Session nicht gestartet (Electron-
+GUI). Code fertig + deterministisch verifiziert (typecheck + build + 57
+Contract-Tests).
+
+**Nächster Schritt:** 2.4e `image` (Phase-6-gated — braucht Login/Attachments-
+Auth) oder 2.2 (Tailwind-Token-Adapter, parallel) oder Login-Logik
+(Phase-6-Prerequisite, entblockt audio/web-clip/image). Node-View-Port
+komplett für die nicht-Phase-6-gated Nodes.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c (editor-vue: attachment/task-item/task-list/embed/code-block). 49 Contract-Tests grün (36 + 13 editor-html round-trip), typecheck (node+web) + build clean. Editor nutzt `@notesnook-vue/editor-vue`-Nodes (StarterKit-codeBlock deaktiviert); Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; refractor-Highlighting mit 297 lazy-Literal-Import-Thunks. Runtime-Check `npm run dev` offen. Bereit für 2.4e/2.4h, 2.2, oder Login (Phase-6-Prerequisite)._
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/h (editor-vue: attachment/task-item/task-list/embed/code-block/table). 57 Contract-Tests grün (36 + 21 editor-html round-trip), typecheck (node+web) + build clean. Editor nutzt `@notesnook-vue/editor-vue`-Nodes (StarterKit-codeBlock deaktiviert); Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; refractor-Highlighting mit 297 lazy-Literal-Import-Thunks; table via vendored prosemirror-tables-Fork (`@ts-nocheck` pro Datei) + `columnResizing({View:null})`/Vue-Node-View + Row/Column-Toolbars + Properties-Popups. Runtime-Check `npm run dev` offen. Node-View-Port für nicht-Phase-6-gated Nodes komplett; bereit für 2.4e (Phase-6-gated), 2.2 (Tailwind-Token-Adapter), oder Login (Phase-6-Prerequisite)._

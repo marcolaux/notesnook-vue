@@ -15,7 +15,17 @@
 import { ref, watch, onBeforeUnmount } from "vue";
 import { useEditor, EditorContent } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
-import { AttachmentNode, TaskItemNode, TaskListNode, EmbedNode, CodeBlock } from "@notesnook-vue/editor-vue";
+import {
+  AttachmentNode,
+  TaskItemNode,
+  TaskListNode,
+  EmbedNode,
+  CodeBlock,
+  Table,
+  TableRow,
+  TableCell,
+  TableHeader
+} from "@notesnook-vue/editor-vue";
 import { useNotesStore } from "@/stores/notes";
 
 const notes = useNotesStore();
@@ -25,6 +35,9 @@ const notes = useNotesStore();
 // StarterKit's plain `codeBlock` is disabled in favour of our refractor-backed
 // `codeblock` (syntax highlighting + lazy language loading + indent/caret
 // tracking); both can't own the ```/~~~ input rules at once.
+// Table (2.4h) is configured resizable + showResizeHandleOnSelection: the
+// vendored columnResizing plugin draws the resize handles; the Vue
+// TableComponent owns the <table>/<colgroup>/<tbody> via addNodeView.
 const editor = useEditor({
   extensions: [
     StarterKit.configure({ codeBlock: false }),
@@ -32,7 +45,11 @@ const editor = useEditor({
     TaskListNode,
     TaskItemNode.configure({ nested: true }),
     EmbedNode,
-    CodeBlock
+    CodeBlock,
+    Table.configure({ resizable: true, showResizeHandleOnSelection: true }),
+    TableRow,
+    TableCell,
+    TableHeader
   ],
   content: notes.activeContent || "",
   autofocus: false,

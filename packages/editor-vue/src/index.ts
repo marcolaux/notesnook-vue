@@ -24,4 +24,15 @@ export type { EmbedOptions, EmbedAttributes, EmbedAlignmentOptions, EmbedSizeOpt
 export { CodeBlock, backtickInputRegex, tildeInputRegex, setLastUsedLanguage } from "./extensions/code-block/code-block";
 export type { CodeBlockAttributes, CodeBlockOptions } from "./extensions/code-block/code-block";
 
+// Table node-views (2.4h). `TableRow` is the standard TipTap extension (npm);
+// `Table`/`TableCell`/`TableHeader` are ported from @notesnook/editor with the
+// vendored prosemirror-tables fork (see extensions/table/prosemirror-tables).
+export { Table } from "./extensions/table/table";
+export type { TableOptions } from "./extensions/table/table";
+export { TableCell } from "./extensions/table-cell/table-cell";
+export type { TableCellOptions } from "./extensions/table-cell/table-cell";
+export { TableHeader } from "./extensions/table-header/table-header";
+export type { TableHeaderOptions } from "./extensions/table-header/table-header";
+export { TableRow } from "@tiptap/extension-table-row";
+
 export { getSandboxFeatures } from "./utils/sandbox";

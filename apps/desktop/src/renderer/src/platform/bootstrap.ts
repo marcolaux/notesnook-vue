@@ -88,6 +88,18 @@ async function seedIfEmpty(db: Database): Promise<void> {
       data: '<p>A code block with refractor syntax highlighting (grammar lazy-loads on first render):</p><pre class="language-typescript" data-indent-type="space" data-indent-length="2"><code>function greet(name: string): string {\n  return `Hello, ${name}!`;\n}</code></pre><p>Type ``` or ~~~ followed by a language name to create one; the toolbar lets you switch language, toggle spaces/tabs, and copy.</p>'
     }
   });
+  // Phase 2.4h demo — a table node-view. Drag-select cells, Tab/arrow-key
+  // navigate, drag a column-resize handle (hover the right edge of the
+  // selected column), and use the row/column "+" + "⋯" toolbars for
+  // insert/delete/move/toggle-header/merge/split/color/border. The first column
+  // carries data-colwidth so resizing is exercised on load.
+  await db.notes.add({
+    title: "Phase 2.4h table node-view",
+    content: {
+      type: "tiptap",
+      data: '<p>A table node renders editable cells with column-resize handles and row/column toolbars:</p><table><tbody><tr><th>Feature</th><th>Status</th></tr><tr><td>Cell editing</td><td>works</td></tr><tr><td>Tab navigation</td><td>works</td></tr><tr><td>Column resize</td><td>drag the handle</td></tr><tr><td>Row/column toolbars</td><td>⋯ for properties</td></tr></tbody></table><p>Select a cell to reveal the toolbars; the column toolbar sits above the active cell, the row toolbar to its left.</p>'
+    }
+  });
 }
 
 /** Returns the initialised Database singleton. Throws if bootstrap hasn't run. */

@@ -73,3 +73,141 @@ body,
   background: none;
   padding: 0;
 }
+
+/* Table node-view (Phase 2.4h). The `.selectedCell` / `.column-resize-handle`
+   decorations are drawn by the vendored columnResizing/tableEditing plugins on
+   the cell DOM, so they must be global (not scoped to the Vue component). */
+.ProseMirror .table-node {
+  position: relative;
+}
+.ProseMirror .table-node .scroll-bar {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+.ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0.75rem 0;
+}
+.ProseMirror td,
+.ProseMirror th {
+  border: 1px solid var(--color-border);
+  padding: 0.35rem 0.5rem;
+  vertical-align: top;
+  position: relative;
+  min-width: var(--default-cell-min-width, 25px);
+}
+.ProseMirror th {
+  background: color-mix(in oklab, white 8%, transparent);
+  font-weight: 600;
+  text-align: left;
+}
+/* Cell-selection highlight (CellSelection decorations). */
+.ProseMirror .selectedCell {
+  background: color-mix(in oklab, var(--color-accent) 25%, transparent);
+}
+/* Column-resize handle (columnResizing widget decoration). Hover/active also
+   reveal it (the fork's showResizeHandleOnSelection behaviour). */
+.ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.ProseMirror .column-resize-handle.active,
+.ProseMirror .column-resize-handle:hover {
+  background: color-mix(in oklab, var(--color-accent) 60%, transparent);
+}
+
+/* Row/column toolbars + properties popups (Phase 2.4h). */
+.tb-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklab, black 40%, transparent);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tb-btn:hover {
+  background: color-mix(in oklab, var(--color-accent) 40%, transparent);
+}
+.tb-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.table-row-toolbar,
+.table-col-toolbar {
+  gap: 2px;
+  opacity: 0.6;
+  transition: opacity 120ms;
+}
+.table-row-toolbar:hover,
+.table-col-toolbar:hover {
+  opacity: 1;
+}
+.table-popover {
+  position: fixed;
+  z-index: 50;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: color-mix(in oklab, black 70%, transparent);
+  backdrop-filter: blur(var(--backdrop-blur-base));
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+}
+.pop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: transparent;
+  color: var(--color-text);
+  border: none;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+}
+.pop-item:hover {
+  background: color-mix(in oklab, white 10%, transparent);
+}
+.pop-item input,
+.pop-item select {
+  margin-left: auto;
+  height: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: color-mix(in oklab, black 40%, transparent);
+  color: var(--color-text);
+  font-size: 12px;
+}
+.pop-color input[type="color"] {
+  width: 26px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.pop-sep {
+  height: 1px;
+  margin: 3px 4px;
+  background: var(--color-border);
+}
