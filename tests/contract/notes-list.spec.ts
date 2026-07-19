@@ -6,6 +6,7 @@ import {
   sortNotes,
   groupNotes,
   dateBucket,
+  highlightSegments,
   DEFAULT_SORT_KEY,
   DEFAULT_SORT_DIR,
   DEFAULT_GROUP_KEY
@@ -333,5 +334,86 @@ describe("notes store grouping", () => {
     expect(notes.groupKey).toBe("date");
     notes.setGroupKey("none");
     expect(notes.groupKey).toBe("none");
+  });
+});
+
+describe("highlightSegments", () => {
+  it("empty query → one plain segment", () => {
+    expect(highlightSegments("Hello world", "", { regex: false })).toEqual([
+      { text: "Hello world", match: false }
+    ]);
+  });
+
+  it("empty text → one plain segment", () => {
+    expect(highlightSegments("", "foo", { regex: false })).toEqual([{ text: "", match: false }]);
+  });
+
+  it("plain highlights every case-insensitive occurrence", () => {
+    expect(highlightSegments("Foo bar foo BAZ", "foo", { regex: false })).toEqual([
+      { text: "Foo", match: true },
+      { text: " bar ", match: false },
+      { text: "foo", match: true },
+      { text: " BAZ", match: false }
+    ]);
+  });
+
+  it("no match → one plain segment with full text", () => {
+    expect(highlightSegments("Hello world", "zzz", { regex: false })).toEqual([
+      { text: "Hello world", match: false }
+    ]);
+  });
+
+  it("trims the query (whitespace-only = no highlight)", () => {
+    expect(highlightSegments("Hello world", "   ", { regex: false })).toEqual([
+      { text: "Hello world", match: false }
+    ]);
+  });
+
+  it("regex highlights all matches (case-sensitive like filterNotes)", () => {
+    expect(highlightSegments("a1b2 a1b2", "a1", { regex: true })).toEqual([
+      { text: "a1", match: true },
+      { text: "b2 ", match: false },
+      { text: "a1", match: true },
+      { text: "b2", match: false }
+    ]);
+  });
+
+  it("regex alternation highlights each branch", () => {
+    expect(highlightSegments("cat dog bird", "cat|dog", { regex: true })).toEqual([
+      { text: "cat", match: true },
+      { text: " ", match: false },
+      { text: "dog", match: true },
+      { text: " bird", match: false }
+    ]);
+  });
+
+  it("invalid regex falls back to plain substring", () => {
+    const seg = highlightSegments("a(b", "(b", { regex: true });
+    expect(seg).toEqual([
+      { text: "a", match: false },
+      { text: "(b", match: true }
+    ]);
+  });
+
+  it("zero-length-only regex does not loop or emit empty matches", () => {
+    // `(?=.)` matches the empty position before every char → three zero-length
+    // matches on "abc". Must not infinite-loop and must not emit spurious
+    // empty <mark> runs; the whole text stays one plain segment.
+    const seg = highlightSegments("abc", "(?=.)", { regex: true });
+    expect(seg).toEqual([{ text: "abc", match: false }]);
+  });
+
+  it("greedy quantifier matches the non-empty run", () => {
+    // `a*` matches "a" at the start (one char), not the empty position.
+    expect(highlightSegments("abc", "a*", { regex: true })).toEqual([
+      { text: "a", match: true },
+      { text: "bc", match: false }
+    ]);
+  });
+
+  it("regex matching whole text emits one match segment", () => {
+    expect(highlightSegments("hello", "hel+o", { regex: true })).toEqual([
+      { text: "hello", match: true }
+    ]);
   });
 });

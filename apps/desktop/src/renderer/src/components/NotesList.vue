@@ -3,7 +3,7 @@ import { ref, watch, computed } from "vue";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
 import { useShellStore } from "@/stores/shell";
-import { groupNotes, type SortKey, type GroupKey } from "@/utils/notes-list";
+import { groupNotes, highlightSegments, type SortKey, type GroupKey } from "@/utils/notes-list";
 import type { NotePreview } from "@/utils/note-preview";
 
 const notes = useNotesStore();
@@ -26,6 +26,12 @@ function progressWidth(preview: NotePreview): number {
   const c = preview.checklist;
   if (!c || c.total === 0) return 0;
   return (c.checked / c.total) * 100;
+}
+
+/** Search-match segments for a note field (empty query → one plain run, so
+ * the `<mark>` only renders while a search is active). */
+function segmentsOf(text: string): { text: string; match: boolean }[] {
+  return highlightSegments(text, notes.query, { regex: notes.regexSearch });
 }
 
 /** Clear the active collection filter (chip × or "All Notes"). */
@@ -189,7 +195,12 @@ watch(
           <div class="flex items-center gap-1">
             <span v-if="note.pinned" class="text-[10px] text-amber-300/80" title="Pinned">📌</span>
             <span v-if="note.favorite" class="text-[10px] text-rose-300/80" title="Favorite">★</span>
-            <span class="truncate text-xs font-medium text-white/90">{{ note.title }}</span>
+            <span class="truncate text-xs font-medium text-white/90">
+              <template v-for="(seg, i) in segmentsOf(note.title)" :key="i">
+                <mark v-if="seg.match" class="rounded-sm bg-amber-400/30 px-0.5 text-white">{{ seg.text }}</mark>
+                <template v-else>{{ seg.text }}</template>
+              </template>
+            </span>
           </div>
           <div class="mt-1 flex items-start gap-2">
             <!-- First-image thumbnail (attachment-backed images resolve in Phase 6). -->
@@ -201,7 +212,15 @@ watch(
               draggable="false"
             />
             <div class="min-w-0 flex-1">
-              <div class="truncate text-[10px] text-white/40">{{ note.headline || "No additional text" }}</div>
+              <div class="truncate text-[10px] text-white/40">
+                <template v-if="note.headline">
+                  <template v-for="(seg, i) in segmentsOf(note.headline)" :key="i">
+                    <mark v-if="seg.match" class="rounded-sm bg-amber-400/30 px-0.5 text-white/70">{{ seg.text }}</mark>
+                    <template v-else>{{ seg.text }}</template>
+                  </template>
+                </template>
+                <template v-else>No additional text</template>
+              </div>
               <!-- Checklist progress bar (x / y checked). -->
               <div
                 v-if="previewOf(note.id)?.checklist && previewOf(note.id)!.checklist!.total > 0"

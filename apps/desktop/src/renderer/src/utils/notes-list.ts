@@ -144,6 +144,83 @@ function plainFilter(items: readonly NoteListItem[], q: string): NoteListItem[] 
 }
 
 /**
+ * A run of text from {@link highlightSegments}: either plain text or a
+ * search-query match (rendered as a `<mark>` by the list).
+ */
+export interface HighlightSegment {
+  text: string;
+  match: boolean;
+}
+
+/**
+ * Split `text` into segments, marking every occurrence of the search query so
+ * the list can render matched substrings as a `<mark>`. Mirrors {@link
+ * filterNotes}'s semantics: empty query → one plain segment; regex mode uses a
+ * global `gu` RegExp (invalid pattern falls back to plain substring); plain
+ * mode is case-insensitive across all occurrences. Never throws — a bad regex
+ * degrades to the plain path rather than emptying the list.
+ */
+export function highlightSegments(
+  text: string,
+  query: string,
+  { regex }: SearchOptions
+): HighlightSegment[] {
+  const q = query.trim();
+  if (q === "" || text === "") return [{ text, match: false }];
+  if (regex) {
+    let re: RegExp;
+    try {
+      re = new RegExp(q, "gu");
+    } catch {
+      return plainHighlight(text, q);
+    }
+    return regexHighlight(text, re);
+  }
+  return plainHighlight(text, q);
+}
+
+function plainHighlight(text: string, q: string): HighlightSegment[] {
+  const lower = text.toLowerCase();
+  const needle = q.toLowerCase();
+  const out: HighlightSegment[] = [];
+  let i = 0;
+  for (;;) {
+    const idx = lower.indexOf(needle, i);
+    if (idx === -1) {
+      if (i < text.length) out.push({ text: text.slice(i), match: false });
+      break;
+    }
+    if (idx > i) out.push({ text: text.slice(i, idx), match: false });
+    out.push({ text: text.slice(idx, idx + needle.length), match: true });
+    i = idx + needle.length;
+  }
+  return out;
+}
+
+function regexHighlight(text: string, re: RegExp): HighlightSegment[] {
+  const out: HighlightSegment[] = [];
+  let last = 0;
+  re.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const start = m.index;
+    const matched = m[0];
+    if (matched === "") {
+      // Zero-length match (e.g. `a*`): advance to avoid an infinite loop and
+      // emit nothing — the skipped char reappears in the next non-match run.
+      re.lastIndex = start + 1;
+      continue;
+    }
+    const end = start + matched.length;
+    if (start > last) out.push({ text: text.slice(last, start), match: false });
+    out.push({ text: matched, match: true });
+    last = end;
+  }
+  if (last < text.length) out.push({ text: text.slice(last), match: false });
+  return out;
+}
+
+/**
  * Sort by the given key + direction. **Pinned notes are always kept on top**
  * (within their group, the sort still applies) — matches Notesnook's sticky
  * pinned-note behaviour and is independent of the chosen sort key/direction.
