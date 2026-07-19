@@ -5,6 +5,7 @@ import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
 import { useAuthStore } from "@/stores/auth";
 import { useStatusStore } from "@/stores/status";
+import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { bootstrap } from "@/platform/bootstrap";
 import { useCommandPalette } from "@/composables/use-command-palette";
 import CommandPalette from "@/components/CommandPalette.vue";
@@ -16,6 +17,7 @@ const bootError = ref<string>("");
 
 const auth = useAuthStore();
 const status = useStatusStore();
+const editorLayout = useEditorLayoutStore();
 
 // Command palette hotkey (Ctrl/Cmd+Shift+P) toggles the palette store; the
 // <CommandPalette> overlay below renders the store's items.
@@ -27,6 +29,10 @@ onMounted(async () => {
   try {
     await bootstrap();
     await auth.init();
+    // Initialise the editor-layout store (root group) so the single-pane
+    // editor has a group to open tabs in. Idempotent. Multi-pane splits are
+    // Phase 4.2/4.3 (on-site).
+    editorLayout.init();
     // Bind sync events once (idempotent) and seed the status bar's sync
     // state from `db.lastSynced()`; safe even when not logged in — the view
     // renders "Local only" until login, and `refreshSync` only queries the

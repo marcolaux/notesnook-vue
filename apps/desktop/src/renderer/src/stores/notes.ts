@@ -18,6 +18,7 @@ import {
   type NotePreview
 } from "@/utils/note-preview";
 import type { CollectionType } from "@/stores/collections";
+import { useEditorLayoutStore } from "@/stores/editor-layout";
 
 /** A collection filter applied to the notes list (sidebar selection). The
  * `noteIds` set is resolved up-front from `@notesnook/core` (notebooks via
@@ -40,7 +41,13 @@ export interface NoteListItem {
   favorite: boolean;
 }
 
-interface EditorTab {
+/**
+ * A tab as the editor tab-bar renders it: the layout store owns the tab's
+ * identity + history; `title` is joined from the notes list here. This is a
+ * *view* shape — no tab state is owned by the notes store (Phase 4.1
+ * migration: tabs live in the editor-layout store).
+ */
+export interface EditorTab {
   id: string;
   noteId: string;
   title: string;
@@ -69,11 +76,20 @@ function toListItem(n: Note): NoteListItem {
  * Content (the note body) is fetched separately via `database.content
  * .findByNoteId` and stored as HTML. Phase-2 spike: round-trips through a
  * TipTap editor in `Editor.vue`.
+ *
+ * Tab/pane bookkeeping is delegated to the editor-layout store (Phase 4.1):
+ * this store owns note *data* only (items, content, previews, list view
+ * state). The `openTabs`/`activeTabId`/`activeTab`/`activeNote`/`selectNote`/
+ * `openTab`/`closeTab` API is kept as a facade so existing consumers
+ * (`Editor.vue`, `NotesList.vue`, `app-commands.ts`) compile unchanged while
+ * the real tab state lives in the layout store.
  */
 export const useNotesStore = defineStore("notes", () => {
   const items = ref<NoteListItem[]>([]);
-  const openTabs = ref<EditorTab[]>([]);
-  const activeTabId = ref<string | null>(null);
+
+  // Tab state lives in the editor-layout store (Phase 4.1). The fields below
+  // are facades over it so consumers don't change.
+  const layout = useEditorLayoutStore();
 
   /** HTML content of the active note (`""` when empty / not yet loaded). */
   const activeContent = ref<string>("");
@@ -116,34 +132,40 @@ export const useNotesStore = defineStore("notes", () => {
     return sortNotes(filterNotes(base, query.value, { regex: regexSearch.value }), sortKey.value, sortDir.value);
   });
 
-  const activeTab = computed(() => openTabs.value.find((t) => t.id === activeTabId.value) ?? null);
-  const activeNote = computed(() =>
-    items.value.find((n) => n.id === activeTab.value?.noteId) ?? null
+  /** Title for a note id, joined from the items list ("Untitled" fallback). */
+  function titleOf(noteId: string): string {
+    return items.value.find((n) => n.id === noteId)?.title ?? "Untitled";
+  }
+
+  /** Tabs in the active group, joined with titles for the tab bar. */
+  const openTabs = computed<EditorTab[]>(() =>
+    layout.tabsOf(layout.activeGroupId).map((t) => ({ id: t.id, noteId: t.noteId, title: titleOf(t.noteId) }))
   );
 
+  const activeTabId = computed<string | null>(() => layout.activeTab?.id ?? null);
+
+  const activeTab = computed<EditorTab | null>(() => {
+    const t = layout.activeTab;
+    return t ? { id: t.id, noteId: t.noteId, title: titleOf(t.noteId) } : null;
+  });
+
+  const activeNote = computed(() =>
+    items.value.find((n) => n.id === (layout.activeTab?.noteId ?? "")) ?? null
+  );
+
+  /** Open (or reuse) a tab for a note in the active group. */
   function openTab(note: Pick<NoteListItem, "id" | "title">): void {
-    const existing = openTabs.value.find((t) => t.noteId === note.id);
-    if (existing) {
-      activeTabId.value = existing.id;
-      return;
-    }
-    const tab: EditorTab = { id: crypto.randomUUID(), noteId: note.id, title: note.title };
-    openTabs.value.push(tab);
-    activeTabId.value = tab.id;
+    layout.openNote(note.id);
   }
 
+  /** Close a tab by id (delegates to the layout store). */
   function closeTab(tabId: string): void {
-    const idx = openTabs.value.findIndex((t) => t.id === tabId);
-    if (idx === -1) return;
-    openTabs.value.splice(idx, 1);
-    if (activeTabId.value === tabId) {
-      activeTabId.value = openTabs.value[idx - 1]?.id ?? openTabs.value[0]?.id ?? null;
-    }
+    layout.closeTab(tabId);
   }
 
+  /** Open a note by id (the NotesList click handler). */
   function selectNote(id: string): void {
-    const item = items.value.find((n) => n.id === id);
-    if (item) openTab(item);
+    layout.openNote(id);
   }
 
   /** Update the search query (plain or regex per `regexSearch`). */
@@ -248,13 +270,12 @@ export const useNotesStore = defineStore("notes", () => {
     }
   }
 
-  /** Create a new note, reload, and open it in a tab. */
+  /** Create a new note, reload, and open it in a tab (via the layout store). */
   async function create(): Promise<void> {
     const db = getDatabase();
     const id = await db.notes.add({ title: "New note" });
     await load();
-    const item = items.value.find((n) => n.id === id);
-    if (item) openTab(item);
+    layout.openNote(id);
   }
 
   /**

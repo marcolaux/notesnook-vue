@@ -123,6 +123,17 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     return splitGroupAt(activeGroupId.value, direction);
   }
 
+  /**
+   * Open `noteId` in the active group (reuse-or-create), initialising the
+   * root group first if the store hasn't been {@link init}ed yet. This is the
+   * single-pane entry point the notes-store facade and the NotesList use; the
+   * explicit-`groupId` {@link openTab} is for future multi-pane callers.
+   */
+  function openNote(noteId: string): string {
+    if (layout.value === null) init();
+    return openTab(activeGroupId.value, noteId);
+  }
+
   /** Split an arbitrary group; returns the new group id (and focuses it). */
   function splitGroupAt(groupId: string, direction: Direction = "vertical"): string {
     if (layout.value === null || !groups.value[groupId]) return "";
@@ -317,6 +328,16 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     return id ? tabs.value[id] ?? null : null;
   });
 
+  /** The note id of the active tab (or `null` when no tab is open). The
+   * notes-store facade reads this to derive `activeNote`. */
+  const activeNoteId = computed<string | null>(() => activeTab.value?.noteId ?? null);
+
+  /** Close the active tab (no-op when none is open). */
+  function closeActiveTab(): void {
+    const id = activeTab.value?.id;
+    if (id) closeTab(id);
+  }
+
   /** Tabs in a group, in insertion order. */
   function tabsOf(groupId: string): EditorTab[] {
     return Object.values(tabs.value).filter((t) => t.groupId === groupId);
@@ -332,14 +353,17 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     topRightGroupId,
     hasSplitLayout,
     activeTab,
+    activeNoteId,
     init,
     registerSession,
     splitGroup,
     splitGroupAt,
     closeGroup,
+    openNote,
     openTab,
     navigateTab,
     closeTab,
+    closeActiveTab,
     activateTab,
     setActiveGroup,
     moveTab,
