@@ -21,6 +21,11 @@ export type { TaskListAttributes } from "./extensions/task-list/types";
 export { EmbedNode } from "./extensions/embed/embed";
 export type { EmbedOptions, EmbedAttributes, EmbedAlignmentOptions, EmbedSizeOptions, Embed } from "./extensions/embed/types";
 
+// Image node-view (2.4e). The blob path is Phase-6-gated (attachments auth);
+// images with an inline `src` (data URL / external URL) render immediately.
+export { ImageNode } from "./extensions/image/image";
+export type { ImageOptions, ImageAttributes, ImageAlignmentOptions, ImageSize, ImageAttachment } from "./extensions/image/types";
+
 export { CodeBlock, backtickInputRegex, tildeInputRegex, setLastUsedLanguage } from "./extensions/code-block/code-block";
 export type { CodeBlockAttributes, CodeBlockOptions } from "./extensions/code-block/code-block";
 

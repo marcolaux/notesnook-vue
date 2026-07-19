@@ -24,6 +24,7 @@ import {
   TaskItemNode,
   TaskListNode,
   EmbedNode,
+  ImageNode,
   CodeBlock,
   Table,
   TableRow,
@@ -39,6 +40,7 @@ const editor = new Editor({
     TaskListNode,
     TaskItemNode.configure({ nested: true }),
     EmbedNode,
+    ImageNode,
     CodeBlock,
     // Table (2.4h) — mirrors Editor.vue. The columnResizing/tableEditing
     // plugins are installed but inert here (no transactions during parse/
@@ -294,5 +296,78 @@ describe("editor node-view round-trip (2.4a + 2.4b + 2.4c + 2.4h)", () => {
     expect(out).toContain('src="https://example.com/embed"');
     expect(out).toContain('class="language-typescript"');
     expect(out).toContain("Row/col toolbars");
+  });
+
+  // --- 2.4e: image node-view round-trip ---------------------------------------
+  // Image renderHTML emits `<img src width height data-align data-hash
+  // data-filename data-mime data-size data-aspect-ratio>`. `align` uses
+  // `getDataAttribute` (→ `data-align`), unlike the embed port's plain `align`.
+  // A bare `<img>` gains `data-aspect-ratio="1"` on first round-trip (the
+  // aspectRatio `parseHTML` falls back to 1, and 1 is truthy → renders) and is
+  // then idempotent — upstream-faithful behaviour.
+
+  it("image preserves src/width/height + data-align + data-aspect-ratio", () => {
+    const html =
+      '<img src="https://example.com/cat.png" width="480" height="320" data-align="center" data-aspect-ratio="1.5">';
+    const out = roundTrip(html);
+    expect(out).toContain('src="https://example.com/cat.png"');
+    expect(out).toContain('width="480"');
+    expect(out).toContain('height="320"');
+    expect(out).toContain('data-align="center"');
+    expect(out).toContain('data-aspect-ratio="1.5"');
+    expect((out.match(/<img /g) || []).length).toBe(1);
+  });
+
+  it("image preserves attachment data-hash/filename/mime/size", () => {
+    const html =
+      '<img src="data:image/png;base64,iVBORw0KGgo=" data-hash="img-001" data-filename="cat.png" data-mime="image/png" data-size="1024" width="240" height="120">';
+    const out = roundTrip(html);
+    expect(out).toContain('data-hash="img-001"');
+    expect(out).toContain('data-filename="cat.png"');
+    expect(out).toContain('data-mime="image/png"');
+    expect(out).toContain('data-size="1024"');
+    expect(out).toContain('src="data:image/png;base64,iVBORw0KGgo="');
+  });
+
+  it("bare image gains data-aspect-ratio default and is idempotent (upstream shape)", () => {
+    const html = '<img src="https://example.com/bare.png">';
+    const out = roundTrip(html);
+    expect(out).toContain('src="https://example.com/bare.png"');
+    // aspectRatio parseHTML falls back to 1 → rendered (truthy)
+    expect(out).toContain('data-aspect-ratio="1"');
+    // no width/height/align when unset
+    expect(out).not.toContain("width=");
+    expect(out).not.toContain("height=");
+    expect(out).not.toContain("data-align");
+    // second pass is stable
+    expect(roundTrip(out)).toBe(out);
+  });
+
+  it("image migrates a <p>-wrapped inline image into a block image (skip rule)", () => {
+    // upstream migration: a <p> containing an <img> is skipped so the image
+    // parses as a block node, not as paragraph content.
+    const html = '<p><img src="https://example.com/in-p.png"></p>';
+    const out = roundTrip(html);
+    expect(out).toContain("<img");
+    // the wrapping <p> is dropped — the image is a top-level block
+    expect(out).not.toContain("<p>");
+    expect((out.match(/<img /g) || []).length).toBe(1);
+  });
+
+  it("a <p> without an image still parses as a normal paragraph (skip rule guard)", () => {
+    const html = "<p>just text</p>";
+    const out = roundTrip(html);
+    expect(out).toContain("<p>just text</p>");
+    expect(out).not.toContain("<img");
+  });
+
+  it("image + checklist + embed round-trip together (2.4e seed-shape)", () => {
+    const html =
+      '<p>Demo</p><img src="https://example.com/pic.png" width="240" height="120" data-align="center"><ul class="checklist" data-title="2.4e progress"><li class="checklist--item checked"><p>Lazy blob load</p></li></ul><iframe src="https://example.com/embed" width="480" height="270"></iframe>';
+    const out = roundTrip(html);
+    expect(out).toContain('src="https://example.com/pic.png"');
+    expect(out).toContain('data-align="center"');
+    expect(out).toContain('data-title="2.4e progress"');
+    expect(out).toContain('src="https://example.com/embed"');
   });
 });

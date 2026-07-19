@@ -108,6 +108,19 @@ async function seedIfEmpty(db: Database): Promise<void> {
       data: '<p>A table node renders editable cells with column-resize handles and row/column toolbars:</p><table><tbody><tr><th>Feature</th><th>Status</th></tr><tr><td>Cell editing</td><td>works</td></tr><tr><td>Tab navigation</td><td>works</td></tr><tr><td>Column resize</td><td>drag the handle</td></tr><tr><td>Row/column toolbars</td><td>⋯ for properties</td></tr></tbody></table><p>Select a cell to reveal the toolbars; the column toolbar sits above the active cell, the row toolbar to its left.</p>'
     }
   });
+  // Phase 2.4e demo — an image node-view. The seed uses an inline SVG data URL
+  // (allowBase64) so it renders immediately without the Phase-6 attachments
+  // auth / blob path. Select it to reveal the bottom-right resize handle
+  // (aspect-ratio locked) and the drag handle. `data-align` + width/height +
+  // data-aspect-ratio round-trip byte-for-byte; the in-node align/properties
+  // toolbar arrives with the editor toolbar (Phase 2.5).
+  await db.notes.add({
+    title: "Phase 2.4e image node-view",
+    content: {
+      type: "tiptap",
+      data: '<p>An image node renders a lazily-loaded, resizable image (select it to drag-resize from the bottom-right corner):</p><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNDAiIGhlaWdodD0iMTIwIj48cmVjdCB3aWR0aD0iMjQwIiBoZWlnaHQ9IjEyMCIgcng9IjEwIiBmaWxsPSIjNGY0NmU1Ii8+PHRleHQgeD0iMTIwIiB5PSI2OCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTYiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj4yLjRlIGltYWdlIG5vZGU8L3RleHQ+PC9zdmc+" width="240" height="120" data-align="center" data-aspect-ratio="2"><p>Attachment-backed images (a <code>hash</code> with no inline <code>src</code>) lazy-load their blob via the Phase-6 attachments bridge; until then a placeholder is shown.</p>'
+    }
+  });
 }
 
 /** Returns the initialised Database singleton. Throws if bootstrap hasn't run. */
