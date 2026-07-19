@@ -203,20 +203,41 @@ vollständiger Toolbar.
 - ✅ Pinia, Vue Router (noch nicht aktiv), TipTap 2.6.6 + `@tiptap/vue-3`
 - ✅ `@notesnook/*` als npm-Dependencies installiert (alle außer `intl`, `desktop`)
 - ✅ Electron-Main mit frameless Window + macOS `vibrancy: "under-window"`
-- ✅ Preload via `contextBridge`: `appEvents` (4 Listener) + `os`
+- ✅ Preload via `contextBridge`: `appEvents` (4 Listener) + `os` + `electronTRPC`
+  (tRPC-Bridge via `exposeElectronTRPC`)
 - ✅ tRPC `AppRouter`-Vertrag in `apps/desktop/src/contracts/router.ts`
-  (window/sqlite/updater — wird pro Feature ergänzt)
-- ✅ Renderer-Shell: `TitleBar`, `Sidebar`, `NotesList`, `Editor` (Placeholder)
-- ✅ Pinia `notes`-Store als Stub (UI render-bar, API fehlt noch)
+  mit echten Prozeduren: `ping`, `log`, `window`, `sqlite` (open/run/close/
+  delete), `compress` (gzip/gunzip), `safeStorage` (set/get/remove),
+  `fs` (10 Chunk-Store-Methoden), `updater` (Stub). Registry-Pattern: Main
+  registriert Impls, Renderer importiert nur den Typ.
+- ✅ Renderer-Shell: `TitleBar`, `Sidebar`, `NotesList` (echte Notes), `Editor`
+  (aktive Note, read-only bis Phase 2), `App.vue` (Boot-Overlay)
+- ✅ **Phase-1-Plattform-Seam** in `apps/desktop/src/renderer/src/platform/`:
+  `desktop-bridge.ts` (lazy tRPC-Client), `sqlite-dialect.ts` (Kysely-Dialect
+  → `sqlite.run`), `compressor.ts`, `key-store.ts` (safeStorage), `key-value.ts`
+  (IndexedDB), `nncrypto.ts` (sodium), `storage.ts` (NNStorage), `file-store.ts`
+  + `fs.ts` (FileStorage), `database.ts` (`initDatabase`-DI + `createDesktopPlatform`),
+  `bootstrap.ts` (Ping → DB-Init → Seed), `stub-storage.ts`/`stub-fs.ts` (Gate-Stubs)
+- ✅ Pinia `notes`-Store **echt**: `load()` → `database.notes.all().items()`,
+  `create()`, `selectNote()`, `activeNote`
+- ✅ Main-Prozess: `ipc.ts`, `sqlite.ts`, `compress.ts`, `safe-storage.ts`,
+  `file-storage.ts` (alle via Registry-Pattern in `contracts/router.ts`)
 - ✅ `packages/contracts` als Single-Source-of-Truth für Notesnook-Typen
   - `DatabaseOptions` / `SQLiteOptions` / `FileStorageAccessor` via
     `Parameters<Database["setup"]>[0]` abgeleitet — robust gegen Renames
-- ✅ Vertragstest-Suite `tests/contract/core-surface.spec.ts` (7 Specs, grün)
+  - Zusätzlich re-exportiert: `Cipher`, `SerializedKey`, `DataFormat`,
+    `RequestOptions`, `Output`, `FileEncryptionMetadata*`, `Cancellable`,
+    `hosts` + die Server-Interfaces (`SQLiteServer`, `CompressorServer`,
+    `SafeStorageServer`, `FileStorageServer`, `FSFile`)
+- ✅ Vertragstest-Suite: **9 Spec-Dateien, 36 Tests, alle grün** —
+  `core-surface`, `bridge-router`, `sqlite-engine`, `bridge-dialect`,
+  `data`, `database-encryption`, `nnstorage`, `filestorage`, `collections`
 - ✅ `tsconfig` Project References (Node + Web), beide via `tsc` / `vue-tsc` clean
-- ✅ `electron-vite build` produziert Main (1.6 KB) + Preload (1 KB) + Renderer
-  (209 KB JS + 15 KB CSS)
-- ✅ Git: 2 Commits, sauberer Baum, `.gitignore`, `.prettierignore`,
-  `.vscode/extensions.json`
+- ✅ `electron-vite build` produziert Main (17.6 KB) + Preload (1.15 KB) +
+  Renderer (~4,19 MB JS — `@notesnook/core` + sodium inlined; lazy prism/katex-
+  Chunks) + 15 KB CSS
+- ✅ Git: 9 Commits auf `main` (3 Scaffold + 6 Phase 1), sauberer Baum,
+  `.gitignore`, `.prettierignore`, `.vscode/extensions.json`
 
 ### 3.2 Wie vertragssicher gearbeitet wird
 
@@ -517,5 +538,109 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
 
 ---
 
+## 10. Arbeits-Journal
+
+### 2026-07-19 — Phase 1 ausgebaut (M1–M3, M5–M11; M4 entfallen)
+
+Ausgangspunkt: Repo war gescafffoldet (Phase 0), Vertragstests grün, "Bereit für
+Phase 1." Ziel des Tages: die komplette Daten-Pipeline bauen — ein laufendes
+Electron-App, in dem `NotesList` echte Notes aus `database.notes.all()` rendert,
+mit `@notesnook/core`'s `Database` im Renderer und SQLite/native Ops im Main,
+erreicht über eine tRPC-Bridge.
+
+**Sequenz (vom Nutzer freigegeben): De-Risk-Spine zuerst**, dann die schweren
+Ports; Checkpoint nach jedem Milestone (Commits auf `main`).
+
+**Erledigt & verifiziert** (36 Contract-Tests grün, typecheck node+web clean,
+build clean):
+
+- **M1 tRPC-Bridge** — `electron-trpc` (`createIPCHandler` Main, `exposeElectronTRPC`
+  Preload — `appEvents`/`os` bleiben, `ipcLink`-Proxy-Client im Renderer, lazy
+  konstruiert). `ping`/`log`-Prozeduren. `bridge-router.spec`.
+- **M2 Main-SQLite** — Port von Upstream `sqlite-kysely.ts`
+  (`better-sqlite3-multiple-ciphers`, Prepared-Cache, Retry, Path-Allowlist,
+  `unsafeMode`). Registry-Pattern (`registerSQLiteServer`) hält `contracts/router`
+  Node-frei. `sqlite-engine.spec` bestätigt das Native-Modul.
+- **M3 Renderer-Dialect** — Port von `index.desktop.ts` (`SqliteDriver`/
+  `SqliteBridgeConnection` forwarden an `sqlite.run`, Mutex, DI-Client).
+  `@streetwriters/kysely` als direkte Dep. `bridge-dialect.spec` treibt den
+  **echten** Bridge-Forwarder über eine Fake-Bridge (kein Electron nötig).
+- **M5 Compressor** — Node `zlib` in Main; Renderer `ICompressor` forwardet.
+- **Gate `db.init()`** — `initDatabase()`-DI-Helfer + `createDesktopPlatform` +
+  Stub-Storage/-FS. Deterministisch verifiziert: `data.spec` (In-Process) +
+  `bridge-dialect.spec` (echte Bridge). `db.init()` + Migrationen + `notes.add`/
+  `all` round-trip.
+- **M6 Key-Store** — Main `safe-storage.ts` (Electron `safeStorage` → OS-Keychain,
+  persistiert in `userData/secrets.json` mit Plain-Fallback) + Renderer
+  `key-store.ts` (`getDatabaseKey` generiert/persistiert 32 Byte, hex als
+  `PRAGMA key`). `database-encryption.spec` beweist: mit Passwort ist die DB-Datei
+  verschlüsselt (kein SQLite-Magic-Header, Klartext-Titel nicht im File).
+- **M7 NNStorage** — `key-value.ts` (IndexedDB + Memory), `nncrypto.ts`
+  (`@notesnook/crypto` sync, sodium), `storage.ts` (NNStorage, **nur IStorage-
+  Oberfläche** — PGP-Methoden sind nicht in `IStorage`, also `openpgp`/`intl`
+  **nicht nötig**). `nnstorage.spec`: Crypto-Roundtrip + Full-Init mit echtem
+  NNStorage.
+- **M8 FileStorage** — Main `file-storage.ts` (Node-fs-Chunk-Store, namenssanitisiert)
+  + Renderer `file-store.ts` (`NodeFSFileStore` forwardet an `desktop.fs`) +
+  `fs.ts` (`FileStorage`: `@notesnook/streamable-fs` + sodium-secretstream +
+  SHA-256-Hash; HTTP-Sync-Methoden stubben Phase 6). `filestorage.spec`:
+  writeEncryptedBase64→readEncrypted Roundtrip mit echtem sodium.
+- **M9 Full-Init** — `createDesktopPlatform` waltet echte NNStorage + FileStorage
+  + Compressor + Dialect + Password; `bootstrap()` läuft beim App-Start;
+  `getDatabase()` Singleton.
+- **M10 Echte NotesList** — `stores/notes.ts` `load()` →
+  `database.notes.all().items()`; `NotesList.vue` rendert Title/Headline/Datum/Tags
+  + Pin/Fav-Marker; New-Note-Button; `Editor.vue` zeigt aktive Note (read-only bis
+  TipTap Phase 2); `App.vue` Boot-Overlay; bootstrap seeed zwei Willkommens-Notes.
+- **M11 Contract-Tests** — `collections.spec`: notebooks + addToNotebook, tags,
+  settings, vault.create/add/open, sync. (Attachments user-gated → Phase 6.)
+
+**Wichtige Erkenntnisse / Abweichungen vom Plan:**
+
+1. **M4 (FTS5 native Extensions) entfällt.** Getestet: SQLite 3.53.2 (bündelt mit
+   `better-sqlite3-multiple-ciphers@12`) liefert `trigram` als **Built-in**
+   FTS5-Tokenizer. Die Migrationen (`tokenize='porter trigram remove_diacritics 1'`)
+   laufen **ohne ladbare Extensions**. Nur der `html`-Tokenizer fehlt (nur für
+   Search-Highlighting) → ggf. Phase 6/7. Spart die native-Extension-Verpackung.
+2. **Sodium-Bundling-Fix.** `@notesnook/core` bundelt selbst **kein** Sodium
+   (delegiert Crypto an `IStorage`) — M7 zieht Sodium erstmals in den Renderer.
+   `libsodium-wrappers-sumo`'s ESM-Build hat einen kaputten relativen
+   `./libsodium-sumo.mjs`-Import → `electron.vite.config.ts` aliasiert auf das
+   self-contained CJS/UMD-Build. Vitest inline `@notesnook/*`+`sodium-native`,
+   damit das Node-Sodium-Build in Tests resolved. Renderer-Bundle ~4,2 MB
+   (Sodium-WASM inlined) → Worker-Auslagerung ist Phase-7-Perf.
+3. **`package.json`-Bugfix.** `main` war `./dist-electron/main/index.js`, aber
+   electron-vite baut nach `./out/main/index.js` → `npm run dev` scheiterte an
+   "No electron app entry file found". Auf `./out/main/index.js` korrigiert.
+4. **NNStorage schmaler als geplant.** PGP-Methoden (`generatePGPKeyPair` etc.)
+   sind **nicht** Teil von `IStorage` → `openpgp` + `@notesnook/intl`-Stub entfallen
+   komplett (Sharing/Monograph = Phase 6).
+5. **Attachments-Collection ist user-gated.** `attachments._getEncryptionKey`
+   ruft `db.user.getAttachmentsKey()` (beim Login gesetzt) → voller
+   Attachments-Roundtrip braucht Auth (Phase 6). Die FileStorage-Verschlüsselung
+   darunter ist verifiziert (`filestorage.spec`).
+6. **Vault-Titel-Quirk.** `vault.add` re-saved die Note und regeneriert den Titel
+   aus dem Content → Test assertiert Note-Identität, nicht Titel.
+
+**Offen (User-Maschine):** Runtime-Check per `npm run dev`. In dieser Sandbox
+ist das Electron-Binary unvollständig (Frameworks fehlen, kein Netz zum
+Reinstall) — Code ist fertig + deterministisch verifiziert. Falls nach
+`npm install` `node_modules/electron/path.txt` fehlt (Postinstall übersprungen):
+macOS-Fix `printf 'Electron.app/Contents/MacOS/Electron' >
+node_modules/electron/path.txt`.
+
+**Commits (auf `main`):**
+- `2b97825` De-Risk-Spine (M1–M5 + Gate)
+- `35a4190` M6 Key-Store + M7 NNStorage
+- `f6b7701` M8 FileStorage + M9 Full-Init
+- `24ea02e` M10 Real NotesList + dev-entry-Fix
+- `30282f0` M11 Extended Contract-Tests
+- `468c920` Docs: NEXT_STEPS Phase-1-Status
+
+**Nächster Schritt:** Phase 2 — Editor-Port (TipTap-Vue-Spike, dann die 9
+Node-Views), parallel möglich.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Repo scaffolded, Vertragstests grün, Typecheck + Build clean. Bereit für Phase 1._
+_Status: Phase 1 komplett (M1–M3, M5–M11; M4 entfallen). 36 Contract-Tests grün, typecheck + build clean. Bereit für Phase 2 (Editor-Port); Runtime-Check `npm run dev` auf User-Maschine offen._
