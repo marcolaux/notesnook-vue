@@ -84,6 +84,29 @@ function requireCompressor(): CompressorServer {
 }
 
 // ---------------------------------------------------------------------------
+// Safe storage — Electron `safeStorage` (OS keychain) for bootstrap secrets
+// like the databaseKey. Main persists the encrypted blobs to a file.
+// ---------------------------------------------------------------------------
+
+export interface SafeStorageServer {
+  isEncryptionAvailable(): Promise<boolean>;
+  /** Encrypt `value` with safeStorage and persist under `key`. */
+  set(key: string, value: string): Promise<void>;
+  /** Read and decrypt the value stored under `key` (undefined if absent). */
+  get(key: string): Promise<string | undefined>;
+  remove(key: string): Promise<void>;
+}
+
+let safeStorageServer: SafeStorageServer | undefined;
+export function registerSafeStorageServer(server: SafeStorageServer): void {
+  safeStorageServer = server;
+}
+function requireSafeStorage(): SafeStorageServer {
+  if (!safeStorageServer) throw new Error("Safe storage server not registered (main boot incomplete)");
+  return safeStorageServer;
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -153,6 +176,20 @@ export const appRouter = t.router({
     gunzip: t.procedure
       .input(z.object({ data: z.string() }))
       .mutation(({ input }) => requireCompressor().gunzip(input.data))
+  }),
+
+  // Safe storage — OS keychain for bootstrap secrets (databaseKey)
+  safeStorage: t.router({
+    isEncryptionAvailable: t.procedure.query(() => requireSafeStorage().isEncryptionAvailable()),
+    set: t.procedure
+      .input(z.object({ key: z.string(), value: z.string() }))
+      .mutation(({ input }) => requireSafeStorage().set(input.key, input.value)),
+    get: t.procedure
+      .input(z.object({ key: z.string() }))
+      .query(({ input }) => requireSafeStorage().get(input.key)),
+    remove: t.procedure
+      .input(z.object({ key: z.string() }))
+      .mutation(({ input }) => requireSafeStorage().remove(input.key))
   }),
 
   // Updater — matches upstream apps/desktop/src/api/updater.ts

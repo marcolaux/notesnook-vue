@@ -6,7 +6,16 @@ export default defineConfig({
     dir: "tests/contract",
     environment: "node",
     include: ["**/*.spec.ts"],
-    coverage: { provider: "v8", reporter: ["text", "html"] }
+    coverage: { provider: "v8", reporter: ["text", "html"] },
+    // @notesnook/sodium's node build requires the native `sodium-native` CJS
+    // module; vitest's ESM loader can't resolve its named exports. Inlining
+    // these deps routes them through esbuild's CJS interop. (The renderer
+    // build uses sodium's browser/WASM build, which doesn't have this issue.)
+    server: {
+      deps: {
+        inline: [/@notesnook\//, "sodium-native", "better-sqlite3-multiple-ciphers"]
+      }
+    }
   },
   resolve: {
     alias: {

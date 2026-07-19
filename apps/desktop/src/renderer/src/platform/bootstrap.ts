@@ -29,7 +29,8 @@ export async function bootstrap(): Promise<Database> {
 
   // 2. Database init.
   try {
-    const db = await initDatabase(createDesktopPlatform());
+    const platform = await createDesktopPlatform();
+    const db = await initDatabase(platform);
     database = db;
     await desktop.log.mutate({ level: "info", message: "database initialised" });
     return db;

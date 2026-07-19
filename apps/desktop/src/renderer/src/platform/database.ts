@@ -27,8 +27,9 @@ import type {
 } from "@notesnook-vue/contracts";
 import { createDialect } from "./sqlite-dialect";
 import { Compressor } from "./compressor";
-import { StubStorage } from "./stub-storage";
+import { NNStorage } from "./storage";
 import { StubFileStorage } from "./stub-fs";
+import { getDatabaseKey, databaseKeyToPassword, SafeStorageKeyStore } from "./key-store";
 
 export interface DatabasePlatform {
   sqliteOptions: SQLiteOptions;
@@ -57,24 +58,28 @@ export async function initDatabase(platform: DatabasePlatform): Promise<Database
 }
 
 /**
- * Production platform for the de-risk Gate: bridge dialect + real compressor +
- * stub storage/fs. M6 wires a real `sqliteOptions.password` (databaseKey);
- * M7/M8 replace the stubs.
+ * Production platform: bridge dialect + real compressor + real `NNStorage`
+ * (IndexedDB KV + sodium crypto + safeStorage key store). Derives (or
+ * retrieves) the `databaseKey` and sets `sqliteOptions.password` so the on-disk
+ * DB is encrypted. M8 replaces the stub `IFileStorage` with the real
+ * `FileStorage`.
  */
-export function createDesktopPlatform(): DatabasePlatform {
+export async function createDesktopPlatform(): Promise<DatabasePlatform> {
+  const key = await getDatabaseKey();
   const sqliteOptions: SQLiteOptions = {
     dialect: (name) => createDialect({ name }),
+    password: databaseKeyToPassword(key),
     journalMode: "WAL",
     synchronous: "normal",
     lockingMode: "exclusive",
     tempStore: "memory",
     cacheSize: -32000,
     pageSize: 8192
-    // `password` omitted (unencrypted DB) until M6 derives the databaseKey.
   };
+  const keyStore = new SafeStorageKeyStore();
   return {
     sqliteOptions,
-    storage: new StubStorage(),
+    storage: new NNStorage("Notesnook", () => keyStore),
     fs: new StubFileStorage(),
     compressor: new Compressor()
   };

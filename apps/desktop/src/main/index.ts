@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { attachTRPC } from "./ipc";
 import { registerSQLite } from "./sqlite";
 import { registerCompressor } from "./compress";
+import { registerSafeStorage } from "./safe-storage";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,6 +56,7 @@ void app.whenReady().then(() => {
   // created so procedures are ready when the renderer first calls them.
   registerSQLite();
   registerCompressor();
+  registerSafeStorage();
 
   createMainWindow();
 
