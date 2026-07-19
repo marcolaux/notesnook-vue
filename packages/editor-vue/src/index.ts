@@ -17,3 +17,8 @@ export type { TaskItemAttributes } from "./extensions/task-item/types";
 
 export { TaskListNode } from "./extensions/task-list/task-list";
 export type { TaskListAttributes } from "./extensions/task-list/types";
+
+export { EmbedNode } from "./extensions/embed/embed";
+export type { EmbedOptions, EmbedAttributes, EmbedAlignmentOptions, EmbedSizeOptions, Embed } from "./extensions/embed/types";
+
+export { getSandboxFeatures } from "./utils/sandbox";

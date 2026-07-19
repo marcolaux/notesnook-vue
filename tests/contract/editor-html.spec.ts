@@ -19,11 +19,11 @@ import { describe, it, expect, afterAll } from "vitest";
 import { DOMParser, DOMSerializer } from "@tiptap/pm/model";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { AttachmentNode, TaskItemNode, TaskListNode } from "@notesnook-vue/editor-vue";
+import { AttachmentNode, TaskItemNode, TaskListNode, EmbedNode } from "@notesnook-vue/editor-vue";
 
 const editor = new Editor({
   element: document.createElement("div"),
-  extensions: [StarterKit, AttachmentNode, TaskListNode, TaskItemNode.configure({ nested: true })],
+  extensions: [StarterKit, AttachmentNode, TaskListNode, TaskItemNode.configure({ nested: true }), EmbedNode],
   content: ""
 });
 const schema = editor.schema;
@@ -41,7 +41,7 @@ function roundTrip(html: string): string {
   return out.innerHTML;
 }
 
-describe("editor node-view round-trip (2.4a)", () => {
+describe("editor node-view round-trip (2.4a + 2.4b)", () => {
   it("attachment chip preserves data-hash/filename/mime/size", () => {
     const html =
       '<p>see <span data-hash="abc" data-filename="readme.md" data-mime="text/markdown" data-size="2048"></span></p>';
@@ -93,5 +93,43 @@ describe("editor node-view round-trip (2.4a)", () => {
     expect(out).toContain('data-hash="demo-001"');
     expect(out).toContain('data-title="2.4a progress"');
     expect((out.match(/checklist--item/g) || []).length).toBe(2);
+  });
+
+  it("embed iframe preserves src (round-trip)", () => {
+    const html = '<p>video:</p><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>';
+    const out = roundTrip(html);
+    expect(out).toContain('<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"');
+    expect(out).toContain("</iframe>");
+    // exactly one iframe
+    expect((out.match(/<iframe /g) || []).length).toBe(1);
+  });
+
+  it("embed iframe preserves width/height/align attrs", () => {
+    const html =
+      '<iframe src="https://example.com/embed" width="480" height="270" align="center"></iframe>';
+    const out = roundTrip(html);
+    expect(out).toContain('src="https://example.com/embed"');
+    expect(out).toContain('width="480"');
+    expect(out).toContain('height="270"');
+    expect(out).toContain('align="center"');
+  });
+
+  it("embed without width/height/align round-trips bare (no phantom attrs)", () => {
+    const html = '<iframe src="https://example.com/bare"></iframe>';
+    const out = roundTrip(html);
+    expect(out).not.toContain("width=");
+    expect(out).not.toContain("height=");
+    expect(out).not.toContain("align=");
+    expect(out).toContain('src="https://example.com/bare"');
+  });
+
+  it("embed + checklist + attachment round-trip together (2.4b seed-shape)", () => {
+    const html =
+      '<p>Demo</p><ul class="checklist" data-title="2.4b progress"><li class="checklist--item checked"><p>Embed node</p></li><li class="checklist--item"><p>Resizer</p></li></ul><iframe src="https://example.com/embed" width="480" height="270"></iframe><p><span data-hash="h1" data-filename="a.md" data-mime="text/markdown" data-size="10"></span></p>';
+    const out = roundTrip(html);
+    expect(out).toContain('src="https://example.com/embed"');
+    expect(out).toContain('width="480"');
+    expect(out).toContain('data-title="2.4b progress"');
+    expect(out).toContain('data-hash="h1"');
   });
 });

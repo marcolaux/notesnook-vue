@@ -219,20 +219,23 @@ vollständiger Toolbar.
   `activeContent`, `contentState`, `saveState`, `loadActiveContent()`,
   `saveContent(noteId, html)`. ProseMirror-Base-CSS in `style.css`.
   **Runtime-Check `npm run dev` offen** (User-Maschine).
-- ✅ **Phase-2.4a Editor-Node-View-Port** — neues Workspace-Paket
+- ✅ **Phase-2.4a/b Editor-Node-View-Port** — neues Workspace-Paket
   `packages/editor-vue` (`@notesnook-vue/editor-vue`, Source-as-Entry,
-  pfad-aliasiert). 3 der 9 React-Node-Views portiert: `attachment`
+  pfad-aliasiert). 4 der 9 React-Node-Views portiert: `attachment`
   (inline Atom), `task-item` + `task-list` (Editable-Content +
-  `appendTransaction`-Stats-Plugin → Progress-Bar). Schema/parseHTML/renderHTML
-  **verbatim** vom Upstream (`streetwriters/notesnook`, Branch `master`) für
-  Byte-stabilen HTML-Round-trip; React-Node-View-Layer → `VueNodeViewRenderer`
-  + `NodeViewWrapper`/`NodeViewContent`. Wiederverwendbare Helfer:
-  `getDataAttribute`, `prosemirror.ts`-Subset, `formatBytes`.
-  Round-trip-Vertragstest `tests/contract/editor-html.spec.ts` (5 Tests,
+  `appendTransaction`-Stats-Plugin → Progress-Bar), `embed` (sandboxed iframe
+  + hand-rolled `Resizer.vue`, single bottomRight handle, kein neuer Dep).
+  Schema/parseHTML/renderHTML **verbatim** vom Upstream
+  (`streetwriters/notesnook`, Branch `master`) für Byte-stabilen HTML-Round-trip;
+  React-Node-View-Layer → `VueNodeViewRenderer` + `NodeViewWrapper`/
+  `NodeViewContent`. Wiederverwendbare Helfer: `getDataAttribute`,
+  `prosemirror.ts`-Subset, `formatBytes`, `sandbox.ts` (`getSandboxFeatures`),
+  `components/Resizer.vue`.
+  Round-trip-Vertragstest `tests/contract/editor-html.spec.ts` (9 Tests,
   happy-dom per File-Env-Override, Schema via leeren `Editor` gebaut).
-  41 Contract-Tests grün, typecheck (node+web) + build clean.
+  45 Contract-Tests grün, typecheck (node+web) + build clean.
   `Editor.vue` nutzt `[StarterKit, AttachmentNode, TaskListNode,
-  TaskItemNode.configure({nested:true})]`. **Runtime-Check offen.**
+  TaskItemNode.configure({nested:true}), EmbedNode]`. **Runtime-Check offen.**
 - ✅ **Phase-1-Plattform-Seam** in `apps/desktop/src/renderer/src/platform/`:
   `desktop-bridge.ts` (lazy tRPC-Client), `sqlite-dialect.ts` (Kysely-Dialect
   → `sqlite.run`), `compressor.ts`, `key-store.ts` (safeStorage), `key-value.ts`
@@ -426,26 +429,29 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
   Byte-stabilen Round-trip) + `Component.vue` (Vue-View via `VueNodeViewRenderer`
   + `NodeViewWrapper`/`NodeViewContent` aus `@tiptap/vue-3`). Importe NIE direkt
   von `@tiptap/core`, sondern von `@tiptap/vue-3` (re-exportiert core).
-  **Status 2026-07-19 (2.4a):**
+  **Status 2026-07-19 (2.4a + 2.4b):**
   1. [x] `attachment` (inline Atom, File-Chip aus Attrs; Blob = Phase 6) ✅
   6. [x] `task-item` + `task-list` (Checkbox-Toggle, Editable-Content via
      `NodeViewContent`, `appendTransaction`-Stats-Plugin → Progress-Bar) ✅
-  - Bewiesen: Parse→Serialize Round-trip der data-*-Attrs/Klassen via
-    `tests/contract/editor-html.spec.ts` (5 Tests, happy-dom, Schema via
-    leeren `Editor` gebaut). 41 Contract-Tests grün, typecheck+build clean.
+  4. [x] `embed` (Resizer + iframe sandbox) — selbstständig, kein Attachments ✅
+  - Bewiesen: Parse→Serialize Round-trip der data-*-Attrs/Klassen + iframe-Attrs
+    via `tests/contract/editor-html.spec.ts` (9 Tests, happy-dom, Schema via
+    leeren `Editor` gebaut). 45 Contract-Tests grün, typecheck+build clean.
   - **Aufgeschoben (Polish):** drop-override-Plugin, `[]`/`[x]`-Input-Regel,
     `sortList`, mobile/iOS-Touch (desktop-first, Entscheidung #8).
+  - **Aufgeschoben (embed):** in-Node-Toolbar (align-L/C/R + Properties) →
+    Phase 2.5; corsHost-CORS-Proxy + Twitter-`srcDoc` (Theme-Engine) → Toolbar.
   2. [ ] `audio` (blob URL + `<audio>`) — **Phase-6-gated** (attachments auth)
   3. [ ] `web-clip` (iframe + fullscreen listener) — **Phase-6-gated**
-  4. [ ] `embed` (Resizer + iframe sandbox) — selbstständig, kein Attachments
   5. [ ] `image` (IntersectionObserver + blob URL + alignment) — **Phase-6-gated**
   7. [ ] `code-block` (refractor-Highlighter + Lazy-Lang-Loading + caret/lines-sync)
   8. [ ] `table` (vendored `prosemirror-tables` + row/column toolbars — am aufwendigsten)
   - **Wiederverwendbare Helfer** schon portiert: `getDataAttribute`,
     `prosemirror.ts` (`findParentNodeClosestToPos`/`hasSameAttributes`/
     `getExactChangedNodes`/`getDeletedNodes`/`getParentAttributes`/
-    `ensureLeadingParagraph`), `formatBytes`. `downloader.ts`/`useObserver`/
-    `getSandboxFeatures`/`Resizer` folgen mit embed/image (2.4b/2.4e).
+    `ensureLeadingParagraph`), `formatBytes`, `sandbox.ts` (`getSandboxFeatures`),
+    `components/Resizer.vue` (hand-rolled, single bottomRight handle, kein Dep).
+    `downloader.ts`/`useObserver` folgen mit image (2.4e).
 - [ ] **2.5 Toolbar** als letztes (höchste Masse, geringstes Schema-Risiko):
   - Erst Command Palette (`Ctrl+Shift+P`) + Slash-Commands (`/`)
   - Dann klassische Toolbar-Buttons für die verbleibenden Aktionen
@@ -865,11 +871,91 @@ fertig + deterministisch verifiziert (typecheck + build + 41 Contract-Tests).
 - `ea45c81` Entscheidung #9 (`@tiptap/*` 2.6.6 overrides)
 - (dieser) 2.4a editor-vue + attachment/task-item/task-list
 
-**Nächster Schritt:** 2.4b `embed` (selbstständig, kein Phase-6-Gate) oder 2.4c
-`code-block` — nach Nutzerpriorisierung. 2.2 (Tailwind-Token-Adapter) parallel
-möglich.
+**Nächster Schritt:** 2.4c `code-block` (refractor + Lazy-Lang-Loading) oder
+2.4e `image` (Phase-6-gated) — nach Nutzerpriorisierung. 2.2
+(Tailwind-Token-Adapter) parallel möglich.
+
+---
+
+### 2026-07-19 — Phase 2.4b: embed node-view portiert (iframe + Resizer + sandbox)
+
+Fortsetzung des Node-View-Ports. `embed` ist selbstständig (kein Phase-6-
+Attachments-Gate) und bringt mit dem Resizer + der iframe-Sandbox zwei neue,
+wiederverwendbare Helfer ins Paket.
+
+**Erledigt & deterministisch verifiziert** (typecheck node+web clean, build
+clean, 45 Contract-Tests grün — 36 + 9 editor-html round-trip):
+
+- **`embed.ts`** — TipTap-Node, Schema/parseHTML/renderHTML **verbatim** vom
+  Upstream (`packages/editor/src/extensions/embed/embed.ts`): `name:"embed"`,
+  `content:""`, `marks:""`, `draggable:true`, `priority:50`, `group:"block"`,
+  Attrs `src`/`width`/`height`/`align` (defaults `null`/`null`/`null`/
+  `undefined`), `parseHTML:[{tag:"iframe[src]"}]`, `renderHTML:["iframe",
+  mergeAttributes(...)]`. React-`createNodeView(EmbedComponent,{shouldUpdate})`
+  → `VueNodeViewRenderer(EmbedComponent,{update:({oldNode,newNode})=>
+  !hasSameAttributes(oldNode.attrs,newNode.attrs)})`. Commands verbatim:
+  `insertEmbed`/`setEmbedAlignment`/`setEmbedSize`/`setEmbedSource`.
+- **`EmbedComponent.vue`** — `NodeViewWrapper as="div"` mit Flex-justify aus
+  `align` (default "left"); `<Resizer>` (enabled iff `editor.isEditable`,
+  handle iff `selected`) umschließt die iframe; iframe mit `src`,
+  `sandbox=getSandboxFeatures(src)`, `allow` (YouTube-Permissions),
+  `referrerPolicy="origin"` (YouTube), `allowfullscreen`, `@load`→Spinner aus.
+  Drag-Handle `data-drag-handle` oben, Selection-Ring um die iframe.
+- **`components/Resizer.vue`** — hand-rolled Vue-Port von Upstreams React-
+  `Resizer` (`re-resizable`-Wrapper). Single bottomRight-Pointer-Drag-Handle,
+  `minWidth:135`, `maxWidth:100%` des Eltern-Elements, `lockAspectRatio`
+  (embed:false, image später true), emit `resize(w,h)` + `resizeStop`.
+  Pointer-Capture + window-listener, kein neuer Runtime-Dep (roadmap's
+  `vue3-draggable-resizable` nur nötig bei Multi-Handle/Edge-Resize).
+- **`utils/sandbox.ts`** — `getSandboxFeatures` verbatim (http(s) →
+  permissive Feature-List, sonst leer).
+- **Integration** — `Editor.vue` um `EmbedNode` erweitert; `bootstrap.ts`
+  seeedt eine vierte Willkommens-Note mit YouTube-Embed (480×270) + die 2.4a-
+  Checklist um "Embed (iframe + resizer + sandbox)" erweitert.
+- **Round-trip-Vertragstest** — `editor-html.spec.ts` um 4 Tests erweitert:
+  iframe-`src` round-trip, `width`/`height`/`align` round-trip, bare iframe
+  (keine Phantom-Attrs), gemischter Seed-Shape (embed + checklist + attachment).
+  Editor im Test um `EmbedNode` ergänzt.
+
+**Wichtige Erkenntnisse:**
+
+1. **TipTap-Default-Attr-Parse reicht für width/height/align.** Upstream
+   definiert für diese Attrs kein explizites `parseHTML`/`renderHTML` — TipTap
+   core liest per Default `element.getAttribute(name)` via `fromString`
+   (Z.405–407 in `@tiptap/core/dist/index.js`) und `getRenderedAttributes`
+   rendert sie zurück. `width="480"` → `480` (number, via `fromString`) →
+   `width="480"` — byte-stabil. Braucht also keine Ergänzung am Schema.
+2. **`textDirection`-Default-Alignment entfällt.** Upstream leitet das
+   Default-`align` aus `textDirection` (RTL → "right") ab; die text-direction-
+   Extension ist nicht portiert → `align` defaultet auf "left". Embeds eigenes
+   Schema trägt ohnehin nur `align` (textDirection kommt global von text-
+   direction, nicht vom embed-Node) → kein Round-trip-Verlust.
+3. **Kein neuer Dep für den Resizer.** re-resizable ist React; ein minimaler
+   Pointer-Capture-Handle reicht für embed+image (beide nutzen nur die
+   bottomRight-Ecke). Hält `packages/editor-vue` dep-frei für Resizer/Sandbox.
+
+**Aufgeschoben (Polish, kein Schema-Risiko):**
+- In-Node-Toolbar (align-L/C/R + Properties) → Phase 2.5 (Toolbar).
+- `corsHost`-CORS-Proxy-Rewrite für YouTube (liegt im toolbar-store/settings).
+- Twitter/X-`srcDoc`-Rendering (braucht Theme-Engine für dark-Flag) → Twitter-
+  URLs laden als plain iframe-src; `src` round-tript unverändert.
+
+**Offen (User-Maschine):** Runtime-Check `npm run dev` — Embed selectieren →
+Resizer-Handle erscheint bottomRight, Drag → iframe ändert Größe, Edits
+persistieren (Neustart). In dieser Session nicht gestartet (Electron-GUI). Code
+fertig + deterministisch verifiziert (typecheck + build + 45 Contract-Tests).
+
+**Commits (auf `main`):**
+- `d8ff3d1` 2.1 TipTap-Spike
+- `ea45c81` Entscheidung #9 (`@tiptap/*` 2.6.6 overrides)
+- `ef6ac51` 2.4a editor-vue + attachment/task-item/task-list
+- (dieser) 2.4b editor-vue + embed + Resizer + sandbox
+
+**Nächster Schritt:** 2.4c `code-block` (refractor + Lazy-Lang-Loading) oder
+2.4e `image` (Phase-6-gated) — nach Nutzerpriorisierung. 2.2
+(Tailwind-Token-Adapter) parallel möglich.
 
 ---
 
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a (editor-vue: attachment/task-item/task-list). 41 Contract-Tests grün (36 + 5 editor-html round-trip), typecheck (node+web) + build clean. Editor nutzt `@notesnook-vue/editor-vue`-Nodes; Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip. Runtime-Check `npm run dev` offen. Bereit für 2.4b/2.4c oder 2.2._
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b (editor-vue: attachment/task-item/task-list/embed). 45 Contract-Tests grün (36 + 9 editor-html round-trip), typecheck (node+web) + build clean. Editor nutzt `@notesnook-vue/editor-vue`-Nodes; Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; hand-rolled Resizer (kein Dep). Runtime-Check `npm run dev` offen. Bereit für 2.4c/2.4e oder 2.2._
