@@ -212,6 +212,13 @@ vollständiger Toolbar.
   registriert Impls, Renderer importiert nur den Typ.
 - ✅ Renderer-Shell: `TitleBar`, `Sidebar`, `NotesList` (echte Notes), `Editor`
   (aktive Note, read-only bis Phase 2), `App.vue` (Boot-Overlay)
+- ✅ **Phase-2.1 TipTap-Spike** — `Editor.vue` läuft mit `@tiptap/vue-3` +
+  `@tiptap/starter-kit`: lädt Notiz-Content als HTML via
+  `database.content.findByNoteId`, rendert per `<EditorContent>`,
+  debounced Autosave (800 ms) via `database.notes.add`. Store erweitert um
+  `activeContent`, `contentState`, `saveState`, `loadActiveContent()`,
+  `saveContent(noteId, html)`. ProseMirror-Base-CSS in `style.css`.
+  **Runtime-Check `npm run dev` offen** (User-Maschine).
 - ✅ **Phase-1-Plattform-Seam** in `apps/desktop/src/renderer/src/platform/`:
   `desktop-bridge.ts` (lazy tRPC-Client), `sqlite-dialect.ts` (Kysely-Dialect
   → `sqlite.run`), `compressor.ts`, `key-store.ts` (safeStorage), `key-value.ts`
@@ -386,8 +393,13 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
 
 ### Phase 2 — Editor-Port (Woche 2–8, parallel zu Phase 1 möglich)
 
-- [ ] **2.1 TipTap-Vue-Spike** — `@tiptap/vue-3` mit 1 reinen ProseMirror-Ext.
-  (z.B. `paragraph`) im `Editor.vue`, proof-of-concept
+- [x] **2.1 TipTap-Vue-Spike** — `@tiptap/vue-3` + `@tiptap/starter-kit` in
+  `Editor.vue` geladen; Editor lädt aktive Note als HTML via
+  `database.content.findByNoteId`, rendert per `<EditorContent>`,
+  debounced Autosave (800 ms) via `database.notes.add` (Content-Upsert +
+  `dateEdited`/`headline`-Bump). Build + typecheck (node+web) clean, 36
+  Contract-Tests grün. **Runtime-Check `npm run dev` offen** (User-Maschine).
+  ✅
 - [ ] **2.2 Tailwind-Token-Adapter** — `@notesnook/theme`'s `ThemeDefinition.scopes`
   → Tailwind-CSS-Variablen (`--color-surface`, `--backdrop-blur-base`, …)
   - Schema um `opacity` / `backdropBlur`-Felder erweitern (rückwärtskompatibel)
@@ -489,6 +501,7 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
 | 6 | **MVP-Editor-Umfang** | 46 Extensions → wie viele im MVP? | ~18: paragraph, heading, bold/italic/underline/strike, link, bullet/ordered/task/check-list, blockquote, code-block, highlight, image, attachment, table, math |
 | 7 | **`@notesnook/desktop`-Type-Quelle** | Nicht auf npm, nur als Type-Import nötig | Eigener Vertrag in `apps/desktop/src/contracts/router.ts` (bereits angelegt) |
 | 8 | **Mobile / Tablet** | Hauptrepo hat Mobile-Slider; Vue-Äquivalent? | Später — Desktop zuerst |
+| 9 | **`@tiptap/*`-Versionskollision** | `@notesnook/editor@2.1.3` pinnt `@tiptap/core@2.6.6` exact, aber seine `^2.6.6`-Extension-Deps resolven auf gehoistete **2.27.2** (peer `@tiptap/core@^2.7.0`). npm hoisted `core@2.27.2` nach Root + nested `core@2.6.6` unter `apps/desktop` + `@notesnook/editor`. Zwei `Node`-Klassen → Schema-Bruch, wenn gemischt. | **Aktuell:** nur aus `@tiptap/vue-3` + `@tiptap/starter-kit` importieren (beide resolven intern auf Root-`core@2.27.2`), **nie** `@tiptap/core` direkt aus dem Renderer. **Langfristig (vor 2.4):** per `overrides` alle `@tiptap/*` auf eine Version zwingen — entweder alles 2.6.6 (matcht editor exact, Editor-Port baut gegen 2.6.6) oder alles 2.27.2. Empfehlung: **2.6.6-Override**, damit der Editor-Port gegen dieselbe Core-Version wie `@notesnook/editor` gebaut wird. |
 
 ---
 
@@ -642,5 +655,66 @@ Node-Views), parallel möglich.
 
 ---
 
+### 2026-07-19 — Phase 2.1 TipTap-Vue-Spike
+
+Ziel: Beweisen, dass `@tiptap/vue-3` im `Editor.vue` läuft und Notiz-Content
+end-to-end round-tript (laden → anzeigen → bearbeiten → speichern).
+
+**Erledigt & deterministisch verifiziert** (build clean, typecheck node+web
+clean, 36 Contract-Tests grün):
+
+- **Store erweitert** (`stores/notes.ts`) — `activeContent` (HTML),
+  `contentState` (`idle|loading|loaded|locked|error`), `saveState`,
+  `loadActiveContent()` (`db.content.findByNoteId` → HTML; vault-locked →
+  `contentState="locked"`, Phase 6), `saveContent(noteId, html)` via
+  `db.notes.add({ id, title, content:{type:"tiptap", data:html}, …flags })`
+  — derselbe Pfad wie der Upstream-Editor (Content-Upsert +
+  `dateEdited`/`headline`-Bump atomar).
+- **`Editor.vue` neu** — `useEditor` + `<EditorContent>` mit `StarterKit`;
+  `onUpdate` → debounced Autosave (800 ms); beim Notizwechsel wird der
+  Pending-Edit der *vorigen* Note geflusht, dann Content geladen und per
+  `editor.chain().setContent(html, false).run()` gesetzt (ohne `onUpdate`,
+  damit ein Laden nie dirty markiert); Save-State-Indikator (Saving…/Saved).
+- **ProseMirror-Base-CSS** in `style.css` (outline none, Min-Height,
+  Empty-Hint, Code/Heading-Farben). Theme-Wiring kommt mit 2.2.
+- **Dep** `@tiptap/starter-kit@2.6.6` zu `apps/desktop` deps hinzugefügt
+  (war schon transitiv gehoisted; Lockfile war bereits "up to date").
+
+**Wichtige Erkenntnisse:**
+
+1. **Content ist HTML, nicht ProseMirror-JSON.** Notesnook speichert
+   `NoteContent.data` für `type:"tiptap"` als **HTML-String** (`getContentFromData`
+   → `new Tiptap(data)` → `toHTML()`). TipTap parst das HTML via Schema-Regeln
+   und serialisiert mit `editor.getHTML()` zurück. Der im Plan erwähnte
+   "ProseMirror-JSON"-Zusatz (§2.1 Vertrag A) trifft auf das interne
+   TipTap-Dokument zu, nicht auf das Storage-Format — Storage ist HTML.
+2. **`@tiptap/*`-Versionskollision im Lockfile** (neue Entscheidung #9).
+   `@notesnook/editor@2.1.3` pinnt `@tiptap/core@2.6.6` exact, aber seine
+   `^2.6.6`-Extension-Deps resolven auf gehoistete **2.27.2** (peer
+   `@tiptap/core@^2.7.0`). Ergebnis: Root `@tiptap/core@2.27.2`, dazu nested
+   `core@2.6.6` unter `apps/desktop` UND unter `@notesnook/editor`.
+   **Spike-Regel:** nur aus `@tiptap/vue-3` + `@tiptap/starter-kit`
+   importieren — beide resolven `@tiptap/core` intern auf Root-`core@2.27.2`,
+   also teilen Editor und Extensions **ein** ProseMirror-Schema. Direkter
+   `@tiptap/core`-Import aus dem Renderer würde die nested 2.6.6 greifen →
+   zwei `Node`-Klassen → Schema-Bruch. Vor Phase 2.4 per `overrides`
+   aufräumen (Empfehlung: alles 2.6.6, damit der Port gegen editor-exact baut).
+3. **`exactOptionalPropertyTypes: true`** macht `<EditorContent :editor="e">`
+   streng — `editor` ist `Editor | undefined`, also `v-else-if="editor"`
+   nötig (narrowt auf `Editor`). Watch-Old-Value ist bei Vue `T | undefined`,
+   Callback-Signatur entsprechend breiter.
+
+**Offen (User-Maschine):** Runtime-Check per `npm run dev` — visuell
+verifizieren, dass TipTap die Willkommens-Notes rendert und Edits gespeichert
+werden (Neustart → Edit noch da). In dieser Session nicht gestartet
+(Electron-GUI-Prozess). Code ist fertig + deterministisch verifiziert
+(typecheck + build + 36 Contract-Tests).
+
+**Nächster Schritt:** Phase 2.2 (Tailwind-Token-Adapter) oder 2.4
+(Node-View-Ports) — nach Nutzerpriorisierung. Vor 2.4 das
+`@tiptap/*`-Override (Entscheidung #9) klären.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 komplett (M1–M3, M5–M11; M4 entfallen). 36 Contract-Tests grün, typecheck + build clean. Bereit für Phase 2 (Editor-Port); Runtime-Check `npm run dev` auf User-Maschine offen._
+_Status: Phase 1 komplett + Phase 2.1 TipTap-Spike. 36 Contract-Tests grün, typecheck (node+web) + build clean. Editor läuft mit `@tiptap/vue-3` + StarterKit, Content-HTML round-trip via `db.content`/`db.notes.add`. Runtime-Check `npm run dev` auf User-Maschine offen. `@tiptap/*`-Versionskollision als Entscheidung #9 offen (vor 2.4 aufräumen)._
