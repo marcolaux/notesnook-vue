@@ -10,7 +10,7 @@ import { ref, computed } from "vue";
 import { useEditorStore } from "@/stores/editor";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
-import { getCommands, type Command, type CommandContext } from "@/commands/registry";
+import { getCommands, getCommandRouter, type Command, type CommandContext } from "@/commands/registry";
 import { filterCommands, cycleCommandIndex } from "@/commands/menu";
 
 export const useCommandPaletteStore = defineStore("commandPalette", () => {
@@ -26,6 +26,7 @@ export const useCommandPaletteStore = defineStore("commandPalette", () => {
     editor: editorStore.editor,
     notes,
     auth,
+    router: getCommandRouter(),
     closePalette
   }));
 

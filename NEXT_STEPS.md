@@ -602,8 +602,42 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
 - [ ] **3.3 Notes List** — Suchleiste mit Regex, Sort/Group-Controls, New-Note,
   Collapse-Sidebar, List-Entries mit Thumbnail + Progress-Bar + Tags
 - [ ] **3.4 StatusBar unten** — Sync-Status, Wortzahl, Cursor-Position
-- [ ] **3.5 Vue Router** — file-based via `unplugin-vue-router` oder klassisch;
+- [x] **3.5 Vue Router** — file-based via `unplugin-vue-router` oder klassisch;
   ersetzt den dual-Router-Ansatz des Hauptrepos
+  - **Status 2026-07-19 (done, headless):** klassische Route-Tabelle mit der
+    schon installierten, bisher ungenutzten `vue-router@^4.4.0` +
+    `createMemoryHistory` (Electron-Standard: kein URL-Bar/Server, robust unter
+    prod `loadFile`; kein neuer Dep, kein Build-Plugin). Persistent-Shell als
+    Layout-Route (`/` → `ShellLayout` = TitleBar + Sidebar + `<RouterView>`),
+    Login als Top-Level-Route **ohne** Shell (`/login`). Children: `'' → /all`,
+    `/all → NotesView` (echte NotesList + Editor, aus `App.vue` extrahiert),
+    `/notebooks`/`/tags`/`/monographs`/`/archive`/`/trash → PlaceholderView`
+    (titel+hint via typed `RouteMeta`; echte Views = Phase 3.2/3.3),
+    `/settings → SettingsView` (Platzhalter; separates Fenster = Phase 4.5).
+    Active-Note-ID bleibt im Notes-Store (nicht in der URL) — `noteId`-Route =
+    Phase 4/6.5. Route-Komponenten sind **lazy** (`() => import(...)`) →
+    Import des Routers (auch in Tests) lädt nicht den Komponenten-/Editor-Graph;
+    Renderer code-splittet jede View (`NotesView`-Chunk 75 KB hält Editor+TipTap,
+    `LoginScreen` 125 KB, `ShellLayout` 6 KB — alle aus dem Main-Index-Chunk
+    heraus, der 5,23 MB bleibt). **Auth-Guard** (`beforeEach`): `status==="unknown"`
+    → allow (Boot; `App.vue` settelt initial per `router.replace` nach `auth.init`);
+    `!showShell && to!=="/login"` → `/login`; `showShell && to==="/login"` →
+    `/all`. `App.vue` watch auf `auth.showShell` → automatische Übergänge
+    (login→`/all`, logout/`requestSignIn`→`/login`); initiales Settle im
+    `onMounted`. Sidebar-Buttons → `<RouterLink>` über `VIEWS`-Liste (Single
+    Source of Truth in `router/routes.ts` für Sidebar + `app:goto-*`-Commands)
+    mit active-State via `route.path === path`. Neue `useShellStore`
+    (`sidebarCollapsed`/`listCollapsed`/Toggles) ersetzt die lokalen Refs in
+    `App.vue` → kein Prop-Drilling durch die Router-Grenze. Command-Palette:
+    `CommandContext.router` + `setCommandRouter`/`getCommandRouter` (modul-lokal
+    statt `useRouter()`-Inject → testbar); ein `app:goto-<view>`-Command pro
+    `VIEWS`-Eintrag (`when: showShell && router`). 177 Contract-Tests grün
+    (11 neu in `tests/contract/router.spec.ts`: Route-Tabelle, `/→/all`,
+    Guard unknown/logged-out/logged-in/local-only/logout, goto-Commands),
+    typecheck (node+web) + build clean, 0 React/theme-ui/zustand-Leck.
+    **Runtime-Check: `npm run dev` bootet (M2.5); visuelle Gates (Sidebar-Active-
+    Highlight, View-Wechsel, Settings blendet NotesList/Editor aus, login↔shell
+    Übergang, Ctrl+Shift+P "Go to …") on-site.**
 
 ### Phase 4 — Multi-Window & Multi-Tab (Woche 7–12)
 
@@ -2006,5 +2040,100 @@ react/theme-ui/zustand, kein `@notesnook/editor` runtime** (type-only erased).
 
 ---
 
+## Phase 3.5 — Vue Router (klassische Route-Tabelle) (2026-07-19)
+
+Erstes App-Shell-Routing-Inkrement (Roadmap §5). ersetzt die `<template v-if>`-
+Shell/Login-Verzweigung in `App.vue` durch einen echten Vue Router und macht die
+Sidebar-Nav (bisher nicht-funktionale Platzhalter-Buttons) zur Source of Truth
+für den aktiven View — das Fundament für Phase 3.2 (Sidebar), 3.3 (Notes List),
+3.4 (StatusBar), Phase 4 (Multi-Tab/Window).
+
+**Nutzer-Entscheidung:** klassische Route-Tabelle (statt `unplugin-vue-router`)
+— passt zur expliziten-Verträge-Projektstil + zur persistent-3-Pane-Shell.
+
+**Erledigt & deterministisch verifiziert** (typecheck node+web clean, build
+clean, 177 Contract-Tests grün — 166 + 11 neue router-Cases; 0 React/theme-ui/
+zustand-Leck):
+
+- **`router/routes.ts`** — Route-Tabelle + `VIEWS`-Liste (`{path,name,label,
+  position,hint}`; `top` vs `bottom` für die Sidebar-Platzierung). `VIEWS` ist
+  der Single-Chokepoint für Sidebar + `app:goto-*`-Commands. Typed `RouteMeta`
+  (`title`/`hint`) für `PlaceholderView` via `declare module "vue-router"`.
+  Route-Komponenten **lazy** (`() => import(...)`) → Router-Import lädt nicht
+  den Komponenten-Graph (auch in Tests); Renderer code-splittet Views.
+- **`router/index.ts`** — `createAppRouter()`-Factory (frische Instanz pro
+  Test → kein Shared-History-Bleed) + `installAuthGuard` + `router`-Singleton.
+  `createMemoryHistory` (Electron-Standard). Guard: `unknown`→allow (Boot),
+  `!showShell && to!=="/login"`→`/login`, `showShell && to==="/login"`→`/all`.
+- **`stores/shell.ts`** — `useShellStore` (`sidebarCollapsed`/`listCollapsed`/
+  `toggleSidebar`/`toggleList`); ersetzt die lokalen Refs in `App.vue` → kein
+  Prop-Drilling durch die Router-Grenze.
+- **Komponenten** — `ShellLayout.vue` (TitleBar + Sidebar + `<RouterView>`),
+  `NotesView.vue` (NotesList + Editor, 1:1 aus `App.vue` extrahiert),
+  `PlaceholderView.vue` (titel+hint aus `route.meta`), `SettingsView.vue`
+  (Platzhalter; separates Fenster = Phase 4.5).
+- **`App.vue`** — Shell/Login-`<template v-if>` → `<RouterView v-slot>` (class
+  forwarded an Route-Root); Boot-Overlay bleibt; `onMounted` settelt initial
+  per `router.replace`; neuer `watch(auth.showShell)` → automatische Übergänge
+  (login→`/all`, logout/`requestSignIn`→`/login`).
+- **`main.ts`** — `app.use(router)` nach Pinia (Guard braucht active Pinia);
+  `setCommandRouter(router)`.
+- **Sidebar/TitleBar/NotesList** — Sidebar: 7 statische `<button>` → `<RouterLink>`
+  über `topViews`/`bottomViews` mit active-State (`route.path === path`);
+  TitleBar/NotesList: `useShellStore().toggleSidebar()` statt emit/props.
+- **Command-Palette** — `CommandContext.router` + `setCommandRouter`/
+  `getCommandRouter` (modul-lokal, nicht `useRouter()`-Inject → testbar);
+  `command-palette`-Store baut `router: getCommandRouter()` in ctx; ein
+  `app:goto-<view>`-Command pro `VIEWS` (`when: showShell && router`).
+- **Vertragstest** `tests/contract/router.spec.ts` (11, node): Route-Tabelle
+  (jeder `VIEWS`-Eintrag hat eine Named-Route; top/bottom-Partition), `/→/all`,
+  Guard (unknown/logged-out/logged-in/local-only/logout-mid-session), goto-
+  Commands (registriert + hidden-when-logged-out + navigiert-when-logged-in).
+  Bootstrap gemockt (wie `command-palette.spec`).
+
+**Wichtige Erkenntnisse:**
+
+1. **`vue-router@^4.4.0` war installiert, aber ungenutzt** (`apps/desktop`
+   dep, 0 Importe). Kein neuer Dep nötig; `unplugin-vue-router` bewusst nicht
+   gezogen (klassische Tabelle passt zur Shell-Layout + expliziten Stil).
+2. **Singleton-Router-Bleed in Tests.** Erst mit einer shared `router`-Singleton
+   scheiterten 3 Guard-Tests: `router.replace("/login")` wenn der Router schon
+   auf `/login` stand (aus dem vorigen Test) ist eine **deduped No-op** → Guard
+   feuert nicht. Fix: `createAppRouter()`-Factory, frische Instanz pro Test.
+3. **`name` auf Parent + namenloses empty-path-Child = Vue-Router-Warn.** Die
+   `redirect`-Child (`{ path: "" }`) + `name:"shell"` auf Parent triggerte
+   "move the name to the child". Parent-Name ungenutzt → entfernt; Warn weg.
+4. **Active-Note-ID nicht in der URL (bewusst).** Desktop-App ohne URL-Bar hat
+   keinen Deep-Link-Wert; `noteId`-Route ist ein Phase 4 (Multi-Tab)/6.5
+   (`nn://`)-Anliegen. Route = aktueller Sidebar-View; Note = Store-State.
+5. **`showShell`-watch für automatische Übergänge.** Der Guard allein bounce-t
+   nur auf die *nächste* Navigation; logout/login würden sonst auf dem alten
+   View stehen bleiben. Der `watch(auth.showShell)→router.replace` macht die
+   Übergänge sofort (deckt on-site-Gate "logout → LoginScreen").
+6. **Lazy Route-Komponenten = Code-Split + leichter Test.** `NotesView`-Chunk
+   (75 KB: Editor+TipTap) + `LoginScreen` (125 KB) + `ShellLayout` (6 KB)
+   spalten aus dem 5,23-MB-Main-Index heraus; Router-Test importiert keinen
+   einzigen `.vue`-Komponenten-Graph.
+
+**Aufgeschoben (Folge-Phasen, kein Vertragsrisiko):**
+- Echte Collection-Views + Notes-Store-Filter (Notebooks/Tags/Trash/Archive/
+  Monographs) → Phase 3.2/3.3. `PlaceholderView` hält die Plätze.
+- `noteId` in der URL / Note-Deep-Linking → Phase 4 / 6.5 (`nn://`).
+- Settings als separates Electron-Fenster → Phase 4.5.
+- StatusBar → Phase 3.4. Per-Region-Theme-Scoping auf den neuen View-Roots →
+  Phase 3.
+
+**On-Site-Gate (physische Anwesenheit, per Memory gebatcht):**
+1. Sidebar-Nav highlightet den aktiven View; Klick wechselt die Content-Area
+   (All Notes zeigt echte Notes; andere zeigen den Platzhalter).
+2. Settings-Route blendet NotesList + Editor aus (volle Content-Area, Sidebar
+   bleibt).
+3. Boot → korrekte Initial-Route; login → shell-Übergang bei Auth; logout →
+   Login-Screen kehrt zurück.
+4. `Ctrl/Cmd+Shift+P` "Go to …"-Commands navigieren; Editor-Autosave ungestört
+   über Route-Wechsel.
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)**. **166 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive + 6 registry + 9 palette + 4 editor-store + 10 tool-definitions + 7 slash-commands)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`. **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay) brauchen physische Anwesenheit.** Palette-Overlay (`CommandPalette.vue`) = Folge-Inkrement (Store/Registry/Hotkey hier sind sein Backend)._
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)** + **Phase 3.5 (Vue Router klassische Route-Tabelle: `createAppRouter`+`createMemoryHistory`+Auth-Guard; `ShellLayout`/`NotesView`/`PlaceholderView`/`SettingsView`; `useShellStore`; Sidebar-`RouterLink` über `VIEWS`; `app:goto-*`-Palette-Commands; lazy Views → Code-Split)**. **177 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive + 6 registry + 9 palette + 4 editor-store + 10 tool-definitions + 7 slash-commands + 11 router)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`; Routing via `vue-router@4` (Memory-History, Auth-Guard, `VIEWS`-getrieben). **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay, + jetzt Sidebar-Nav-Active/View-Wechsel/login↔shell-Übergang/Go-to-Commands) brauchen physische Anwesenheit.** Palette-Overlay (`CommandPalette.vue`) = Folge-Inkrement (Store/Registry/Hotkey hier sind sein Backend)._

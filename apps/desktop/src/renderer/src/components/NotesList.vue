@@ -1,10 +1,9 @@
 <script setup lang="ts">
-defineProps<{ sidebarCollapsed: boolean }>();
-defineEmits<{ "toggle-sidebar": [] }>();
-
 import { useNotesStore } from "@/stores/notes";
+import { useShellStore } from "@/stores/shell";
 
 const notes = useNotesStore();
+const shell = useShellStore();
 
 function formatDate(ts: number): string {
   if (!ts) return "";
@@ -30,7 +29,7 @@ function formatDate(ts: number): string {
       <button
         class="grid h-7 w-7 place-items-center rounded-md text-white/70 hover:bg-white/10"
         title="Collapse sidebar"
-        @click="$emit('toggle-sidebar')"
+        @click="shell.toggleSidebar()"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M15 18l-6-6 6-6" />

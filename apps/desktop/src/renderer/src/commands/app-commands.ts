@@ -1,10 +1,12 @@
 /**
  * App-level commands (Phase 2.5). Registered on import (see `./index`). These
  * cover shell actions not bound to the editor — note lifecycle, tabs, auth,
- * reload. Editor actions live in `./editor-commands`.
+ * reload, and sidebar navigation (Phase 3.5). Editor actions live in
+ * `./editor-commands`.
  */
 import { registerCommands } from "./registry";
 import type { Command } from "./registry";
+import { VIEWS } from "@/router/routes";
 
 const appCommands: Command[] = [
   {
@@ -58,4 +60,19 @@ const appCommands: Command[] = [
   }
 ];
 
-registerCommands(appCommands);
+/**
+ * "Go to <view>" navigation commands (Phase 3.5) — one per sidebar entry in
+ * `VIEWS`. Visible only when the shell is showing and a router is available.
+ */
+const gotoCommands: Command[] = VIEWS.map((v) => ({
+  id: `app:goto-${v.name}`,
+  title: `Go to ${v.label}`,
+  keywords: ["go", "goto", "navigate", "open", "view", v.label.toLowerCase()],
+  group: "app",
+  when: (ctx) => ctx.auth.showShell && !!ctx.router,
+  run: (ctx) => {
+    ctx.router?.push(v.path);
+  }
+}));
+
+registerCommands([...appCommands, ...gotoCommands]);

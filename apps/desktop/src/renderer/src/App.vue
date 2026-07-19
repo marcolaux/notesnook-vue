@@ -1,17 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
-import Sidebar from "@/components/Sidebar.vue";
-import NotesList from "@/components/NotesList.vue";
-import Editor from "@/components/Editor.vue";
-import TitleBar from "@/components/TitleBar.vue";
-import LoginScreen from "@/components/LoginScreen.vue";
+import { useRouter } from "vue-router";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
 import { bootstrap } from "@/platform/bootstrap";
 import { useCommandPalette } from "@/composables/use-command-palette";
 
-const sidebarCollapsed = ref(false);
-const listCollapsed = ref(false);
+const router = useRouter();
 
 const bootState = ref<"loading" | "ready" | "error">("loading");
 const bootError = ref<string>("");
@@ -29,6 +24,10 @@ onMounted(async () => {
     await auth.init();
     if (auth.showShell) await notes.load();
     bootState.value = "ready";
+    // Settle the initial route now that auth is resolved. During boot the
+    // guard saw `status === "unknown"` and let the redirect to `/all` through;
+    // here we move to `/login` if the user is logged-out and not local-only.
+    void router.replace(auth.showShell ? "/all" : "/login");
     // eslint-disable-next-line no-console
     console.info(`[boot] ready — auth:${auth.status}`);
   } catch (e) {
@@ -51,32 +50,28 @@ watch(
     }
   }
 );
+
+// Follow auth state with the route so screen transitions are automatic:
+// login / local-only → shell, logout / re-arm sign-in → login screen. The
+// initial settle happens in `onMounted` once `auth.init()` resolves; this
+// watch handles every subsequent transition (logout, login, skip, request).
+watch(
+  () => auth.showShell,
+  (show) => {
+    void router.replace(show ? "/all" : "/login");
+  }
+);
 </script>
 
 <template>
   <div class="flex h-screen w-screen flex-col overflow-hidden bg-transparent">
-    <TitleBar
-      :sidebar-collapsed="sidebarCollapsed"
-      @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
-    />
     <div class="relative flex min-h-0 flex-1">
-      <!-- Notes shell (logged in, or local-only) -->
-      <template v-if="bootState === 'ready' && auth.showShell">
-        <Sidebar
-          v-show="!sidebarCollapsed"
-          class="w-60 shrink-0 border-r border-white/10 backdrop-blur-2xl"
-        />
-        <NotesList
-          v-show="!listCollapsed"
-          :sidebar-collapsed="sidebarCollapsed"
-          class="w-80 shrink-0 border-r border-white/10 backdrop-blur-xl"
-          @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
-        />
-        <Editor class="min-w-0 flex-1 backdrop-blur-2xl" />
-      </template>
-
-      <!-- Login screen (logged-out and not skipped) -->
-      <LoginScreen v-else-if="bootState === 'ready'" class="min-w-0 flex-1" />
+      <!-- Route content: LoginScreen (no shell) or ShellLayout (TitleBar +
+           Sidebar + routed view). The class is forwarded to the route root so
+           it fills the content row (LoginScreen + ShellLayout both rely on it). -->
+      <RouterView v-slot="{ Component }">
+        <component :is="Component" class="min-w-0 flex-1 min-h-0" />
+      </RouterView>
 
       <!-- Boot overlay -->
       <div

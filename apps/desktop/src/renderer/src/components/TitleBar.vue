@@ -1,6 +1,7 @@
 <script setup lang="ts">
-defineProps<{ sidebarCollapsed: boolean }>();
-defineEmits<{ "toggle-sidebar": [] }>();
+import { useShellStore } from "@/stores/shell";
+
+const shell = useShellStore();
 </script>
 
 <template>
@@ -10,7 +11,7 @@ defineEmits<{ "toggle-sidebar": [] }>();
     <button
       class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-white/70 hover:bg-white/10"
       title="Toggle Sidebar"
-      @click="$emit('toggle-sidebar')"
+      @click="shell.toggleSidebar()"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <rect x="3" y="3" width="18" height="18" rx="2" />

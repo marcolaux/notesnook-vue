@@ -9,6 +9,7 @@
  * the notes/auth stores + a `closePalette` callback. Store accessors are read
  * lazily at execute time (after Pinia is active), so registration order is safe.
  */
+import type { Router } from "vue-router";
 import type { Editor } from "@tiptap/vue-3";
 import type { useNotesStore } from "@/stores/notes";
 import type { useAuthStore } from "@/stores/auth";
@@ -20,6 +21,8 @@ export interface CommandContext {
   editor: Editor | undefined;
   notes: ReturnType<typeof useNotesStore>;
   auth: ReturnType<typeof useAuthStore>;
+  /** The Vue Router instance (set from `main.ts`; undefined outside the app). */
+  router: Router | undefined;
   /** Close the palette overlay (called by the store after execute). */
   closePalette: () => void;
 }
@@ -51,6 +54,21 @@ export function getCommands(): Command[] {
 
 export function getCommand(id: string): Command | undefined {
   return commands.get(id);
+}
+
+/**
+ * Router accessor for command handlers. Set once from `main.ts` after the
+ * router is installed; decouples handlers from `useRouter()` inject so they
+ * work in the palette store (and are stub-able in tests).
+ */
+let commandRouter: Router | undefined;
+
+export function setCommandRouter(router: Router): void {
+  commandRouter = router;
+}
+
+export function getCommandRouter(): Router | undefined {
+  return commandRouter;
 }
 
 /** Test-only: clear the registry (used by contract specs for isolation). */
