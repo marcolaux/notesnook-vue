@@ -15,15 +15,25 @@
 import { ref, watch, onBeforeUnmount } from "vue";
 import { useEditor, EditorContent } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
-import { AttachmentNode, TaskItemNode, TaskListNode, EmbedNode } from "@notesnook-vue/editor-vue";
+import { AttachmentNode, TaskItemNode, TaskListNode, EmbedNode, CodeBlock } from "@notesnook-vue/editor-vue";
 import { useNotesStore } from "@/stores/notes";
 
 const notes = useNotesStore();
 
 // `useEditor` returns a ShallowRef<Editor | undefined>; in the template it
 // auto-unwraps, so `:editor="editor"` passes the Editor instance.
+// StarterKit's plain `codeBlock` is disabled in favour of our refractor-backed
+// `codeblock` (syntax highlighting + lazy language loading + indent/caret
+// tracking); both can't own the ```/~~~ input rules at once.
 const editor = useEditor({
-  extensions: [StarterKit, AttachmentNode, TaskListNode, TaskItemNode.configure({ nested: true }), EmbedNode],
+  extensions: [
+    StarterKit.configure({ codeBlock: false }),
+    AttachmentNode,
+    TaskListNode,
+    TaskItemNode.configure({ nested: true }),
+    EmbedNode,
+    CodeBlock
+  ],
   content: notes.activeContent || "",
   autofocus: false,
   editable: true,

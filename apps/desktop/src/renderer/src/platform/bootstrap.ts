@@ -78,6 +78,16 @@ async function seedIfEmpty(db: Database): Promise<void> {
       data: '<p>An embed node renders a sandboxed iframe and can be resized from its bottom-right corner (select it first):</p><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" width="480" height="270"></iframe><p>Alignment + the in-node toolbar arrive with the editor toolbar (Phase 2.5); the <code>align</code> attribute already round-trips.</p>'
     }
   });
+  // Phase 2.4c demo — a code block with refractor syntax highlighting. The
+  // grammar lazy-loads on first render (markdown here). The toolbar shows
+  // caret position, indent-mode toggle, language selector, and copy.
+  await db.notes.add({
+    title: "Phase 2.4c code-block node-view",
+    content: {
+      type: "tiptap",
+      data: '<p>A code block with refractor syntax highlighting (grammar lazy-loads on first render):</p><pre class="language-typescript" data-indent-type="space" data-indent-length="2"><code>function greet(name: string): string {\n  return `Hello, ${name}!`;\n}</code></pre><p>Type ``` or ~~~ followed by a language name to create one; the toolbar lets you switch language, toggle spaces/tabs, and copy.</p>'
+    }
+  });
 }
 
 /** Returns the initialised Database singleton. Throws if bootstrap hasn't run. */

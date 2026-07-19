@@ -21,4 +21,7 @@ export type { TaskListAttributes } from "./extensions/task-list/types";
 export { EmbedNode } from "./extensions/embed/embed";
 export type { EmbedOptions, EmbedAttributes, EmbedAlignmentOptions, EmbedSizeOptions, Embed } from "./extensions/embed/types";
 
+export { CodeBlock, backtickInputRegex, tildeInputRegex, setLastUsedLanguage } from "./extensions/code-block/code-block";
+export type { CodeBlockAttributes, CodeBlockOptions } from "./extensions/code-block/code-block";
+
 export { getSandboxFeatures } from "./utils/sandbox";

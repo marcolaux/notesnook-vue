@@ -219,23 +219,26 @@ vollständiger Toolbar.
   `activeContent`, `contentState`, `saveState`, `loadActiveContent()`,
   `saveContent(noteId, html)`. ProseMirror-Base-CSS in `style.css`.
   **Runtime-Check `npm run dev` offen** (User-Maschine).
-- ✅ **Phase-2.4a/b Editor-Node-View-Port** — neues Workspace-Paket
+- ✅ **Phase-2.4a/b/c Editor-Node-View-Port** — neues Workspace-Paket
   `packages/editor-vue` (`@notesnook-vue/editor-vue`, Source-as-Entry,
-  pfad-aliasiert). 4 der 9 React-Node-Views portiert: `attachment`
+  pfad-aliasiert). 5 der 9 React-Node-Views portiert: `attachment`
   (inline Atom), `task-item` + `task-list` (Editable-Content +
   `appendTransaction`-Stats-Plugin → Progress-Bar), `embed` (sandboxed iframe
-  + hand-rolled `Resizer.vue`, single bottomRight handle, kein neuer Dep).
+  + hand-rolled `Resizer.vue`, single bottomRight handle, kein neuer Dep),
+  `code-block` (refractor-Syntax-Highlighting + Lazy-Lang-Loading via 297
+  Literal-Import-Thunks + caret/lines-Sync; StarterKit-`codeBlock` deaktiviert).
   Schema/parseHTML/renderHTML **verbatim** vom Upstream
   (`streetwriters/notesnook`, Branch `master`) für Byte-stabilen HTML-Round-trip;
   React-Node-View-Layer → `VueNodeViewRenderer` + `NodeViewWrapper`/
   `NodeViewContent`. Wiederverwendbare Helfer: `getDataAttribute`,
   `prosemirror.ts`-Subset, `formatBytes`, `sandbox.ts` (`getSandboxFeatures`),
-  `components/Resizer.vue`.
-  Round-trip-Vertragstest `tests/contract/editor-html.spec.ts` (9 Tests,
+  `components/Resizer.vue`, `code-block/loader.ts`.
+  Round-trip-Vertragstest `tests/contract/editor-html.spec.ts` (13 Tests,
   happy-dom per File-Env-Override, Schema via leeren `Editor` gebaut).
-  45 Contract-Tests grün, typecheck (node+web) + build clean.
-  `Editor.vue` nutzt `[StarterKit, AttachmentNode, TaskListNode,
-  TaskItemNode.configure({nested:true}), EmbedNode]`. **Runtime-Check offen.**
+  49 Contract-Tests grün, typecheck (node+web) + build clean.
+  `Editor.vue` nutzt `[StarterKit.configure({codeBlock:false}), AttachmentNode,
+  TaskListNode, TaskItemNode.configure({nested:true}), EmbedNode, CodeBlock]`.
+  **Runtime-Check offen.**
 - ✅ **Phase-1-Plattform-Seam** in `apps/desktop/src/renderer/src/platform/`:
   `desktop-bridge.ts` (lazy tRPC-Client), `sqlite-dialect.ts` (Kysely-Dialect
   → `sqlite.run`), `compressor.ts`, `key-store.ts` (safeStorage), `key-value.ts`
@@ -429,28 +432,34 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
   Byte-stabilen Round-trip) + `Component.vue` (Vue-View via `VueNodeViewRenderer`
   + `NodeViewWrapper`/`NodeViewContent` aus `@tiptap/vue-3`). Importe NIE direkt
   von `@tiptap/core`, sondern von `@tiptap/vue-3` (re-exportiert core).
-  **Status 2026-07-19 (2.4a + 2.4b):**
+  **Status 2026-07-19 (2.4a + 2.4b + 2.4c):**
   1. [x] `attachment` (inline Atom, File-Chip aus Attrs; Blob = Phase 6) ✅
   6. [x] `task-item` + `task-list` (Checkbox-Toggle, Editable-Content via
      `NodeViewContent`, `appendTransaction`-Stats-Plugin → Progress-Bar) ✅
   4. [x] `embed` (Resizer + iframe sandbox) — selbstständig, kein Attachments ✅
+  7. [x] `code-block` (refractor-Highlighter + Lazy-Lang-Loading + caret/lines-sync) ✅
   - Bewiesen: Parse→Serialize Round-trip der data-*-Attrs/Klassen + iframe-Attrs
-    via `tests/contract/editor-html.spec.ts` (9 Tests, happy-dom, Schema via
-    leeren `Editor` gebaut). 45 Contract-Tests grün, typecheck+build clean.
+    + code-block-Attrs (language-class auf `<pre>`/`<code>`, data-indent-type/
+    -length) via `tests/contract/editor-html.spec.ts` (13 Tests, happy-dom, Schema
+    via leeren `Editor` gebaut). 49 Contract-Tests grün, typecheck+build clean.
   - **Aufgeschoben (Polish):** drop-override-Plugin, `[]`/`[x]`-Input-Regel,
     `sortList`, mobile/iOS-Touch (desktop-first, Entscheidung #8).
   - **Aufgeschoben (embed):** in-Node-Toolbar (align-L/C/R + Properties) →
     Phase 2.5; corsHost-CORS-Proxy + Twitter-`srcDoc` (Theme-Engine) → Toolbar.
+  - **Aufgeschoben (code-block):** Tab/Shift-Tab/Enter/ArrowDown/Mod-a-Shortcuts
+    + VS-Code/GitHub-Paste-Detection → Polish (kein Schema-Risiko; `lines`-Attr
+    wird vom Highlighter synchronisiert, `changeCodeBlockIndentation` läuft).
   2. [ ] `audio` (blob URL + `<audio>`) — **Phase-6-gated** (attachments auth)
   3. [ ] `web-clip` (iframe + fullscreen listener) — **Phase-6-gated**
   5. [ ] `image` (IntersectionObserver + blob URL + alignment) — **Phase-6-gated**
-  7. [ ] `code-block` (refractor-Highlighter + Lazy-Lang-Loading + caret/lines-sync)
   8. [ ] `table` (vendored `prosemirror-tables` + row/column toolbars — am aufwendigsten)
   - **Wiederverwendbare Helfer** schon portiert: `getDataAttribute`,
     `prosemirror.ts` (`findParentNodeClosestToPos`/`hasSameAttributes`/
     `getExactChangedNodes`/`getDeletedNodes`/`getParentAttributes`/
-    `ensureLeadingParagraph`), `formatBytes`, `sandbox.ts` (`getSandboxFeatures`),
-    `components/Resizer.vue` (hand-rolled, single bottomRight handle, kein Dep).
+    `ensureLeadingParagraph`/`getChangedNodes`), `formatBytes`,
+    `sandbox.ts` (`getSandboxFeatures`), `components/Resizer.vue` (hand-rolled,
+    single bottomRight handle, kein Dep), `code-block/loader.ts` (297
+    Literal-Import-Thunks, Vite-code-split).
     `downloader.ts`/`useObserver` folgen mit image (2.4e).
 - [ ] **2.5 Toolbar** als letztes (höchste Masse, geringstes Schema-Risiko):
   - Erst Command Palette (`Ctrl+Shift+P`) + Slash-Commands (`/`)
@@ -951,11 +960,121 @@ fertig + deterministisch verifiziert (typecheck + build + 45 Contract-Tests).
 - `ef6ac51` 2.4a editor-vue + attachment/task-item/task-list
 - (dieser) 2.4b editor-vue + embed + Resizer + sandbox
 
-**Nächster Schritt:** 2.4c `code-block` (refractor + Lazy-Lang-Loading) oder
-2.4e `image` (Phase-6-gated) — nach Nutzerpriorisierung. 2.2
-(Tailwind-Token-Adapter) parallel möglich.
+**Nächster Schritt:** 2.4e `image` (Phase-6-gated — braucht Login/Attachments-
+Auth) oder 2.4h `table` (vendored `prosemirror-tables` + row/column-toolbars,
+am aufwendigsten) — nach Nutzerpriorisierung. 2.2 (Tailwind-Token-Adapter)
+parallel möglich. Login-Logik (Phase-6-Prerequisite) fehlt noch.
+
+---
+
+### 2026-07-19 — Phase 2.4c: code-block node-view portiert (refractor + Lazy-Lang-Loading)
+
+5. der 9 React-Node-Views. Der komplexeste bislang: Syntax-Highlighting via
+`refractor` + lazy-Loaded Grammatiken + caret/lines-Sync für die Status-Bar.
+
+**Erledigt & deterministisch verifiziert** (typecheck node+web clean, build
+clean, 49 Contract-Tests grün — 36 + 13 editor-html round-trip):
+
+- **`code-block.ts`** — TipTap-Node, Schema/parseHTML/renderHTML **verbatim**
+  vom Upstream (`packages/editor/src/extensions/code-block/code-block.ts`):
+  `name:"codeblock"`, `content:"text*"`, `code:true`, `defining:true`,
+  `group:"block"`. Attrs `id`/`caretPosition`/`lines` (rendered:false) +
+  `indentType`/`indentLength` (→ `data-indent-type`/`data-indent-length`) +
+  `language` (→ `class="language-xx"`, parseHTML liest Class von `<pre>` **und**
+  `<code>`-Kind). `parseHTML:[{tag:"pre",preserveWhitespace:"full"}]`,
+  `renderHTML:["pre",attrs,["code",{},0]]`. Commands `setCodeBlock`/
+  `toggleCodeBlock`/`changeCodeBlockIndentation`, Input-Rules ``` + ~~~.
+  React-`createNodeView(CodeblockComponent,{contentDOMFactory,shouldUpdate})`
+  → `VueNodeViewRenderer(CodeBlockComponent,{update})` (contentDOM via
+  `<NodeViewContent as="pre">` in der Komponente).
+- **`highlighter.ts`** — `HighlighterPlugin` **verbatim** portiert
+  (ProseMirror-Plugin: refractor-`Decoration`s, lazy-Grammar-Loading,
+  `appendTransaction` synct `lines`/`caretPosition`). Importe auf
+  `@tiptap/pm/*` + `@tiptap/vue-3` umgebogen; `Root`-Hast-Typ durch structural
+  `{children?: RootContent[]}` ersetzt (refractor core exportiert `Root` nicht).
+  `getChangedNodes` zu `utils/prosemirror.ts` hinzugefügt (verbatim, mit
+  `descend`+`predicate`).
+- **`loader.ts`** — **generiert** aus `languages.json` (297 Sprachen): ein
+  Record mit einer **Literal-`import("refractor/lang/<name>.js")`-Thunk** pro
+  Sprache. Literal-String-Dynamic-Imports sind, was Vite in lazy Chunks
+  zerteilt (die templatisierte Form ist für Vite nicht statisch analysierbar —
+  Pattern gespiegelt von `@notesnook/core/dist/index.js`). Generator:
+  `scripts/gen-codeblock-loader.mjs`. `loadLanguage(name)`/`isLanguageLoaded`.
+- **`utils.ts`** — `toCodeLines`/`toCaretPosition`/`getLines` verbatim.
+- **`languages.json`** — verbatim (297 Einträge, filename/title/alias).
+- **`CodeBlockComponent.vue`** — `<NodeViewWrapper as="div">` mit
+  `<NodeViewContent as="pre" class="node-content-wrapper language-xx">`
+  (contentDOM, Highlighting-Decorations landen inline) + Toolbar
+  (contenteditable=false): Ln/Col-Status, Indent-Toggle (Spaces/Tabs: N),
+  Language-Selector (Such-Popup über 297 Sprachen), Copy-Button. Scoped
+  Prism-TOKEN-CSS (GitHub-Dark-Näherung) via `:deep(.token-*)`.
+- **Integration** — `Editor.vue` deaktiviert StarterKits `codeBlock` und nimmt
+  `CodeBlock` (sonst beide ```/~~~-Input-Rules + `<pre>`-parseHTML kollidieren).
+  `bootstrap.ts` seeedt eine TS-Codeblock-Note. Round-trip-Test +4 Cases
+  (language-class auf pre + code, data-indent-Attrs, bare-pre-defaults,
+  idempotenz, code-child-class). `StarterKit.configure({codeBlock:false})`
+  auch im Test-Editor.
+- **Deps** — `refractor@~4.9.0` + `@types/hast@~2.3.10` zu
+  `packages/editor-vue` deps (beide waren schon transitiv via
+  `@notesnook/core`/`editor` im Baum). `detect-indent`/`redent`/`strip-indent`/
+  `nanoid` **nicht** nötig (nur Paste-Plugin/Shortcuts genutzt, aufgeschoben).
+
+**Wichtige Erkenntnisse:**
+
+1. **StarterKit-`codeBlock` muss deaktiviert werden.** Unser Node heißt
+   `codeblock` (upstream), StarterKits `codeBlock` — verschiedene Namen, aber
+   beide registrieren eine ```/~~~-Input-Regel + ein `parseHTML:{tag:"pre"}`
+   → Konflikt. `StarterKit.configure({codeBlock:false})` + unser `CodeBlock`
+   ist die saubere Trennung (Editor + Test-Editor).
+2. **`indentType`/`indentLength`-Defaults rendern.** Defaults `"space"`/`2`
+   sind truthy → `data-indent-type`/`data-indent-length` werden **immer** auf
+   `<pre>` gerendert. Ein bloßes importiertes `<pre><code>` erhält die Defaults
+   beim ersten Round-trip und ist danach idempotent (Test bestätigt). Das ist
+   upstream-Verhalten, kein Bug.
+3. **`id` ist `rendered:false` + `parseHTML: () => createCodeblockId()`** →
+   jeder Parse generiert eine neue Zufalls-ID, die nie ins HTML gelangt.
+   `nanoid` durch inline `Math.random().toString(36)` ersetzt (Format
+   irrelevant für Round-trip).
+4. **Lazy-Lang-Loading-Pattern.** Vite zerteilt nur **Literal-String**-
+   Dynamic-Imports in Chunks; `import(\`refractor/lang/${name}.js\`)` geht
+   nicht. Lösung: generierter Record mit 297 Literal-Thunks (gespiegelt von
+   `@notesnook/core`). Die `prism-*`/Sprach-Chunks werden mit `@notesnook/core`
+   geteilt (dedup).
+5. **Highlighter ist im Round-trip-Test inert.** Test baut Schema via leeren
+   `Editor`; HighlighterPlugin `state.init` findet keine Codeblocks, `view.update`
+   lädt keine Grammatiken (keine Transaktionen) → kein async, kein refractor-
+   Highlight-Aufruf. Test läuft rein synchron/deterministisch.
+
+**Aufgeschoben (Polish, kein Schema-Risiko):**
+- `addKeyboardShortcuts` (Tab/Shift-Tab Indent, Enter Indent/Triple-Exit,
+  ArrowDown Exit, Mod-a Select-all) → Polish. `changeCodeBlockIndentation`
+  (Indent-Toggle-Button) läuft; `lines`-Attr wird vom Highlighter synchronisiert.
+- VS-Code/GitHub-Paste-Detection (auto-create codeblock + language infer) →
+  Polish. ``` / ~~~-Input-Regeln bleiben; Paste fällt auf PM-Default zurück.
+- `@notesnook/intl`-Strings → hardcoded EN (Phase 7). Theme-Engine → Tailwind/
+  scoped CSS. `ResponsivePresenter`-Popup → minimales Such-Panel. `config`-
+  Store → `setLastUsedLanguage` (localStorage). `useTimer` → ref+setTimeout.
+  Rich-`copyToClipboard` → `navigator.clipboard.writeText` (plain).
+
+**Offen (User-Maschine):** Runtime-Check `npm run dev` — Codeblock mit
+Syntax-Highlighting rendern, Sprache über Selector wechseln, Indent toggeln,
+Copy, Edits persistieren (Neustart). Lazy-Grammar-Load beim ersten Render
+sichtbar (kurzes Flash → Highlighting). In dieser Session nicht gestartet
+(Electron-GUI). Code fertig + deterministisch verifiziert (typecheck + build +
+49 Contract-Tests).
+
+**Commits (auf `main`):**
+- `d8ff3d1` 2.1 TipTap-Spike
+- `ea45c81` Entscheidung #9 (`@tiptap/*` 2.6.6 overrides)
+- `ef6ac51` 2.4a editor-vue + attachment/task-item/task-list
+- `011b8e1` 2.4b editor-vue + embed + Resizer + sandbox
+- (dieser) 2.4c editor-vue + code-block + refractor highlighter
+
+**Nächster Schritt:** 2.4e `image` (Phase-6-gated) oder 2.4h `table`
+(am aufwendigsten) — nach Nutzerpriorisierung. 2.2 (Tailwind-Token-Adapter)
+parallel. Login-Logik fehlt noch (Phase-6-Prerequisite).
 
 ---
 
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b (editor-vue: attachment/task-item/task-list/embed). 45 Contract-Tests grün (36 + 9 editor-html round-trip), typecheck (node+web) + build clean. Editor nutzt `@notesnook-vue/editor-vue`-Nodes; Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; hand-rolled Resizer (kein Dep). Runtime-Check `npm run dev` offen. Bereit für 2.4c/2.4e oder 2.2._
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c (editor-vue: attachment/task-item/task-list/embed/code-block). 49 Contract-Tests grün (36 + 13 editor-html round-trip), typecheck (node+web) + build clean. Editor nutzt `@notesnook-vue/editor-vue`-Nodes (StarterKit-codeBlock deaktiviert); Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; refractor-Highlighting mit 297 lazy-Literal-Import-Thunks. Runtime-Check `npm run dev` offen. Bereit für 2.4e/2.4h, 2.2, oder Login (Phase-6-Prerequisite)._

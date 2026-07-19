@@ -19,11 +19,18 @@ import { describe, it, expect, afterAll } from "vitest";
 import { DOMParser, DOMSerializer } from "@tiptap/pm/model";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { AttachmentNode, TaskItemNode, TaskListNode, EmbedNode } from "@notesnook-vue/editor-vue";
+import { AttachmentNode, TaskItemNode, TaskListNode, EmbedNode, CodeBlock } from "@notesnook-vue/editor-vue";
 
 const editor = new Editor({
   element: document.createElement("div"),
-  extensions: [StarterKit, AttachmentNode, TaskListNode, TaskItemNode.configure({ nested: true }), EmbedNode],
+  extensions: [
+    StarterKit.configure({ codeBlock: false }),
+    AttachmentNode,
+    TaskListNode,
+    TaskItemNode.configure({ nested: true }),
+    EmbedNode,
+    CodeBlock
+  ],
   content: ""
 });
 const schema = editor.schema;
@@ -41,7 +48,7 @@ function roundTrip(html: string): string {
   return out.innerHTML;
 }
 
-describe("editor node-view round-trip (2.4a + 2.4b)", () => {
+describe("editor node-view round-trip (2.4a + 2.4b + 2.4c)", () => {
   it("attachment chip preserves data-hash/filename/mime/size", () => {
     const html =
       '<p>see <span data-hash="abc" data-filename="readme.md" data-mime="text/markdown" data-size="2048"></span></p>';
@@ -131,5 +138,51 @@ describe("editor node-view round-trip (2.4a + 2.4b)", () => {
     expect(out).toContain('width="480"');
     expect(out).toContain('data-title="2.4b progress"');
     expect(out).toContain('data-hash="h1"');
+  });
+
+  it("code block preserves language class + code wrapper", () => {
+    const html = '<pre class="language-javascript"><code>const x = 1;</code></pre>';
+    const out = roundTrip(html);
+    expect(out).toContain('class="language-javascript"');
+    expect(out).toContain("<code>");
+    expect(out).toContain("const x = 1;");
+    // exactly one pre (StarterKit codeBlock disabled — our codeblock owns <pre>)
+    expect((out.match(/<pre /g) || []).length).toBe(1);
+  });
+
+  it("code block preserves data-indent-type / data-indent-length", () => {
+    const html =
+      '<pre class="language-python" data-indent-type="space" data-indent-length="4"><code>print("hi")</code></pre>';
+    const out = roundTrip(html);
+    expect(out).toContain('class="language-python"');
+    expect(out).toContain('data-indent-type="space"');
+    expect(out).toContain('data-indent-length="4"');
+    expect(out).toContain('print("hi")');
+  });
+
+  it("code block without a language round-trips with default indent attrs (no language class)", () => {
+    // indentType/indentLength defaults ("space"/2) are truthy so they render —
+    // a real stored codeblock always carries data-indent-type/data-indent-length.
+    // A bare imported <pre><code> gains those defaults on first round-trip and
+    // is then idempotent.
+    const html = "<pre><code>plain code</code></pre>";
+    const out = roundTrip(html);
+    expect(out).toContain("<code>plain code</code></pre>");
+    expect(out).toContain('data-indent-type="space"');
+    expect(out).toContain('data-indent-length="2"');
+    expect(out).not.toContain("language-");
+    // id is rendered:false — must not leak into stored HTML
+    expect(out).not.toContain("codeblock-");
+    // second pass is idempotent
+    const out2 = roundTrip(out);
+    expect(out2).toBe(out);
+  });
+
+  it("code block language parses from <code> child class too (upstream shape)", () => {
+    // some stored HTML carries the language class on the inner <code>, not <pre>
+    const html = '<pre><code class="language-ts">type X = 1;</code></pre>';
+    const out = roundTrip(html);
+    expect(out).toContain('class="language-ts"');
+    expect(out).toContain("type X = 1;");
   });
 });

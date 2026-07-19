@@ -85,6 +85,39 @@ export function getExactChangedNodes(
   return nodes;
 }
 
+/**
+ * Ported verbatim from @notesnook/editor (GPL-3.0), utils/prosemirror.ts.
+ * All nodes touched by `tr` (optionally descending into children) matching
+ * `predicate`. Used by the code-block highlighter to find changed codeblocks.
+ */
+export interface GetChangedNodesOptions {
+  /** Whether to descend into child nodes. @defaultValue false */
+  descend?: boolean;
+  /** Predicate test; return false to skip a node. */
+  predicate?: (node: ProsemirrorNode, pos: number, range: NodeRange) => boolean;
+}
+
+export function getChangedNodes(
+  tr: Transaction,
+  options: GetChangedNodesOptions = {}
+): NodeWithPos[] {
+  const { descend = false, predicate } = options;
+  const nodeRange = getChangedNodeRanges(tr);
+
+  const nodes: NodeWithPos[] = [];
+  for (const range of nodeRange) {
+    const { start, end } = range;
+    tr.doc.nodesBetween(start, end, (node, pos) => {
+      const shouldAdd = !predicate || predicate(node, start, range);
+      if (shouldAdd && nodes.every((n) => n.pos !== pos)) {
+        nodes.push({ node, pos });
+      }
+      return descend;
+    });
+  }
+  return nodes;
+}
+
 /** Parent task-list nodes removed (emptied) by a transaction. */
 export function getDeletedNodes(
   tr: Transaction,
