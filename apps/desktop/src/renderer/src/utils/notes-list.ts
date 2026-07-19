@@ -21,6 +21,94 @@ export const DEFAULT_SORT_KEY: SortKey = "dateEdited";
 export const DEFAULT_SORT_DIR: SortDir = "desc";
 
 /**
+ * List grouping (Phase 3.3 follow-up). `none` renders a flat list (the
+ * pre-grouping behaviour); `date` buckets entries by how long ago they were
+ * last edited. Notebook/tag grouping is deferred — the API exposes notebooks
+ * and tags flat (no per-note membership index), so date grouping is the only
+ * mode derivable purely from {@link NoteListItem}.
+ */
+export type GroupKey = "none" | "date";
+
+export const DEFAULT_GROUP_KEY: GroupKey = "none";
+
+export interface NoteGroup {
+  /** Stable bucket id ("" for the flat `none` group, else e.g. "today"). */
+  key: string;
+  /** Human-readable header label ("" for the flat group → no header renders). */
+  label: string;
+  items: NoteListItem[];
+}
+
+/** Display order + labels for the date buckets. */
+const DATE_BUCKETS: { key: string; label: string }[] = [
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "this-week", label: "Earlier this week" },
+  { key: "this-month", label: "Earlier this month" },
+  { key: "this-year", label: "Earlier this year" },
+  { key: "older", label: "Older" }
+];
+
+function midnight(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/**
+ * Bucket a timestamp into a date-group id. Calendar-based (not 24h-relative)
+ * so "Today"/"Yesterday" respect the user's local day boundary. Future-dated
+ * notes fall into "today". `now` is injectable for deterministic tests.
+ */
+export function dateBucket(dateEdited: number, now: number = Date.now()): string {
+  const itemTs = dateEdited;
+  const nowDate = new Date(now);
+  const itemDate = new Date(itemTs);
+  const todayMid = midnight(nowDate);
+  const itemMid = midnight(itemDate);
+  const dayDiff = Math.round((todayMid - itemMid) / 86_400_000);
+  if (dayDiff <= 0) return "today";
+  if (dayDiff === 1) return "yesterday";
+  // Same calendar week (Monday-based), but not today/yesterday.
+  const weekStart = todayMid - (((nowDate.getDay() + 6) % 7) * 86_400_000);
+  if (itemMid >= weekStart) return "this-week";
+  if (itemDate.getFullYear() === nowDate.getFullYear() && itemDate.getMonth() === nowDate.getMonth()) {
+    return "this-month";
+  }
+  if (itemDate.getFullYear() === nowDate.getFullYear()) return "this-year";
+  return "older";
+}
+
+/**
+ * Group already-sorted items under headers. With `key === "none"` a single
+ * headerless group is returned (or `[]` when empty) so the list renders flat.
+ * For `date`, items keep their sort order within each bucket; buckets appear
+ * in chronological recency order and empty buckets are omitted. Non-mutating.
+ */
+export function groupNotes(
+  items: readonly NoteListItem[],
+  key: GroupKey,
+  now: number = Date.now()
+): NoteGroup[] {
+  if (key === "none") {
+    return items.length ? [{ key: "", label: "", items: [...items] }] : [];
+  }
+  const buckets = new Map<string, NoteListItem[]>();
+  for (const n of items) {
+    const b = dateBucket(n.dateEdited || n.dateCreated, now);
+    let arr = buckets.get(b);
+    if (!arr) {
+      arr = [];
+      buckets.set(b, arr);
+    }
+    arr.push(n);
+  }
+  return DATE_BUCKETS.filter((b) => buckets.has(b.key)).map((b) => ({
+    key: b.key,
+    label: b.label,
+    items: buckets.get(b.key)!
+  }));
+}
+
+/**
  * Case-insensitive substring search across title + headline + tags. An empty
  * query matches everything. Returns the items unchanged (same references) when
  * the query is empty so the list isn't needlessly re-filtered.

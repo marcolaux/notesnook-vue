@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
 import { useShellStore } from "@/stores/shell";
-import type { SortKey } from "@/utils/notes-list";
+import { groupNotes, type SortKey, type GroupKey } from "@/utils/notes-list";
 import type { NotePreview } from "@/utils/note-preview";
 
 const notes = useNotesStore();
@@ -11,6 +11,10 @@ const collections = useCollectionsStore();
 const shell = useShellStore();
 
 const searchInput = ref<HTMLInputElement | null>(null);
+
+/** Grouped view of the sorted+filtered list. Flat mode returns one headerless
+ * group so the template iterates uniformly; `none` never shows a header. */
+const groups = computed(() => groupNotes(notes.visibleItems, notes.groupKey));
 
 /** Typed lookup of a note's list preview (thumbnail + checklist progress). */
 function previewOf(id: string): NotePreview | undefined {
@@ -34,6 +38,11 @@ const sortKeys: { value: SortKey; label: string }[] = [
   { value: "dateEdited", label: "Modified" },
   { value: "dateCreated", label: "Created" },
   { value: "title", label: "Title" }
+];
+
+const groupKeys: { value: GroupKey; label: string }[] = [
+  { value: "none", label: "No grouping" },
+  { value: "date", label: "Date" }
 ];
 
 function formatDate(ts: number): string {
@@ -136,6 +145,14 @@ watch(
       <span class="ml-auto flex items-center gap-1">
         <select
           class="titlebar-no-drag rounded-sm border border-white/10 bg-white/5 px-1 py-0.5 text-white/70 focus:outline-none"
+          :value="notes.groupKey"
+          title="Group by"
+          @change="notes.setGroupKey(($event.target as HTMLSelectElement).value as GroupKey)"
+        >
+          <option v-for="g in groupKeys" :key="g.value" :value="g.value">{{ g.label }}</option>
+        </select>
+        <select
+          class="titlebar-no-drag rounded-sm border border-white/10 bg-white/5 px-1 py-0.5 text-white/70 focus:outline-none"
           :value="notes.sortKey"
           title="Sort by"
           @change="notes.setSortKey(($event.target as HTMLSelectElement).value as SortKey)"
@@ -155,55 +172,63 @@ watch(
       </span>
     </div>
     <div class="min-h-0 flex-1 overflow-y-auto p-1">
-      <button
-        v-for="note in notes.visibleItems"
-        :key="note.id"
-        class="block w-full rounded-md px-2 py-1.5 text-left hover:bg-white/10"
-        :class="notes.activeNote?.id === note.id ? 'bg-white/15' : ''"
-        @click="notes.selectNote(note.id)"
-      >
-        <div class="flex items-center gap-1">
-          <span v-if="note.pinned" class="text-[10px] text-amber-300/80" title="Pinned">📌</span>
-          <span v-if="note.favorite" class="text-[10px] text-rose-300/80" title="Favorite">★</span>
-          <span class="truncate text-xs font-medium text-white/90">{{ note.title }}</span>
+      <template v-for="group in groups" :key="group.key">
+        <div
+          v-if="group.label"
+          class="sticky top-0 z-10 bg-white/5 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-white/40"
+        >
+          {{ group.label }}
         </div>
-        <div class="mt-1 flex items-start gap-2">
-          <!-- First-image thumbnail (attachment-backed images resolve in Phase 6). -->
-          <img
-            v-if="previewOf(note.id)?.thumbnail"
-            :src="previewOf(note.id)!.thumbnail ?? undefined"
-            alt=""
-            class="h-8 w-8 shrink-0 rounded-sm object-cover"
-            draggable="false"
-          />
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-[10px] text-white/40">{{ note.headline || "No additional text" }}</div>
-            <!-- Checklist progress bar (x / y checked). -->
-            <div
-              v-if="previewOf(note.id)?.checklist && previewOf(note.id)!.checklist!.total > 0"
-              class="mt-1 flex items-center gap-1"
-            >
-              <div class="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
-                <div
-                  class="h-full rounded-full bg-emerald-400/70"
-                  :style="{ width: `${progressWidth(previewOf(note.id)!)}%` }"
-                />
+        <button
+          v-for="note in group.items"
+          :key="note.id"
+          class="block w-full rounded-md px-2 py-1.5 text-left hover:bg-white/10"
+          :class="notes.activeNote?.id === note.id ? 'bg-white/15' : ''"
+          @click="notes.selectNote(note.id)"
+        >
+          <div class="flex items-center gap-1">
+            <span v-if="note.pinned" class="text-[10px] text-amber-300/80" title="Pinned">📌</span>
+            <span v-if="note.favorite" class="text-[10px] text-rose-300/80" title="Favorite">★</span>
+            <span class="truncate text-xs font-medium text-white/90">{{ note.title }}</span>
+          </div>
+          <div class="mt-1 flex items-start gap-2">
+            <!-- First-image thumbnail (attachment-backed images resolve in Phase 6). -->
+            <img
+              v-if="previewOf(note.id)?.thumbnail"
+              :src="previewOf(note.id)!.thumbnail ?? undefined"
+              alt=""
+              class="h-8 w-8 shrink-0 rounded-sm object-cover"
+              draggable="false"
+            />
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-[10px] text-white/40">{{ note.headline || "No additional text" }}</div>
+              <!-- Checklist progress bar (x / y checked). -->
+              <div
+                v-if="previewOf(note.id)?.checklist && previewOf(note.id)!.checklist!.total > 0"
+                class="mt-1 flex items-center gap-1"
+              >
+                <div class="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    class="h-full rounded-full bg-emerald-400/70"
+                    :style="{ width: `${progressWidth(previewOf(note.id)!)}%` }"
+                  />
+                </div>
+                <span class="shrink-0 text-[8px] text-white/40">
+                  {{ previewOf(note.id)!.checklist!.checked }}/{{ previewOf(note.id)!.checklist!.total }}
+                </span>
               </div>
-              <span class="shrink-0 text-[8px] text-white/40">
-                {{ previewOf(note.id)!.checklist!.checked }}/{{ previewOf(note.id)!.checklist!.total }}
-              </span>
             </div>
           </div>
-        </div>
-        <div class="mt-0.5 flex items-center gap-1.5 text-[9px] text-white/30">
-          <span>{{ formatDate(note.dateEdited) }}</span>
-          <span
-            v-for="tag in note.tags.slice(0, 3)"
-            :key="tag"
-            class="rounded-sm bg-white/10 px-1 text-white/50"
-          >#{{ tag }}</span>
-        </div>
-      </button>
+          <div class="mt-0.5 flex items-center gap-1.5 text-[9px] text-white/30">
+            <span>{{ formatDate(note.dateEdited) }}</span>
+            <span
+              v-for="tag in note.tags.slice(0, 3)"
+              :key="tag"
+              class="rounded-sm bg-white/10 px-1 text-white/50"
+            >#{{ tag }}</span>
+          </div>
+        </button>
+      </template>
       <div v-if="notes.visibleItems.length === 0 && notes.query" class="px-2 py-4 text-center text-[10px] text-white/30">
         No notes match “{{ notes.query }}”
       </div>

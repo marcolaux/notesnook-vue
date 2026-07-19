@@ -4,8 +4,11 @@ import { createPinia, setActivePinia } from "pinia";
 import {
   filterNotes,
   sortNotes,
+  groupNotes,
+  dateBucket,
   DEFAULT_SORT_KEY,
-  DEFAULT_SORT_DIR
+  DEFAULT_SORT_DIR,
+  DEFAULT_GROUP_KEY
 } from "@/utils/notes-list";
 import { useNotesStore } from "@/stores/notes";
 import type { NoteListItem } from "@/stores/notes";
@@ -190,5 +193,145 @@ describe("useNotesStore view state", () => {
     notes.setSortKey("dateEdited");
     notes.setSortDir("asc");
     expect(notes.visibleItems.map((n) => n.id)).toEqual(["c", "a"]);
+  });
+});
+
+describe("groupNotes", () => {
+  // `now` fixed at 2026-07-19T12:00:00 local — a Sunday. Lets us exercise every
+  // date bucket deterministically regardless of when the suite runs.
+  const NOW = new Date(2026, 6, 19, 12, 0, 0).getTime();
+  const DAY = 86_400_000;
+  const midnight = (ts: number): number => {
+    const d = new Date(ts);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  };
+
+  function at(offsetDays: number, hour = 10): number {
+    return midnight(NOW) + offsetDays * DAY + hour * 3_600_000;
+  }
+
+  const GROUPED: NoteListItem[] = [
+    item({ id: "today1", title: "T1", dateEdited: at(0) }),
+    item({ id: "today2", title: "T2", dateEdited: at(0, 8) }),
+    item({ id: "yest1", title: "Y1", dateEdited: at(-1) }),
+    item({ id: "week1", title: "W1", dateEdited: at(-3) }),
+    item({ id: "month1", title: "M1", dateEdited: at(-12) }),
+    item({ id: "year1", title: "YR1", dateEdited: at(-100) }),
+    item({ id: "old1", title: "O1", dateEdited: at(-800) })
+  ];
+
+  it("none returns a single headerless group (or [] when empty)", () => {
+    expect(groupNotes(GROUPED, "none", NOW)).toEqual([
+      { key: "", label: "", items: GROUPED }
+    ]);
+    expect(groupNotes([], "none", NOW)).toEqual([]);
+  });
+
+  it("date buckets by recency in chronological order, omitting empties", () => {
+    const groups = groupNotes(GROUPED, "date", NOW);
+    expect(groups.map((g) => g.key)).toEqual([
+      "today",
+      "yesterday",
+      "this-week",
+      "this-month",
+      "this-year",
+      "older"
+    ]);
+    expect(groups.map((g) => g.label)).toEqual([
+      "Today",
+      "Yesterday",
+      "Earlier this week",
+      "Earlier this month",
+      "Earlier this year",
+      "Older"
+    ]);
+    expect(groups[0].items.map((n) => n.id)).toEqual(["today1", "today2"]);
+    expect(groups[1].items.map((n) => n.id)).toEqual(["yest1"]);
+  });
+
+  it("date preserves sort order within a bucket", () => {
+    // Sort GROUPED desc by dateEdited, then bucket — within "today" the
+    // later-edited item (today1 at 10:00) comes before today2 (08:00).
+    const sorted = sortNotes(GROUPED, "dateEdited", "desc");
+    const groups = groupNotes(sorted, "date", NOW);
+    expect(groups[0].items.map((n) => n.id)).toEqual(["today1", "today2"]);
+  });
+
+  it("date omits empty buckets", () => {
+    const only = [item({ id: "today1", title: "T1", dateEdited: at(0) })];
+    const groups = groupNotes(only, "date", NOW);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].key).toBe("today");
+  });
+
+  it("does not mutate the input array", () => {
+    const copy = [...GROUPED];
+    groupNotes(GROUPED, "date", NOW);
+    expect(GROUPED.map((n) => n.id)).toEqual(copy.map((n) => n.id));
+  });
+
+  it("falls back to dateCreated when dateEdited is 0", () => {
+    const n = item({ id: "c", title: "C", dateCreated: at(-1), dateEdited: 0 });
+    const groups = groupNotes([n], "date", NOW);
+    expect(groups[0].key).toBe("yesterday");
+  });
+});
+
+describe("dateBucket", () => {
+  const NOW = new Date(2026, 6, 19, 12, 0, 0).getTime(); // Sunday
+  const DAY = 86_400_000;
+  const midnight = (ts: number): number => {
+    const d = new Date(ts);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  };
+  const at = (offsetDays: number, hour = 10): number =>
+    midnight(NOW) + offsetDays * DAY + hour * 3_600_000;
+
+  it("today for same calendar day (and future-dated)", () => {
+    expect(dateBucket(at(0), NOW)).toBe("today");
+    expect(dateBucket(at(0, 23), NOW)).toBe("today");
+    expect(dateBucket(at(1), NOW)).toBe("today"); // future
+  });
+
+  it("yesterday for the previous calendar day", () => {
+    expect(dateBucket(at(-1), NOW)).toBe("yesterday");
+  });
+
+  it("this-week for earlier in the current Mon–Sun week", () => {
+    // NOW is Sunday; Mon of this week was 6 days ago. A note 3 days ago (Thursday)
+    // is in this week but not today/yesterday.
+    expect(dateBucket(at(-3), NOW)).toBe("this-week");
+  });
+
+  it("this-month for same month, before this week", () => {
+    expect(dateBucket(at(-12), NOW)).toBe("this-month");
+  });
+
+  it("this-year for same year, earlier month", () => {
+    expect(dateBucket(at(-100), NOW)).toBe("this-year");
+  });
+
+  it("older for a previous year", () => {
+    expect(dateBucket(at(-800), NOW)).toBe("older");
+  });
+});
+
+describe("notes store grouping", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it("defaults to none", () => {
+    const notes = useNotesStore();
+    expect(notes.groupKey).toBe(DEFAULT_GROUP_KEY);
+    expect(notes.groupKey).toBe("none");
+  });
+
+  it("setGroupKey switches mode", () => {
+    const notes = useNotesStore();
+    notes.setGroupKey("date");
+    expect(notes.groupKey).toBe("date");
+    notes.setGroupKey("none");
+    expect(notes.groupKey).toBe("none");
   });
 });

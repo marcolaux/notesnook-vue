@@ -7,8 +7,10 @@ import {
   sortNotes,
   DEFAULT_SORT_KEY,
   DEFAULT_SORT_DIR,
+  DEFAULT_GROUP_KEY,
   type SortKey,
-  type SortDir
+  type SortDir,
+  type GroupKey
 } from "@/utils/notes-list";
 import {
   extractNotePreview,
@@ -86,6 +88,8 @@ export const useNotesStore = defineStore("notes", () => {
   const regexSearch = ref(false);
   const sortKey = ref<SortKey>(DEFAULT_SORT_KEY);
   const sortDir = ref<SortDir>(DEFAULT_SORT_DIR);
+  /** List grouping mode (Phase 3.3): `none` = flat, `date` = bucketed. */
+  const groupKey = ref<GroupKey>(DEFAULT_GROUP_KEY);
   /** Incremented by the "Search notes" palette command; the list watches it to
    * focus the search input (DOM focus is an on-site visual gate). */
   const focusSearchSignal = ref(0);
@@ -158,6 +162,11 @@ export const useNotesStore = defineStore("notes", () => {
 
   function setSortDir(dir: SortDir): void {
     sortDir.value = dir;
+  }
+
+  /** Set the list grouping mode (`none` = flat, `date` = bucketed). */
+  function setGroupKey(key: GroupKey): void {
+    groupKey.value = key;
   }
 
   /** Flip asc↔desc for the current sort key. */
@@ -339,6 +348,7 @@ export const useNotesStore = defineStore("notes", () => {
     regexSearch,
     sortKey,
     sortDir,
+    groupKey,
     focusSearchSignal,
     previews,
     collectionFilter,
@@ -357,6 +367,7 @@ export const useNotesStore = defineStore("notes", () => {
     setSortKey,
     setSortDir,
     toggleSortDir,
+    setGroupKey,
     clearSearch,
     focusSearch
   };
