@@ -13,6 +13,7 @@ import { desktop } from "./desktop-bridge";
 import { initDatabase, createDesktopPlatform } from "./database";
 import { injectTheme, ThemeDark } from "@notesnook-vue/theme-vue";
 import type { Database } from "@notesnook-vue/contracts";
+import { readServerConfig, resolveHosts } from "./server-config";
 
 let database: Database | undefined;
 
@@ -35,10 +36,13 @@ export async function bootstrap(): Promise<Database> {
     throw error;
   }
 
-  // 2. Database init.
+  // 2. Database init. Resolve the persisted server config (default Notesnook
+  // servers, or a self-hosted bag chosen at the login screen) before init —
+  // `db.host()` must run before `db.init()`.
   try {
+    const serverHosts = resolveHosts(readServerConfig());
     const platform = await createDesktopPlatform();
-    const db = await initDatabase(platform);
+    const db = await initDatabase(platform, serverHosts);
     database = db;
     await seedIfEmpty(db);
     await desktop.log.mutate({ level: "info", message: "database initialised" });

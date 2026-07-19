@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, watch } from "vue";
 import Sidebar from "@/components/Sidebar.vue";
 import NotesList from "@/components/NotesList.vue";
 import Editor from "@/components/Editor.vue";
 import TitleBar from "@/components/TitleBar.vue";
+import LoginScreen from "@/components/LoginScreen.vue";
 import { useNotesStore } from "@/stores/notes";
+import { useAuthStore } from "@/stores/auth";
 import { bootstrap } from "@/platform/bootstrap";
 
 const sidebarCollapsed = ref(false);
@@ -13,14 +15,17 @@ const listCollapsed = ref(false);
 const bootState = ref<"loading" | "ready" | "error">("loading");
 const bootError = ref<string>("");
 
+const auth = useAuthStore();
+
 onMounted(async () => {
   const notes = useNotesStore();
   try {
     await bootstrap();
-    await notes.load();
+    await auth.init();
+    if (auth.showShell) await notes.load();
     bootState.value = "ready";
     // eslint-disable-next-line no-console
-    console.info(`[boot] ready — ${notes.count} notes loaded`);
+    console.info(`[boot] ready — auth:${auth.status}`);
   } catch (e) {
     bootState.value = "error";
     bootError.value = e instanceof Error ? e.message : String(e);
@@ -28,6 +33,19 @@ onMounted(async () => {
     console.error("[boot]", e);
   }
 });
+
+// Load notes the first time the shell becomes visible (logged in, or the user
+// chose local-only via "Continue without account").
+const notesLoaded = ref(false);
+watch(
+  () => auth.showShell,
+  async (show) => {
+    if (show && !notesLoaded.value) {
+      notesLoaded.value = true;
+      await useNotesStore().load();
+    }
+  }
+);
 </script>
 
 <template>
@@ -37,17 +55,23 @@ onMounted(async () => {
       @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
     />
     <div class="relative flex min-h-0 flex-1">
-      <Sidebar
-        v-show="!sidebarCollapsed"
-        class="w-60 shrink-0 border-r border-white/10 backdrop-blur-2xl"
-      />
-      <NotesList
-        v-show="!listCollapsed"
-        :sidebar-collapsed="sidebarCollapsed"
-        class="w-80 shrink-0 border-r border-white/10 backdrop-blur-xl"
-        @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
-      />
-      <Editor class="min-w-0 flex-1 backdrop-blur-2xl" />
+      <!-- Notes shell (logged in, or local-only) -->
+      <template v-if="bootState === 'ready' && auth.showShell">
+        <Sidebar
+          v-show="!sidebarCollapsed"
+          class="w-60 shrink-0 border-r border-white/10 backdrop-blur-2xl"
+        />
+        <NotesList
+          v-show="!listCollapsed"
+          :sidebar-collapsed="sidebarCollapsed"
+          class="w-80 shrink-0 border-r border-white/10 backdrop-blur-xl"
+          @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
+        />
+        <Editor class="min-w-0 flex-1 backdrop-blur-2xl" />
+      </template>
+
+      <!-- Login screen (logged-out and not skipped) -->
+      <LoginScreen v-else-if="bootState === 'ready'" class="min-w-0 flex-1" />
 
       <!-- Boot overlay -->
       <div

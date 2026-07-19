@@ -30,6 +30,7 @@ import { Compressor } from "./compressor";
 import { NNStorage } from "./storage";
 import { createFileStorage } from "./fs";
 import { getDatabaseKey, databaseKeyToPassword, SafeStorageKeyStore } from "./key-store";
+import type { Hosts } from "./server-config";
 
 export interface DatabasePlatform {
   sqliteOptions: SQLiteOptions;
@@ -39,13 +40,18 @@ export interface DatabasePlatform {
 }
 
 /**
- * Construct, configure and initialise the Database. `db.host()` is called with
- * the default Notesnook hosts so sync has somewhere to reach (offline use is
- * unaffected). Returns the initialised singleton-grade instance.
+ * Construct, configure and initialise the Database. `db.host(h)` is called with
+ * the resolved server hosts (default Notesnook servers, or a self-hosted bag
+ * chosen at the login screen) so sync/auth have somewhere to reach; offline use
+ * is unaffected. `db.host()` must run before `db.init()`. Returns the
+ * initialised singleton-grade instance.
  */
-export async function initDatabase(platform: DatabasePlatform): Promise<Database> {
+export async function initDatabase(
+  platform: DatabasePlatform,
+  h: Hosts = hosts
+): Promise<Database> {
   const db = new Database();
-  db.host(hosts);
+  db.host(h);
   db.setup({
     sqliteOptions: platform.sqliteOptions,
     storage: platform.storage,

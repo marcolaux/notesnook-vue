@@ -44,7 +44,8 @@ export type {
   DatabaseUpdatedEvent,
   BackupFile,
   LegacyBackupFile,
-  ResolveInternalLink
+  ResolveInternalLink,
+  User
 } from "@notesnook/core";
 
 export type {
@@ -67,7 +68,9 @@ export {
   DefaultColors,
   FilteredSelector,
   Monographs,
-  hosts
+  hosts,
+  EV,
+  EVENTS
 } from "@notesnook/core";
 
 export type {

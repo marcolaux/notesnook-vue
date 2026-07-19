@@ -219,14 +219,18 @@ vollständiger Toolbar.
   `activeContent`, `contentState`, `saveState`, `loadActiveContent()`,
   `saveContent(noteId, html)`. ProseMirror-Base-CSS in `style.css`.
   **Runtime-Check: `npm run dev` bootet bis `bootState ready`** (siehe 2.5).
-- ✅ **Phase-2.4a/b/c/h Editor-Node-View-Port** — neues Workspace-Paket
+- ✅ **Phase-2.4a/b/c/e/h Editor-Node-View-Port** — neues Workspace-Paket
   `packages/editor-vue` (`@notesnook-vue/editor-vue`, Source-as-Entry,
-  pfad-aliasiert). 6 der 9 React-Node-Views portiert: `attachment`
+  pfad-aliasiert). 7 der 9 React-Node-Views portiert: `attachment`
   (inline Atom), `task-item` + `task-list` (Editable-Content +
   `appendTransaction`-Stats-Plugin → Progress-Bar), `embed` (sandboxed iframe
   + hand-rolled `Resizer.vue`, single bottomRight handle, kein neuer Dep),
   `code-block` (refractor-Syntax-Highlighting + Lazy-Lang-Loading via 297
   Literal-Import-Thunks + caret/lines-Sync; StarterKit-`codeBlock` deaktiviert),
+  `image` (IntersectionObserver-Lazy-Blob via `useObserver` + `Resizer` +
+  `data-align`/`width`/`height`/`data-aspect-ratio`-Round-trip; Blob-Pfad
+  Phase-6-gated über `editor.storage.getAttachmentData`, inline-`src` rendert
+  sofort),
   `table` (vendored prosemirror-tables-Fork + `Table`/`TableCell`/`TableHeader`
   Nodes + npm `TableRow` + Vue `TableComponent.vue` mit Row/Column-Toolbars +
   RowProperties/TableProperties-Popups; `columnResizing({View:null})` →
@@ -236,14 +240,17 @@ vollständiger Toolbar.
   React-Node-View-Layer → `VueNodeViewRenderer` + `NodeViewWrapper`/
   `NodeViewContent`. Wiederverwendbare Helfer: `getDataAttribute`,
   `prosemirror.ts`-Subset, `formatBytes`, `sandbox.ts` (`getSandboxFeatures`),
-  `components/Resizer.vue`, `code-block/loader.ts`.
-  Round-trip-Vertragstest `tests/contract/editor-html.spec.ts` (21 Tests,
+  `components/Resizer.vue`, `code-block/loader.ts`, `downloader.ts`
+  (`corsify`/`toBlobURL`/`revokeBloburl`/`downloadImage`/`toDataURL`/`toBlob`,
+  vendored `dataurl.ts` statt `@notesnook/common` — kein React-Leck),
+  `use-observer.ts` (Vue-Composable, Viewport-Root).
+  Round-trip-Vertragstest `tests/contract/editor-html.spec.ts` (27 Tests,
   happy-dom per File-Env-Override, Schema via leeren `Editor` gebaut).
-  57 Contract-Tests grün, typecheck (node+web) + build clean.
+  115 Contract-Tests grün, typecheck (node+web) + build clean.
   `Editor.vue` nutzt `[StarterKit.configure({codeBlock:false}), AttachmentNode,
-  TaskListNode, TaskItemNode.configure({nested:true}), EmbedNode, CodeBlock,
-  Table.configure({resizable:true, showResizeHandleOnSelection:true}), TableRow,
-  TableCell, TableHeader]`.
+  TaskListNode, TaskItemNode.configure({nested:true}), EmbedNode, ImageNode,
+  CodeBlock, Table.configure({resizable:true, showResizeHandleOnSelection:true}),
+  TableRow, TableCell, TableHeader]`.
   **Runtime-Check: bootet (2.5); visuelle Node-View-Gates brauchen On-Site-Review.**
 - ✅ **Phase-2.2 Tailwind-Token-Adapter** — neues Workspace-Paket
   `packages/theme-vue` (`@notesnook-vue/theme-vue`, Source-as-Entry,
@@ -472,8 +479,33 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     als Step 0. Vertragstest `theme.spec.ts` (11 Tests, happy-dom).
     68 Contract-Tests grün, typecheck (node+web) + build clean. **Runtime-Check
     offen.**
-- [ ] **2.3 Vue-Primitives** — `Flex`/`Box`/`Text`/`Button`/`Input` mit Tailwind
+- [x] **2.3 Vue-Primitives** — `Flex`/`Box`/`Text`/`Button`/`Input` mit Tailwind
   statt Theme UI (erspart spätere `sx`-Migration in jeder Komponente)
+  - **Status 2026-07-19 (done):** neues Workspace-Paket `packages/ui-vue`
+    (`@notesnook-vue/ui-vue`, Source-as-Entry, pfad-aliasiert wie `editor-vue`/
+    `theme-vue`). 7 Primitive SFCs: `Box`/`Flex`/`Text`/`Button`/`Input`/`Icon`/
+    `Surface` (`<script setup lang="ts">`, `withDefaults(defineProps<{}>())`,
+    `defineOptions({ inheritAttrs: false })` + `cx`-Merge-Pattern nach
+    `Resizer.vue`-Vorbild). Farben via `theme-vue`-Token-Utilities (`bg-surface`,
+    `text-text`, `text-text-muted`, `text-heading`, `border-border`, `bg-accent`,
+    `text-accent`, `bg-hover`, `text-placeholder`, `text-icon`, `bg-backdrop`);
+    `danger`/`error` via `--red-static`-Arbitrary-Value (kein Red-Token gebridged
+    — themed `error`-Variante = future Polish). Glassmorphism (`Box`/`Flex`/
+    `Surface`) liest die Theme-CSS-Vars (`--backdrop-blur-base`,
+    `--nn-surface-opacity`, `--background`) inline via `glassStyle()`. Class-Merge
+    via **`tailwind-merge`** (Caller-Klassen überschreiben Primitive-Defaults
+    sauber). `Icon` wrappt einen MDI-`path` (`viewBox 0 0 24 24`,
+    `fill="currentColor"`, `size`/`title`/`spin`); `Surface` = `Box`+Glass-Baked-in
+    (`blur`/`opacity`-Flags). **Kein `sx`-Objekt-Prop** (Renderer ist greenfield,
+    0× Theme-UI-Footprint). Vertragstest `tests/contract/ui-primitives.spec.ts`
+    (41 Tests, happy-dom, `@vue/test-utils` mount + `glassStyle()`-Unit-Tests —
+    happy-dom droppt `color-mix()` in `element.style.background`, daher wird der
+    `background`-Teil des Glass-Recipes direkt an der Funktion getestet).
+    109 Contract-Tests grün (68 + 41), typecheck (node+web) + build clean.
+    `tailwind-merge` + `@vue/test-utils` als neue Deps. **Runtime-Check: Paket
+    wird noch von keiner Komponente importiert → Renderer-Bundle unverändert;
+    visuelle Integration (Ersetzen der inline Buttons/Inputs in
+    NotesList/TitleBar/Sidebar/Editor) ist ein On-Site-/Visual-Change-Follow-up.**
 - [~] **2.4 Port-Reihenfolge der 9 React-Node-Views** (einfach → komplex).
   Eigener Paket-Scaffold `packages/editor-vue` (`@notesnook-vue/editor-vue`,
   Source-as-Entry, pfad-aliasiert wie `contracts`). Pro Node: `<name>.ts`
@@ -500,7 +532,28 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     wird vom Highlighter synchronisiert, `changeCodeBlockIndentation` läuft).
   2. [ ] `audio` (blob URL + `<audio>`) — **Phase-6-gated** (attachments auth)
   3. [ ] `web-clip` (iframe + fullscreen listener) — **Phase-6-gated**
-  5. [ ] `image` (IntersectionObserver + blob URL + alignment) — **Phase-6-gated**
+  5. [x] `image` (IntersectionObserver + blob URL + alignment) — **2.4e done.**
+     `ImageNode` Schema/parseHTML/renderHTML verbatim (`atom:true`,
+     `data-align` via `getDataAttribute`, `data-aspect-ratio` default-1-parse,
+     `<p>`-skip-Migration für Inline→Block). `ImageComponent.vue` =
+     `NodeViewWrapper` + `Resizer` (lockAspectRatio) + `useObserver`-Lazy-Blob
+     über `editor.storage.getAttachmentData?.({type:"image",hash})` → `toBlobURL`
+     (Phase-6-gated via `?.`; inline-`src` rendert sofort). Helfer portiert:
+     `downloader.ts` (`corsify`/`toBlobURL`/`revokeBloburl`/`downloadImage`/
+     `toDataURL`/`toBlob`, `atob` statt `Buffer`, vendored `dataurl.ts` statt
+     `@notesnook/common` → 0 React/theme-ui-Leck im Bundle), `use-observer.ts`
+     (Vue-Composable, Viewport-Root statt `.ms-container`). Commands
+     `insertImage` (insert image node direkt — kein Mime-Routing über
+     attachment)/`setImageAlignment`/`setImageSize` + Markdown-`![](src)`-
+     Input-Regel. Aufgeschoben (Polish/Phase 2.5+6): in-Node-Toolbar
+     (align/properties/preview/download), `onLoad`-Auto-Aspect-Ratio +
+     External-URL-Download-to-Attachment (`editor.threadsafe`+
+     `updateAttachment`-types), `Mod-c`-Clipboard, SVG-as-iframe, Keyboard-
+     Shortcuts (`openAttachmentPicker`). 115 Contract-Tests grün (6 neue
+     image-Cases: src/width/height/data-align/data-aspect-ratio/data-hash
+     round-trip, bare-img `data-aspect-ratio="1"`-Default + Idempotenz,
+     `<p>`-skip-Migration, seed-shape), typecheck+build clean. **Runtime-Check:
+     bootet (2.5); visuelle Gates (Bild rendert, Resize-Handle, Drag) on-site.**
   8. [x] `table` (vendored `prosemirror-tables` + row/column toolbars) —
      **2.4h done.** Vendored the customized GPL fork (re-pointed to
      `@tiptap/pm/*`, `@ts-nocheck` per file to keep the renderer + our port
@@ -1475,5 +1528,338 @@ User on-site ist.
 
 ---
 
+### 2026-07-19 — Phase 2.4e: image node-view portiert (IntersectionObserver-Lazy-Blob + Resizer + alignment)
+
+7. der 9 React-Node-Views (zuvor: attachment, task-item/list, embed, code-block,
+table). `image` ist **Phase-6-gated** (Attachment-Blob braucht Login/Auth), aber
+wie `attachment` (2.4a "Blob = Phase 6") ist alles außer dem Blob-Fetch
+headless-sicher: Schema + Komponente + Resizer + Alignment + Lazy-Load-Hook +
+Round-trip-Tests. Eine mit inline `src` (Data-URL/extern) gesetzte Note rendert
+sofort ohne Auth → on-site-Visual-Check funktioniert schon heute.
+
+**Erledigt & deterministisch verifiziert** (typecheck node+web clean, build
+clean, 115 Contract-Tests grün — 109 + 6 neue image-Cases; 0 React/theme-ui/
+zustand-Leck im Renderer-Bundle):
+
+- **`image.ts`** — TipTap-Node, Schema/parseHTML/renderHTML **verbatim** vom
+  Upstream (`packages/editor/src/extensions/image/image.ts`): `name:"image"`,
+  `atom:true`, `draggable:true`, `inline()`/`group()` aus `options.inline`
+  (Default `false` → Block). Attrs `type`/`progress` (`rendered:false`), `src`
+  (default null), `width`/`height` (default null), `align` via `getDataAttribute`
+  (→ `data-align`, **nicht** plain `align` wie embed!), `hash`/`filename`/
+  `mime`/`size` via `getDataAttribute`, `aspectRatio` (`default:undefined`,
+  `parseHTML`→`parseFloat` mit Fallback `1`, `renderHTML`→`data-aspect-ratio`).
+  `parseHTML`: `<p>`-Skip-Migration (priority 60, `skip:true`, getAttrs prüft
+  `querySelectorAll("img")` → Inline-Image-in-`<p>` wird zu Block-Image) +
+  `tag:"img"` (`allowBase64`-bedingt). `renderHTML:["img",mergeAttributes(...)]`.
+  React-`createNodeView(ImageComponent,{componentKey,shouldUpdate,
+  forceEnableSelection})` → `VueNodeViewRenderer(ImageComponent,{update})`:
+  `update` remountet bei `hash`-/Typ-Wechsel (→ neuer Lazy-Blob-Fetch),
+  re-rendert in-place bei size/align/aspectRatio/src-Wechsel (kein Caret-Sprung).
+  Commands `insertImage` (insert image-node direkt — unser attachment-Port
+  routet nicht per Mime, also entfällt die Upstream-Delegation an
+  `insertAttachment`), `setImageAlignment`/`setImageSize` (verbatim,
+  `chain().updateAttributes().setNodeSelection().run()`). Markdown-`![](src)`-
+  Input-Regel (verbatim; `alt`/`title` fallen weg — nicht im Schema, wie
+  Upstream). `addKeyboardShortcuts` entfallen (`openAttachmentPicker`/
+  `getAttachmentData`+`toBlob`+Clipboard → Phase 2.5/6). `forceEnableSelection`
+  (Notesnook-React-Layer-Option) entfällt — Atom-Nodes sind im PM/Vue-Node-View
+  per Default selektierbar.
+- **`ImageComponent.vue`** — `NodeViewWrapper as="div"` mit Flex-justify aus
+  `align` (default "left"); `<Resizer>` (`lockAspectRatio:true`, enabled iff
+  editable, handle iff selected) umschließt die Frame. `useObserver` auf der
+  **immer gerenderten Frame** (nicht dem `<img>`, damit Intersection schon vor
+  dem Blob-Load feuert) → Lazy-Blob-Fetch: bei `inView` + `hash` + kein `src` +
+  kein bloburl → `editor.storage.getAttachmentData?.({type:"image",hash})`
+  (Phase-6-`?.`-Guard → no-op bis Phase 6) → `toBlobURL(data,"image",mime,hash)`.
+  `<img :src="bloburl || corsify(src,undefined)" crossOrigin="anonymous"
+  draggable="false">` (src weggelassen wenn undefined → kein Broken-icon).
+  Selection-Ring, Drag-Handle (`data-drag-handle`, editable+selected),
+  Resize-Dim-Overlay (live `w × h`), Progress-Badge (`progress`-Attr),
+  Placeholder-Overlay (hash, kein src → Icon, bis Blob lädt). `onResizeStop` →
+  `setImageSize`. Cleanup `revokeBloburl(hash)` on unmount.
+- **`downloader.ts`** — verbatim-Port (`corsify`/`toBlobURL`/`revokeBloburl`/
+  `downloadImage`/`toDataURL`/`toBlob` + `UTITypes`-Map + `OBJECT_URL_CACHE`).
+  **Zwei Scoped-Swaps:** (a) `DataURL` aus vendored `dataurl.ts` statt
+  `@notesnook/common` (letzteres re-exportiert core's `DataURL`, zieht aber
+  React ins Bundle — 2.2's 0-Leck-Regel; vendored Regex deckt die
+  Renderer-Shapes `data:<mime>;base64,…` + URL-encoded, Phase-6-swap-Pfad
+  dokumentiert). (b) `atob`+`Uint8Array` statt Node-`Buffer.from(…,"base64")`
+  → kein Buffer-Polyfill-Dep in editor-vue. `downloadImage`/`toDataURL`/`toBlob`
+  schon portiert (Caller `onLoad`-External-Download + `Mod-c` → Phase 2.5/6).
+- **`use-observer.ts`** — Vue-3-Composable-Port des React-`useObserver`-Hooks.
+  Element als Ref (component-owned, per `watch`+`flush:post` re-observe bei
+  Mount/Unmount); `root:null` (Viewport) statt `.ms-container` (Upstream-Scroll-
+  Container nicht vorhanden); `once`-Flag.
+- **Integration** — `Editor.vue` um `ImageNode` erweitert; `bootstrap.ts` seeedt
+  eine image-Willkommens-Note mit inline SVG-Data-URL (`allowBase64`), `width=240
+  height=120 data-align="center" data-aspect-ratio="2"` → rendert sofort ohne
+  Phase-6-Auth (on-site-Visual-Check).
+- **Vertragstest** — `editor-html.spec.ts` um 6 image-Cases erweitert:
+  src/width/height/`data-align`/`data-aspect-ratio`-Round-trip, attachment-`data-
+  hash`/`-filename`/`-mime`/`-size`-Round-trip, bare-img gewinnt
+  `data-aspect-ratio="1"` (parseHTML-Fallback 1, truthy → gerendert) + ist
+  idempotent (2. Pass stabil), `<p><img></p>`-Skip-Migration → Block-Image ohne
+  `<p>`, `<p>`-ohne-img bleibt normale Paragraph (Skip-Guard), seed-shape
+  (image+checklist+embed). Test-Editor um `ImageNode` ergänzt.
+
+**Wichtige Erkenntnisse:**
+
+1. **`@notesnook/common` zieht React.** Re-exportiert `DataURL` aus
+   `@notesnook/core`, aber sein `dist/index.mjs` hat 4 React-Importe + `react`
+   als peer/dep. Ein Runtime-Import hätte React ins Bundle gezogen (2.2's
+   0-Leck-Regel gebrochen). Lösung: vendored `dataurl.ts` (Regex-Parser,
+   deckt Renderer-Shapes). `@notesnook/core` selbst ist React-frei + schon
+   gebündelt — wäre der saubere Swap-Pfad in Phase 6/2.5 bei Edge-Cases.
+2. **`exactOptionalPropertyTypes`-Fallen im downloader.** `fetch`'s
+   `RequestInit.signal` ist `AbortSignal | null` (nicht `undefined`); `let
+   contentType = headers.get(...)` ist `string | null` — `UTITypes[x]` unter
+   `noUncheckedIndexedAccess` ist `string | undefined`. Fixes:
+   `RequestInit` konditional bauen (signal nur wenn defined), `const mapped =
+   UTITypes[contentType]; if (mapped) contentType = mapped` (narrowt auf
+   string), `base64ToBytes` returns `ArrayBuffer` (nicht `Uint8Array<
+   ArrayBufferLike>` — sonst `BlobPart`-SharedArrayBuffer-Fehler).
+3. **Bare `<img>` gewinnt `data-aspect-ratio="1"`.** `aspectRatio.parseHTML`
+   fällt auf `1` zurück, und `1` ist truthy → `renderHTML` emitiert
+   `data-aspect-ratio="1"`. Erst ab 2. Pass idempotent. Upstream-Verhalten,
+   Round-trip-Test assertiert das (kein Bug).
+4. **Observer-Target = Frame, nicht `<img>`.** Vor dem Blob-Load hat das
+   `<img>` kein src → 0-Box → kein Intersection → kein Lazy-Fetch (Henne-Ei).
+   Frame ist immer gerendert (min-height 80px) → feuert → Blob-Fetch →
+   `<img>` bekommt src.
+5. **`componentKey`+`shouldUpdate` → ein `update`-Callback.** Upstream
+   remountet per React-`key=hash` (neuer Blob) UND re-rendert per `shouldUpdate`
+   (attr-Wechsel). Vue's `update`-Callback: `false` = remount, `true` =
+   in-place-re-render. Gefaltet: remount bei hash/Typ-Wechsel, in-place bei
+   size/align/aspectRatio/src.
+
+**Aufgeschoben (Polish/Phase 2.5+6, kein Schema-/Round-trip-Risiko):**
+- In-Node-Toolbar (align-L/C/R + properties + preview + download) → Phase 2.5.
+- `onLoad`-Auto-Aspect-Ratio/Size-Fix + External-URL-Download-to-Attachment
+  (`editor.threadsafe` + `updateAttachment` müsste image in attachment's
+  `types` aufnehmen) → Phase 6/2.5.
+- `Mod-c`-Clipboard-Copy (`getAttachmentData`+`toBlob`+`navigator.clipboard.
+  write`) → Phase 6.
+- SVG-as-`<iframe>` (braucht Theme-Engine für dark-Flag) → SVG rendert als
+  `<img>` (Browser-rendern fine).
+- `corsHost`-CORS-Proxy-Rewrite (liegt im toolbar-store/settings) → Phase 2.5.
+  Bis dahin: `corsify` mit host `undefined` → URL unchanged.
+- Double-Click-Preview (`editor.storage.previewAttachment`) → Phase 6.
+
+**Offen (User-Maschine, physische Anwesenheit nötig):** Runtime-Check
+`npm run dev` — Bild rendert (inline SVG-Data-URL-Seed), Select → Resize-Handle
+bottomRight (aspect-locked), Drag → Größe ändert + persistiert, Drag-Handle →
+Node verschieben, Attachment-Bild (hash, kein src) zeigt Placeholder (Phase 6
+liefert den Blob). In dieser Session nicht gestartet (off-site; Electron-GUI).
+Code fertig + deterministisch verifiziert (typecheck + build + 115
+Contract-Tests + Bundle-Leck-grep). Node-View-Port für nicht-Phase-6-gated
+Nodes jetzt komplett (7/9; audio + web-clip bleiben Phase-6-gated).
+
+**Commits (auf `main`):**
+- `3b6a122` 2.4h editor-vue + table
+- `…` 2.2 theme-vue (vorherige Session)
+- `…` 2.3 ui-vue (vorherige Session)
+- `…` M2.5 runtime-check + dual-ABI (vorherige Session)
+- (dieser) 2.4e editor-vue + image + downloader + useObserver
+
+**Nächster Schritt:** Login-Logik (Phase-6-Prerequisite, entblockt audio/
+web-clip/image-Blob-Pfad) oder On-Site-Runtime-Check-Gate (Theme-First-Paint,
+Editor-Mount, Checklist-Toggle, Edit-Persistenz, + jetzt image-Render/Resize)
+oder 2.3-Visual-Integration (Primitive in NotesList/TitleBar/Sidebar/Editor) —
+nach Nutzerpriorisierung.
+
+---
+
+### 2026-07-19 — Phase 2.3: Vue-Primitives (`packages/ui-vue`)
+
+Erstes inkrementelles UI-Grundgerüst nach M2.5. Ersetzt den geplanten
+Theme-UI-`Flex`/`Box`/`Text`/`Button`/`Input`-Stack durch Tailwind-v4-Primitive,
+die die `theme-vue`-Token-Utilities konsumieren — die bislang **von keiner
+Komponente genutzt** wurden (alles white-alpha-Literals wie `text-white/70`).
+Off-site-safe: Paket + Tests + Wiring; kein Refactor bestehender Komponenten
+(der wäre ein Visual-Change → On-Site-Gate).
+
+**Erledigt & deterministisch verifiziert** (typecheck node+web clean, build
+clean, 109 Contract-Tests grün — 68 + 41 neue ui-primitive):
+
+- **`packages/ui-vue`** — neues Workspace-Paket (`@notesnook-vue/ui-vue`,
+  Source-as-Entry, pfad-aliasiert wie `editor-vue`/`theme-vue`; `main`/`types`/
+  `exports` → `./src/index.ts` + `./src/*`, kein Build-Step). Runtime-Dep
+  `tailwind-merge@^3` (installiert 3.6.0), `vue` als peer; devDep `typescript`.
+  Kein `@notesnook-vue/theme-vue`-Dep — Primitive emitieren nur Class-Strings
+  / lesen CSS-Vars; Tokens resolve via den globalen Renderer-Stylesheet +
+  `injectTheme`.
+- **7 Primitive SFCs** (`src/components/`, alle `<script setup lang="ts">`):
+  - **`Box`** — `as`/`glass`; Basis `box-border`; Glass via `glassStyle()`.
+  - **`Flex`** — `inline`/`direction`/`align`/`justify`/`wrap`/`gap` →
+    `flex`/`inline-flex` + `flex-col`/`items-*`/`justify-*`/`flex-wrap`/`gap-<n>`.
+  - **`Text`** — `variant` (`heading`/`body`/`muted`/`placeholder`/`accent`) →
+    `text-heading`/`text-text`/…, `size` → `text-xs`…`text-2xl`, `weight` →
+    `font-*`; `as` default `span`.
+  - **`Button`** — `variant` (`primary`/`secondary`/`ghost`/`danger`),
+    `size` (`sm`/`md`/`lg`), `iconOnly` (square `w-*`+`place-items-center`),
+    `block`, `disabled`, `type` default `button`; declared `click`-Emit
+    (forwarded `@click="emit('click', $event)"` → `wrapper.emitted("click")`
+    testbar). Token-Utilities für Farben; `danger` via
+    `bg-[var(--red-static)]`.
+  - **`Input`** — `v-model` (`modelValue` + `update:modelValue`), `size`/
+    `block`/`variant` (`error` → `border-[var(--red-static)]`), `type` default
+    `text`; native Attrs (`placeholder`/`maxlength`/`autocomplete`/Events)
+    fallen through via `v-bind="rest"`.
+  - **`Icon`** — MDI-`path`-Wrapper (`viewBox 0 0 24 24`, `fill=currentColor`,
+    `size` default 18, `title` → `role=img`+`<title>`, sonst `aria-hidden`;
+    `spin` → `animate-spin`).
+  - **`Surface`** — `Box` + Glass baked-in, `blur`/`opacity` default `true`
+    (unabhängig schaltbar).
+- **Shared Helfer** — `src/utils/merge.ts` (`cx` via `tailwind-merge`'s
+  `twMerge`), `src/utils/use-primitive.ts` (`usePrimitiveAttrs()` →
+  `callerClass` + `rest` für das `inheritAttrs:false`+`cx`-Pattern, kein
+  Duplikat pro Komponente), `src/utils/glass.ts` (`glassStyle({blur,opacity})`
+  → `CSSProperties | undefined` mit `backdrop-filter`+`color-mix`-Background
+  aus den Theme-Vars), `src/types.ts` (Union-Typen), `src/vue-shims.d.ts`
+  (copy von `editor-vue`).
+- **Wiring** — `@notesnook-vue/ui-vue` Dep in `apps/desktop/package.json`;
+  Path-Aliase in root `tsconfig.json`, `apps/desktop/tsconfig.web.json`
+  (+ `include` um `../../packages/ui-vue/src/**/*` erweitert, damit `vue-tsc`
+  die SFCs typisiert), `vitest.config.ts` (`resolve.alias`),
+  `tests/contract/tsconfig.json` (`paths`); `@vue/test-utils@^2.4` als root
+  devDep (installiert 2.4.11). `electron.vite.config.ts` unchanged (resolven
+  via npm-workspace-dep, wie editor-vue/theme-vue).
+- **Vertragstest** `tests/contract/ui-primitives.spec.ts` (41 Tests, happy-dom,
+  `@vue/test-utils` mount): Button (variant/size/iconOnly/block/disabled/type/
+  click-emit), Input (v-model-roundtrip/placeholder/error-variant/size/block),
+  Text (variant/size/weight/as), Flex (direction/gap/justify/align/inline/
+  wrap), Box (glass-backdrop-filter/as), Surface (default/blur=false/
+  opacity=false/both=false), Icon (path/size/title/spin), Class-Merge
+  (tailwind-merge: caller `px-6` schlägt md-Default `px-3` → `px-3` gedroppt).
+
+**Wichtige Erkenntnisse:**
+
+1. **`inheritAttrs:false` + `cx` ist das Primitive-Pattern.** Vue mergt
+   `class` bei `inheritAttrs:true` nur per Concatenation (kein Dedup) → caller
+   `px-6` + primitive `px-3` beide vorhanden, CSS-Source-Order entscheidet
+   (fragil). Mit `inheritAttrs:false` + `usePrimitiveAttrs()` (stript `class`
+   aus `attrs`, koerziert Array→String) + `cx(base, callerClass)` deduped
+   `tailwind-merge` sauber; restliche Attrs via `v-bind="rest"` geforwardet.
+2. **happy-dom droppt `color-mix()` in `element.style.background`.** Vue setzt
+   jedes Style-Prop auf `element.style.<prop>`; happy-dom's
+   CSSStyleDeclaration parst `color-mix(in srgb, var(--background) calc(…), …)`
+   als invalid → nicht gespeichert. `backdrop-filter: blur(var(…))` akzeptiert
+   es hingegen. Chromium (Electron 43) rendert beides. → Konsequenz: den
+   `background`-Teil des Glass-Recipes **direkt an `glassStyle()` getestet**
+   (reine Funktion, kein DOM), mount-Tests nur auf `backdrop-filter` (was
+   happy-dom rendert). Gleiches Problem wie `theme.spec.ts`'s
+   `getComputedStyle`-Custom-Prop-Limitation.
+3. **Kein `-webkit-backdrop-filter`-Prefix nötig.** Chromium (Electron 43)
+   unterstützt unprefixed `backdrop-filter`; der Webkit-Prefix war nur Noise +
+   zwang zu einem `as Record<string,string>`-Cast. Entfernt.
+4. **`type` als Prop, nicht Attr.** Button/Input deklarieren `type` als Prop
+   mit Default (`button`/`text`), damit der Default greift und caller
+   `type="submit"` sauber als Prop geht (nicht über attrs).
+5. **Declared `click`-Emit am Button.** Native click fällt durch `v-bind=
+   "rest"` zwar auch durch (wenn nicht deklariert), aber dann ist
+   `wrapper.emitted("click")` undefined (native Listener ≠ Component-Emit).
+   Declare + forward (`@click="emit('click', $event)"`) → testbar und
+   konsistent mit Vue-Component-Konvention.
+
+**Aufgeschoben (kein Vertragsrisiko):**
+- Refactor der 4 bestehenden Komponenten (NotesList/TitleBar/Sidebar/Editor)
+  auf die Primitive — tauscht white-alpha-Literals gegen Tokens → Visual-Change
+  → **On-Site-Gate**. Follow-up, wenn der User on-site ist (oder als eigener
+  klar abgegrenzter Visual-Change-Schritt).
+- Themed `error`/`success`-Button-Varianten-Tokens jenseits `--red-static`
+  arbitrary value.
+- `Menu`/`PopupPresenter`/`ScrollContainer` (upstream `@notesnook/ui`) →
+  Phase 3 (App-Shell), gebaut auf diesen Basis-Primitives.
+- Per-Region-Theme-Scoping (`.theme-scope-list` auf Region-Roots) → Phase 3.
+
+**Offen (User-Maschine):** Runtime-Check `npm run dev` — visuelle Integration
+der Primitive in die App (ersetzen der inline Buttons/Inputs, Glass-Surface
+auf Sidebar/TitleBar statt `backdrop-blur-2xl bg-white/5`). Code fertig +
+deterministisch verifiziert (typecheck + build + 109 Contract-Tests).
+
+**Nächster Schritt:** 2.4e `image` (Phase-6-gated), Login-Logik
+(Phase-6-Prerequisite, entblockt audio/web-clip/image), oder On-Site-
+Runtime-Check-Gate für M2.5 (Theme-First-Paint/Editor-Mount/Checklist) +
+2.3-Visual-Integration — nach Nutzerpriorisierung.
+
+---
+
+## M2.6 Login-Logik — Notesnook-Server + Self-Hosted am Login-Screen (2026-07-19)
+
+Phase-6-Prerequisite umgesetzt: Login/Signup gegen die Notesnook-Server
+(default) mit der Möglichkeit, am Login-Screen auf einen **Self-Hosted-Server**
+zu wechseln (5 per-Komponent Host-Felder — API/Auth/SSE/Subscriptions/Issues —
+gespiegelt von Upstreams Settings → Servers; eine Single-Discovery-URL gibt es
+noch nicht, vgl. Upstream-Issue #9670). Login ist **optional** — ein
+„Continue without account"-Pfad erhält die lokale/offline-Fähigkeit der App.
+
+**Neue Dateien:**
+- `apps/desktop/src/renderer/src/platform/server-config.ts` —
+  `Hosts = typeof hosts`, `ServerConfig = notesnook | custom`,
+  `readServerConfig/writeServerConfig/resolveHosts/isValidConfig/defaultHosts`;
+  Persistenz in `localStorage` (kein Secret). Wird ganz am Anfang von
+  `bootstrap()` gelesen, damit der richtige Hosts-Bag vor `db.init()` steht
+  (`db.host()` muss vor `init()` laufen).
+- `apps/desktop/src/renderer/src/stores/auth.ts` — `useAuthStore`
+  (Pinia). State-Machine `unknown → logged-out → logging-in → mfa|logged-in`,
+  MFA-pending, `skippedLogin` (persistiert). Aktionen: `init` (cached `getUser`,
+  offline-safe — kein `fetchUser`), `login`/`submitMfa`/`signup`/`logout`/
+  `skipLogin`/`requestSignIn`. Login-Flow verifiziert gegen `@notesnook/core`
+  `dist/index.js`: `authenticateEmail` → `additional_data.primaryMethod`
+  vorhanden ⇒ MFA (`authenticateMultiFactorCode` → `authenticatePassword`),
+  sonst direkt `authenticatePassword`; `signup` auto-logged-in via `_login`.
+  Subscribed `userSessionExpired`/`userUnauthorized`/`userLoggedOut` →
+  logged-out.
+- `apps/desktop/src/renderer/src/components/LoginScreen.vue` — Sign-in/Sign-up-
+  Tabs, Email+Passwort, MFA-Code-Schritt, Server-Selektor (Notesnook vs Custom
+  mit 5 vorausgefüllten Host-Inputs), Fehler-Banner, „Continue without
+  account". Gebaut auf `@notesnook-vue/ui-vue`-Primitives. Server-Wechsel →
+  `writeServerConfig` + `location.reload()` (re-init DB gegen neue Hosts; läuft
+  nur logged-out, keine Session geht verloren).
+
+**Geänderte Dateien:**
+- `packages/contracts/src/index.ts` — re-exportiert `User` (type) + `EV`,
+  `EVENTS` (values) — Single-Chokepoint erhalten.
+- `apps/desktop/src/renderer/src/platform/database.ts` —
+  `initDatabase(platform, h: Hosts = hosts)`; `db.host(h)`.
+- `apps/desktop/src/renderer/src/platform/bootstrap.ts` — liest
+  `readServerConfig()` → `resolveHosts()` → `initDatabase(platform, hosts)`.
+- `apps/desktop/src/renderer/src/App.vue` — Auth-Gate: nach `bootstrap()` +
+  `auth.init()` zeigt `LoginScreen` wenn `!auth.showShell`, sonst Shell; Notes
+  lazy-load beim ersten Shell-Sichtbarwerden (logged-in ODER local-only).
+- `apps/desktop/src/renderer/src/components/Sidebar.vue` — Account-Area:
+  logged-in → Email + „Log out"; local-only → „Sign in" (`requestSignIn`).
+- `vitest.config.ts` — `resolve.alias` auf Array-Form mit RegExp-`find`
+  umgewandelt (Vite-Object-Alias macht keine `*`-Wildcard → `@/*`-Alias für
+  Renderer-Module in Contract-Tests funktionierte nicht; die toten `/*`-Keys
+  wurden durch echte RegExp ersetzt).
+- `tests/contract/tsconfig.json` — `@/*`-Path ergänzt.
+- `tests/contract/auth.spec.ts` — 15 neue Contract-Tests: server-config
+  (resolve/round-trip/malformed/isValidConfig) + auth-store
+  (init/login non-MFA/login MFA/submitMfa-no-pending/signup/logout/error/
+  skipLogin+requestSignIn). `@/platform/bootstrap` gemockt; in-memory
+  `localStorage`-Shim (node). EV-pub/sub-Test bewusst weggelassen: vitest
+  instantiiert `@notesnook-vue/contracts` für Store vs. Test unterschiedlich →
+  kein Round-Trip beobachtbar; `logout()` deckt dieselben State-Resets ab, das
+  Live-Event-Wiring ist On-Site-Gate.
+
+**Verifiziert (headless):** 130 Contract-Tests grün (15 neu); renderer
+`vue-tsc` typecheck clean; renderer build (`electron-vite build`) clean.
+**Vorbestehend & out-of-scope:** `packages/contracts` standalone
+`tsc --noEmit` → `TS18003` (Root-`tsconfig.json` hat `include: []`, kein
+contracts-eigenes tsconfig) — nicht durch diese Änderung verursacht.
+
+**On-Site-Gate (physische Anwesenheit, per Memory gebatcht):**
+1. Signup gegen default Notesnook-Server → Shell; Restart → noch logged-in.
+2. Logout → LoginScreen; „Continue without account" → local-only Shell;
+   Sidebar „Sign in" → LoginScreen zurück.
+3. MFA-Account: Login → MFA-Code-Schritt → Code → Shell.
+4. Self-hosted: „Custom/Self-hosted" → 5 Host-Felder editieren → Apply →
+   Reload → Login geht gegen custom `AUTH_HOST`/`API_HOST`.
+5. Sidebar-Account-Area (Log out / Sign in).
+
+---
+
 _Zuletzt aktualisiert: 2026-07-19_
-_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/h (editor-vue: attachment/task-item/task-list/embed/code-block/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)**. 68 Contract-Tests grün (36 + 21 editor-html round-trip + 11 theme), typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap gelöst (`a0f7f74`: `predev`→Electron-ABI, `pretest:contract`→System-Node-ABI). Editor nutzt `@notesnook-vue/editor-vue`-Nodes; Theme via `@notesnook-vue/theme-vue` (vendored `themeToCSS`-Port + `ThemeDark`/`ThemeLight` + Glassmorphism-Extension + Tailwind-`@theme inline`-Bridge; nur Type-Only-`@notesnook/theme`-Import → 0 React/theme-ui-Leck). Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; refractor-Highlighting mit 297 lazy-Literal-Import-Thunks; table via vendored prosemirror-tables-Fork. **Runtime-Check bootet bis `bootState ready` (6 Seed-Notizen, verschlüsselte SQLite in userData); visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount bei Notiz-Klick, Checklist-Toggle, Edit-Persistenz) brauchen physische Anwesenheit des Users.** Bereit für 2.4e (Phase-6-gated), Login (Phase-6-Prerequisite), oder 2.3 Vue-Primitives._
+_Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + **2.3 (ui-vue: 7 Tailwind/Token-Primitive — Box/Flex/Text/Button/Input/Icon/Surface; `tailwind-merge`; 41 neue Contract-Tests)** + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)**. **115 Contract-Tests grün (36 core + 27 editor-html + 11 theme + 41 ui-primitive)**, typecheck (node+web) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap gelöst (`a0f7f74`: `predev`→Electron-ABI, `pretest:contract`→System-Node-ABI). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9 portiert; audio + web-clip bleiben Phase-6-gated); Theme via `@notesnook-vue/theme-vue` (vendored `themeToCSS`-Port + `ThemeDark`/`ThemeLight` + Glassmorphism-Extension + Tailwind-`@theme inline`-Bridge; nur Type-Only-`@notesnook/theme`-Import → 0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue` (Token-Utilities + `glassStyle()` + `tailwind-merge`-Class-Merge; kein `sx`-Prop). Schema verbatim vom Upstream für Byte-stabilen HTML-Round-trip; refractor-Highlighting mit 297 lazy-Literal-Import-Thunks; table via vendored prosemirror-tables-Fork; **image via `useObserver`-Lazy-Blob (`editor.storage.getAttachmentData` Phase-6-gated) + `Resizer` + vendored `dataurl.ts`/`downloader.ts` (statt `@notesnook/common` → 0 React-Leck)**. **Runtime-Check bootet bis `bootState ready` (6 Seed-Notizen, verschlüsselte SQLite in userData); visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount bei Notiz-Klick, Checklist-Toggle, Edit-Persistenz, image-Render/Resize) + 2.3-Visual-Integration brauchen physische Anwesenheit des Users.** Bereit für Login (Phase-6-Prerequisite, entblockt audio/web-clip/image-Blob) oder On-Site-Runtime-Check-Gate._ **Login-Logik (M2.6) gelandet: Notesnook-Default-Server + Self-Hosted (5 per-Komponent Host-Felder) am Login-Screen, optionaler Local-Only-Pfad; `useAuthStore` + `server-config.ts` + `LoginScreen.vue` + App-Gate; 130 Contract-Tests grün, typecheck+build clean; On-Site-Verifikation der Live-Logins/MFA/Self-Hosted-Switch steht aus.**

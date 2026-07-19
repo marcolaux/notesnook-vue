@@ -22,19 +22,24 @@ export default defineConfig({
     }
   },
   resolve: {
-    alias: {
-      "@notesnook-vue/contracts": resolve(__dirname, "packages/contracts/src/index.ts"),
-      "@notesnook-vue/contracts/*": resolve(__dirname, "packages/contracts/src/*"),
-      // Allow contract tests to import the renderer platform modules, which use
-      // the same path aliases as the electron-vite renderer build.
-      "@contracts/*": resolve(__dirname, "apps/desktop/src/contracts/*"),
-      "@notesnook-vue/shared": resolve(__dirname, "packages/shared/src/index.ts"),
-      "@notesnook-vue/editor-vue": resolve(__dirname, "packages/editor-vue/src/index.ts"),
-      "@notesnook-vue/editor-vue/*": resolve(__dirname, "packages/editor-vue/src/*"),
-      "@notesnook-vue/theme-vue": resolve(__dirname, "packages/theme-vue/src/index.ts"),
-      "@notesnook-vue/theme-vue/*": resolve(__dirname, "packages/theme-vue/src/*"),
-      "@notesnook-vue/ui-vue": resolve(__dirname, "packages/ui-vue/src/index.ts"),
-      "@notesnook-vue/ui-vue/*": resolve(__dirname, "packages/ui-vue/src/*")
-    }
+    // Array form (with RegExp `find`) is required so the wildcard aliases
+    // (`@/*`, `@notesnook-vue/*/deep-path`) actually resolve — Vite's object
+    // alias form only does exact-string matches, so `*` keys are silently dead.
+    // Bare-specifier entries come first so they win over their wildcard siblings.
+    alias: [
+      { find: "@notesnook-vue/contracts", replacement: resolve(__dirname, "packages/contracts/src/index.ts") },
+      { find: /^@notesnook-vue\/contracts\/(.+)$/, replacement: resolve(__dirname, "packages/contracts/src") + "/$1" },
+      { find: "@notesnook-vue/shared", replacement: resolve(__dirname, "packages/shared/src/index.ts") },
+      { find: "@notesnook-vue/editor-vue", replacement: resolve(__dirname, "packages/editor-vue/src/index.ts") },
+      { find: /^@notesnook-vue\/editor-vue\/(.+)$/, replacement: resolve(__dirname, "packages/editor-vue/src") + "/$1" },
+      { find: "@notesnook-vue/theme-vue", replacement: resolve(__dirname, "packages/theme-vue/src/index.ts") },
+      { find: /^@notesnook-vue\/theme-vue\/(.+)$/, replacement: resolve(__dirname, "packages/theme-vue/src") + "/$1" },
+      { find: "@notesnook-vue/ui-vue", replacement: resolve(__dirname, "packages/ui-vue/src/index.ts") },
+      { find: /^@notesnook-vue\/ui-vue\/(.+)$/, replacement: resolve(__dirname, "packages/ui-vue/src") + "/$1" },
+      // Renderer path aliases (same as the electron-vite renderer build) so
+      // contract tests can import renderer platform modules / stores.
+      { find: /^@contracts\/(.+)$/, replacement: resolve(__dirname, "apps/desktop/src/contracts") + "/$1" },
+      { find: /^@\/(.+)$/, replacement: resolve(__dirname, "apps/desktop/src/renderer/src") + "/$1" }
+    ]
   }
 });
