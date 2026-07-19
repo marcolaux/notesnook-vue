@@ -28,10 +28,13 @@ const notes = useNotesStore();
       </div>
     </div>
     <div class="min-h-0 flex-1 overflow-y-auto p-6">
-      <div class="prose prose-invert max-w-none text-sm text-white/80">
-        <p class="text-white/30">
-          Editor placeholder — TipTap integration lands next.
-        </p>
+      <div v-if="notes.activeNote" class="prose prose-invert max-w-none text-sm text-white/80">
+        <h1 class="text-base font-semibold text-white/90">{{ notes.activeNote.title }}</h1>
+        <p v-if="notes.activeNote.headline" class="text-white/60">{{ notes.activeNote.headline }}</p>
+        <p v-else class="text-white/30">Empty note — TipTap editor lands in Phase 2.</p>
+      </div>
+      <div v-else class="prose prose-invert max-w-none text-sm text-white/80">
+        <p class="text-white/30">Select a note to view it.</p>
       </div>
     </div>
   </div>

@@ -1,12 +1,17 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { Note } from "@notesnook-vue/contracts";
+import { getDatabase } from "@/platform/bootstrap";
 
-interface NoteListItem {
+export interface NoteListItem {
   id: string;
   title: string;
-  preview: string;
-  dateModified: number;
+  headline: string;
+  dateCreated: number;
+  dateEdited: number;
+  tags: string[];
+  pinned: boolean;
+  favorite: boolean;
 }
 
 interface EditorTab {
@@ -15,13 +20,21 @@ interface EditorTab {
   title: string;
 }
 
+function toListItem(n: Note): NoteListItem {
+  return {
+    id: n.id,
+    title: n.title || "Untitled",
+    headline: n.headline ?? "",
+    dateCreated: n.dateCreated,
+    dateEdited: n.dateEdited,
+    tags: (n.tags ?? []).filter((t): t is string => typeof t === "string"),
+    pinned: n.pinned,
+    favorite: n.favorite
+  };
+}
+
 /**
- * Notes store — calls into `@notesnook/core`'s `database.notes` collection.
- *
- * For now this is a placeholder backed by in-memory stub data so the UI can
- * render during scaffolding. The real wiring lives in
- * `src/platform/database.ts` and will replace `items` with the result of
- * `database.notes.all(...)`.
+ * Notes store — reads from `@notesnook/core`'s `database.notes` collection.
  */
 export const useNotesStore = defineStore("notes", () => {
   const items = ref<NoteListItem[]>([]);
@@ -30,17 +43,18 @@ export const useNotesStore = defineStore("notes", () => {
 
   const count = computed(() => items.value.length);
 
-  function openTab(note: NoteListItem): void {
+  const activeTab = computed(() => openTabs.value.find((t) => t.id === activeTabId.value) ?? null);
+  const activeNote = computed(() =>
+    items.value.find((n) => n.id === activeTab.value?.noteId) ?? null
+  );
+
+  function openTab(note: Pick<NoteListItem, "id" | "title">): void {
     const existing = openTabs.value.find((t) => t.noteId === note.id);
     if (existing) {
       activeTabId.value = existing.id;
       return;
     }
-    const tab: EditorTab = {
-      id: crypto.randomUUID(),
-      noteId: note.id,
-      title: note.title
-    };
+    const tab: EditorTab = { id: crypto.randomUUID(), noteId: note.id, title: note.title };
     openTabs.value.push(tab);
     activeTabId.value = tab.id;
   }
@@ -54,13 +68,38 @@ export const useNotesStore = defineStore("notes", () => {
     }
   }
 
-  // Real API stub — will call `database.notes.all()` once platform wiring lands.
-  async function load(): Promise<void> {
-    items.value = [];
+  function selectNote(id: string): void {
+    const item = items.value.find((n) => n.id === id);
+    if (item) openTab(item);
   }
 
-  return { items, openTabs, activeTabId, count, openTab, closeTab, load };
-});
+  /** Load all notes from the database into the list. */
+  async function load(): Promise<void> {
+    const db = getDatabase();
+    const all = await db.notes.all.items();
+    items.value = all.map(toListItem);
+  }
 
-// Re-export the Note type so consumers can import it from the store module too.
-export type { Note };
+  /** Create a new note, reload, and open it in a tab. */
+  async function create(): Promise<void> {
+    const db = getDatabase();
+    const id = await db.notes.add({ title: "New note" });
+    await load();
+    const item = items.value.find((n) => n.id === id);
+    if (item) openTab(item);
+  }
+
+  return {
+    items,
+    openTabs,
+    activeTabId,
+    activeTab,
+    activeNote,
+    count,
+    openTab,
+    closeTab,
+    selectNote,
+    load,
+    create
+  };
+});

@@ -32,6 +32,7 @@ export async function bootstrap(): Promise<Database> {
     const platform = await createDesktopPlatform();
     const db = await initDatabase(platform);
     database = db;
+    await seedIfEmpty(db);
     await desktop.log.mutate({ level: "info", message: "database initialised" });
     return db;
   } catch (error) {
@@ -41,6 +42,19 @@ export async function bootstrap(): Promise<Database> {
       .catch(() => undefined);
     throw error;
   }
+}
+
+/** Seed a couple of welcome notes on a fresh database so the list isn't empty. */
+async function seedIfEmpty(db: Database): Promise<void> {
+  if ((await db.notes.all.count()) > 0) return;
+  await db.notes.add({
+    title: "Welcome to Notesnook Vue",
+    content: { type: "tiptap", data: "<p>This is your first note, stored in a real encrypted SQLite database via @notesnook/core.</p>" }
+  });
+  await db.notes.add({
+    title: "Phase 1 pipeline",
+    content: { type: "tiptap", data: "<p>Renderer holds the Database; SQL is compiled by Kysely and forwarded over the tRPC bridge to Main's better-sqlite3-multiple-ciphers, which writes an encrypted .sql file in userData.</p>" }
+  });
 }
 
 /** Returns the initialised Database singleton. Throws if bootstrap hasn't run. */
