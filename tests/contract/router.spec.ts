@@ -157,6 +157,7 @@ function stubCtx(opts: { showShell: boolean }, router?: unknown): CommandContext
     shell: undefined as unknown as CommandContext["shell"],
     sync: undefined as unknown as CommandContext["sync"],
     updater: undefined as unknown as CommandContext["updater"],
+    spellChecker: undefined as unknown as CommandContext["spellChecker"],
     router: (router ?? undefined) as CommandContext["router"],
     closePalette: () => {}
   };

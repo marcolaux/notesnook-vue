@@ -146,6 +146,19 @@ const appCommands: Command[] = [
     run: (ctx) => {
       void ctx.updater.installUpdate();
     }
+  },
+  // Spell-checker toggle (Phase 6.6) — flips the global Electron session
+  // spell-checker. Language/dictionary management is a picker UI (on-site);
+  // this is the palette entry point for the on/off switch.
+  {
+    id: "app:toggle-spell-check",
+    title: "Toggle spell check",
+    keywords: ["spell", "spellcheck", "spelling", "dictionary", "language"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => {
+      void ctx.spellChecker.toggleSpellCheck(!ctx.spellChecker.enabled);
+    }
   }
 ];
 

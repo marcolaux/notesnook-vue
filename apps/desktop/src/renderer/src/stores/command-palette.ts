@@ -14,6 +14,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useShellStore } from "@/stores/shell";
 import { useSyncStore } from "@/stores/sync";
 import { useUpdaterStore } from "@/stores/updater";
+import { useSpellCheckerStore } from "@/stores/spell-checker";
 import { getCommands, getCommandRouter, type Command, type CommandContext } from "@/commands/registry";
 import { filterCommands, cycleCommandIndex } from "@/commands/menu";
 
@@ -24,6 +25,7 @@ export const useCommandPaletteStore = defineStore("commandPalette", () => {
   const shell = useShellStore();
   const sync = useSyncStore();
   const updater = useUpdaterStore();
+  const spellChecker = useSpellCheckerStore();
 
   const open = ref(false);
   const query = ref("");
@@ -36,6 +38,7 @@ export const useCommandPaletteStore = defineStore("commandPalette", () => {
     shell,
     sync,
     updater,
+    spellChecker,
     router: getCommandRouter(),
     closePalette
   }));

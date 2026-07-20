@@ -16,6 +16,7 @@ import type { useAuthStore } from "@/stores/auth";
 import type { useShellStore } from "@/stores/shell";
 import type { useSyncStore } from "@/stores/sync";
 import type { useUpdaterStore } from "@/stores/updater";
+import type { useSpellCheckerStore } from "@/stores/spell-checker";
 
 export type CommandGroup = "app" | "editor";
 
@@ -30,6 +31,8 @@ export interface CommandContext {
   sync: ReturnType<typeof useSyncStore>;
   /** Auto-updater control (check/download/install — Phase 6.2). */
   updater: ReturnType<typeof useUpdaterStore>;
+  /** Spell-checker control (enable/languages/dictionary — Phase 6.6). */
+  spellChecker: ReturnType<typeof useSpellCheckerStore>;
   /** The Vue Router instance (set from `main.ts`; undefined outside the app). */
   router: Router | undefined;
   /** Close the palette overlay (called by the store after execute). */

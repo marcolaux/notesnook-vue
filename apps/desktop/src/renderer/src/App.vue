@@ -7,6 +7,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useStatusStore } from "@/stores/status";
 import { useVaultStore } from "@/stores/vault";
 import { useBackupsStore } from "@/stores/backup";
+import { useSpellCheckerStore } from "@/stores/spell-checker";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { bootstrap } from "@/platform/bootstrap";
 import { useCommandPalette } from "@/composables/use-command-palette";
@@ -21,6 +22,7 @@ const auth = useAuthStore();
 const status = useStatusStore();
 const vault = useVaultStore();
 const backups = useBackupsStore();
+const spellChecker = useSpellCheckerStore();
 const editorLayout = useEditorLayoutStore();
 
 // Command palette hotkey (Ctrl/Cmd+Shift+P) toggles the palette store; the
@@ -83,6 +85,10 @@ onMounted(async () => {
     void vault.refresh();
     // Seed the last-backup timestamp for the Backup/Restore UI (on-site).
     void backups.refresh();
+    // Seed the spell-checker snapshot (enabled flag + available/enabled
+    // languages + custom dictionary) for the on-site settings UI. Safe
+    // pre-login — the bridge is main-process, not auth-gated.
+    void spellChecker.refresh();
     if (auth.showShell) {
       await notes.load();
       void collections.load();
@@ -116,6 +122,7 @@ watch(
       void status.refreshSync();
       void vault.refresh();
       void backups.refresh();
+      void spellChecker.refresh();
     }
     // Flush a deep link that arrived while the user was logged out.
     if (show && pendingDeepLinkNote.value) {

@@ -216,6 +216,7 @@ function stubCtx(showShell: boolean, updater: ReturnType<typeof useUpdaterStore>
     shell: undefined as unknown as CommandContext["shell"],
     sync: undefined as unknown as CommandContext["sync"],
     updater,
+    spellChecker: undefined as unknown as CommandContext["spellChecker"],
     router: undefined as CommandContext["router"],
     closePalette: () => {}
   };

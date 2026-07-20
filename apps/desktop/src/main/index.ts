@@ -16,6 +16,7 @@ import {
 } from "./deep-link";
 import { registerTray } from "./tray";
 import { registerUpdater } from "./updater";
+import { registerSpellChecker } from "./spell-checker";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -98,6 +99,10 @@ void app.whenReady().then(() => {
   // System tray (New Note / New Notebook / Show / Quit). The tray forwards
   // new-note/new-notebook to the renderer over `app:tray-action`.
   registerTray(window);
+  // Spell-checker (Electron session.spellcheck). Bound to the main window's
+  // session; the persisted enabled flag is applied here. The renderer toggles
+  // languages + enabled over the bridge (on-site UI).
+  registerSpellChecker(window);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

@@ -186,6 +186,53 @@ function requireUpdater(): UpdaterServer {
 }
 
 // ---------------------------------------------------------------------------
+// Spell-checker — matches upstream apps/desktop/src/api/spell-checker.ts
+// ---------------------------------------------------------------------------
+// Electron's `session` spell-check is a main-process capability. The renderer
+// reads the available/enabled languages + the global enabled flag and toggles
+// them through this structural server over the bridge; the impl lives in
+// `src/main/spell-checker.ts` and is injected via `registerSpellCheckerServer`.
+// The pure language table + resolution helpers live in `./spell-checker` so
+// they are shared (main + renderer + tests) without Electron.
+
+export type { Language } from "./spell-checker";
+export {
+  SPELLCHECKER_ENABLED_DEFAULT,
+  languageName,
+  resolveEnabledCodes,
+  resolveLanguage,
+  sortLanguages,
+  toLanguage
+} from "./spell-checker";
+import type { Language } from "./spell-checker";
+
+export interface SpellCheckerServer {
+  /** Whether the global spell-checker is enabled (persisted main-side). */
+  isEnabled(): Promise<boolean>;
+  /** Languages the platform supports, as display-name-sorted descriptors. */
+  languages(): Promise<Language[]>;
+  /** Languages currently enabled for spell-checking (resolved to working codes). */
+  enabledLanguages(): Promise<Language[]>;
+  /** Set the enabled languages (codes are resolved against the available set). */
+  setLanguages(codes: string[]): Promise<void>;
+  /** Enable or disable the global spell-checker. Returns the new enabled state. */
+  toggle(enabled: boolean): Promise<boolean>;
+  /** Words in the user's custom spell-checker dictionary. */
+  words(): Promise<string[]>;
+  /** Remove a word from the custom dictionary. */
+  deleteWord(word: string): Promise<void>;
+}
+
+let spellCheckerServer: SpellCheckerServer | undefined;
+export function registerSpellCheckerServer(server: SpellCheckerServer): void {
+  spellCheckerServer = server;
+}
+function requireSpellChecker(): SpellCheckerServer {
+  if (!spellCheckerServer) throw new Error("Spell-checker server not registered (main boot incomplete)");
+  return spellCheckerServer;
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -307,6 +354,23 @@ export const appRouter = t.router({
     download: t.procedure.mutation(() => requireUpdater().download()),
     install: t.procedure.mutation(() => requireUpdater().install()),
     status: t.procedure.query(() => requireUpdater().status())
+  }),
+
+  // Spell-checker — matches upstream apps/desktop/src/api/spell-checker.ts
+  spellChecker: t.router({
+    isEnabled: t.procedure.query(() => requireSpellChecker().isEnabled()),
+    languages: t.procedure.query(() => requireSpellChecker().languages()),
+    enabledLanguages: t.procedure.query(() => requireSpellChecker().enabledLanguages()),
+    setLanguages: t.procedure
+      .input(z.array(z.string()))
+      .mutation(({ input }) => requireSpellChecker().setLanguages(input)),
+    toggle: t.procedure
+      .input(z.object({ enabled: z.boolean() }))
+      .mutation(({ input }) => requireSpellChecker().toggle(input.enabled)),
+    words: t.procedure.query(() => requireSpellChecker().words()),
+    deleteWord: t.procedure
+      .input(z.string())
+      .mutation(({ input }) => requireSpellChecker().deleteWord(input))
   })
 });
 
