@@ -8,6 +8,7 @@ import { useCollectionsStore } from "@/stores/collections";
 import { useShortcutsStore } from "@/stores/shortcuts";
 import { topViews, bottomViews } from "@/router/routes";
 import { desktop } from "@/platform/desktop-bridge";
+import NotebookNode from "@/components/NotebookNode.vue";
 import type { CollectionType } from "@/stores/collections";
 
 const notes = useNotesStore();
@@ -158,32 +159,17 @@ function toggleShortcut(type: CollectionType, id: string): void {
           <path d="M9 18l6-6-6-6" />
         </svg>
         <span>{{ t("sidebar.notebooks") }}</span>
-        <span class="ml-auto text-[10px] text-text-muted">{{ collections.notebooks.length }}</span>
+        <span class="ml-auto text-[10px] text-text-muted">{{ collections.notebookCount }}</span>
       </button>
-      <div v-if="!collections.collapsed.notebooks" class="mt-0.5 flex flex-col gap-0.5 pl-3">
-        <button
-          v-for="nb in collections.sortedNotebooks"
-          :key="nb.id"
-          class="titlebar-no-drag group flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
-          :class="
-            isSelected('notebook', nb.id)
-              ? 'bg-glass-active text-text'
-              : 'text-text hover:bg-glass-hover'
-          "
-          :title="nb.description || nb.title"
-          @click="selectCollection('notebook', nb.id)"
-        >
-          <span v-if="nb.pinned" class="text-[10px] text-amber-300/80" title="Pinned">📌</span>
-          <span class="truncate">{{ nb.title }}</span>
-          <span
-            class="ml-auto shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
-            :class="shortcuts.isShortcut(nb.id) ? 'text-amber-300/80 opacity-100' : 'text-text-muted'"
-            :title="shortcuts.isShortcut(nb.id) ? t('sidebar.removeFromShortcuts') : t('sidebar.addToShortcuts')"
-            @click.stop="toggleShortcut('notebook', nb.id)"
-          >{{ shortcuts.isShortcut(nb.id) ? "★" : "☆" }}</span>
-        </button>
+      <div v-if="!collections.collapsed.notebooks" class="mt-0.5 flex flex-col gap-0.5">
+        <NotebookNode
+          v-for="node in collections.treeNotebooks"
+          :key="node.item.id"
+          :node="node"
+          :depth="0"
+        />
         <div
-          v-if="collections.notebooks.length === 0"
+          v-if="collections.notebookCount === 0"
           class="px-2 py-1 text-[10px] text-text-muted"
         >
           {{ t("sidebar.noNotebooks") }}

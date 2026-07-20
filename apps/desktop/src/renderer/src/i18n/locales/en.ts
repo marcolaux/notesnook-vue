@@ -24,6 +24,7 @@ export default {
     shortcuts: "Shortcuts",
     noShortcuts: "No shortcuts",
     addToShortcuts: "Add to shortcuts",
-    removeFromShortcuts: "Remove from shortcuts"
+    removeFromShortcuts: "Remove from shortcuts",
+    createSubNotebook: "Create sub-notebook"
   }
 } as const;

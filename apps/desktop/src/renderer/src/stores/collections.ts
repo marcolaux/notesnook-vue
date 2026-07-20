@@ -5,9 +5,11 @@ import {
   sortCollections,
   toNotebookListItem,
   toTagListItem,
+  buildNotebookTree,
   DEFAULT_COLLECTION_SORT_KEY,
   DEFAULT_COLLECTION_SORT_DIR,
   type NotebookListItem,
+  type NotebookTreeNode,
   type TagListItem,
   type CollectionSortKey,
   type SortDir
@@ -35,7 +37,16 @@ export interface SelectedCollection {
 export type CollectionSection = "notebooks" | "tags";
 
 export const useCollectionsStore = defineStore("collections", () => {
+  /** All notebooks (flat) — for lookups (`selectedLabel`), counts, empty-state.
+   *  Sub-notebooks live in here too; the tree is built from `roots` + `children`. */
   const notebooks = ref<NotebookListItem[]>([]);
+  /** Root notebooks (no parent) — the top level of the sidebar tree. */
+  const roots = ref<NotebookListItem[]>([]);
+  /** Lazy per-parent child lists (loaded on expand via `db.relations.from`). */
+  const children = ref<Record<string, NotebookListItem[]>>({});
+  /** Per-notebook expand state (which rows show their children). */
+  const expanded = ref<Set<string>>(new Set());
+
   const tags = ref<TagListItem[]>([]);
   const trashCount = ref(0);
 
@@ -58,6 +69,19 @@ export const useCollectionsStore = defineStore("collections", () => {
     sortCollections(tags.value, sortKey.value, sortDir.value)
   );
 
+  /** Total notebook count (all, incl. sub-notebooks) for the section header. */
+  const notebookCount = computed(() => notebooks.value.length);
+
+  /** The recursive notebook tree (roots + lazy children), sorted per level. */
+  const treeNotebooks = computed<NotebookTreeNode[]>(() =>
+    buildNotebookTree(
+      roots.value,
+      new Map(Object.entries(children.value)),
+      sortKey.value,
+      sortDir.value
+    )
+  );
+
   /** Human label of the selected collection (for the notes-list filter chip),
    * or `null` when nothing is selected. */
   const selectedLabel = computed<string | null>(() => {
@@ -69,22 +93,84 @@ export const useCollectionsStore = defineStore("collections", () => {
     return tags.value.find((t) => t.id === s.id)?.title ?? "Tag";
   });
 
-  /** Load notebooks, tags and the trash count in parallel. */
+  /** Load notebooks (all + roots), tags and the trash count in parallel. */
   async function load(): Promise<void> {
     const db = getDatabase();
-    const [nb, tg, trash] = await Promise.all([
+    const [nb, rt, tg, trash] = await Promise.all([
       db.notebooks.all.items().catch(() => []),
+      db.notebooks.roots.items().catch(() => []),
       db.tags.all.items().catch(() => []),
       db.trash.all().catch(() => [])
     ]);
     notebooks.value = nb.map(toNotebookListItem);
+    roots.value = rt.map(toNotebookListItem);
     tags.value = tg.map(toTagListItem);
     trashCount.value = Array.isArray(trash) ? trash.length : 0;
   }
 
   /**
-   * Create a new notebook (tray "New Notebook" / future palette command), then
-   * reload so the sidebar lists it. Never throws — returns the new id, or
+   * Load a notebook's sub-notebooks via `db.relations.from({type:"notebook",
+   * id}, "notebook").resolve()` (parent→child relation), sorted + stored under
+   * `children[id]`. Never throws — a failure leaves any previous child list.
+   */
+  async function loadChildren(id: string): Promise<void> {
+    try {
+      const db = getDatabase();
+      const kids = await db.relations
+        .from({ type: "notebook", id }, "notebook")
+        .resolve();
+      children.value = { ...children.value, [id]: sortCollections(kids.map(toNotebookListItem), sortKey.value, sortDir.value) };
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[collections] loadChildren failed:", e);
+    }
+  }
+
+  /** Expand/collapse a notebook's sub-tree. Lazy: loads children on first
+   *  expand. Idempotent (toggling twice returns to the start). */
+  async function toggleExpand(id: string): Promise<void> {
+    if (!children.value[id]) await loadChildren(id);
+    const next = new Set(expanded.value);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    expanded.value = next;
+  }
+
+  /**
+   * Create a sub-notebook under `parentId`: add a notebook, link it parent→child
+   * via `db.relations.add`, then reload the parent's children + the all-list +
+   * ensure the parent is expanded. Never throws — returns the new id, or `null`.
+   */
+  async function createSubNotebook(parentId: string): Promise<string | null> {
+    try {
+      const db = getDatabase();
+      const childId = await db.notebooks.add({ title: "New notebook" });
+      if (!childId) return null;
+      await db.relations.add(
+        { type: "notebook", id: parentId },
+        { type: "notebook", id: childId }
+      );
+      await loadChildren(parentId);
+      // Ensure the parent is expanded so the new child is visible.
+      if (!expanded.value.has(parentId)) {
+        const next = new Set(expanded.value);
+        next.add(parentId);
+        expanded.value = next;
+      }
+      // Refresh the flat all-list so lookups (selectedLabel, counts) see it.
+      const all = await getDatabase().notebooks.all.items().catch(() => []);
+      notebooks.value = all.map(toNotebookListItem);
+      return childId;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[collections] createSubNotebook failed:", e);
+      return null;
+    }
+  }
+
+  /**
+   * Create a new root notebook (tray "New Notebook" / future palette command),
+   * then reload so the sidebar lists it. Never throws — returns the new id, or
    * `null` on failure. Mirrors `notes.create()`'s `db.notes.add({ title })`.
    */
   async function createNotebook(): Promise<string | null> {
@@ -121,6 +207,9 @@ export const useCollectionsStore = defineStore("collections", () => {
 
   return {
     notebooks,
+    roots,
+    children,
+    expanded,
     tags,
     trashCount,
     sortKey,
@@ -129,8 +218,13 @@ export const useCollectionsStore = defineStore("collections", () => {
     selected,
     sortedNotebooks,
     sortedTags,
+    notebookCount,
+    treeNotebooks,
     selectedLabel,
     load,
+    loadChildren,
+    toggleExpand,
+    createSubNotebook,
     createNotebook,
     toggleSection,
     setSortKey,

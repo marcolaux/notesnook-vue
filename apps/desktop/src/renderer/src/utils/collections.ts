@@ -9,11 +9,10 @@
  * collections that have a `pinned` flag (notebooks); tags are flat (no pinned
  * flag, no subtag API) so the pinned-first prefix is a no-op for them.
  *
- * Recursive subnotebooks / subtags are deferred: the current `@notesnook/core`
- * API exposes notebooks + topics as a flat list (no visible parent link on
- * `Notebook`, `Topic` is `@deprecated`), and tags have no hierarchy. The sort
- * + mapper here are written so a future tree pass can nest without changing
- * the leaf shape.
+ * Recursive **sub-notebooks** are nested notebooks linked parent→child via
+ * `db.relations` (`{type:"notebook", id: parent} → {type:"notebook", id: child}`;
+ * `Topic` is `@deprecated`). `buildNotebookTree` below nests roots + a lazy
+ * children map. Tags have no upstream hierarchy → stay flat.
  */
 import type { Notebook, Tag } from "@notesnook-vue/contracts";
 
@@ -102,4 +101,37 @@ export function sortCollections<T extends SortableCollectionItem>(
     if (aPinned !== bPinned) return aPinned ? -1 : 1;
     return compare(a, b, key) * factor;
   });
+}
+
+/**
+ * A notebook rendered as a tree node (its slim view + its nested sub-notebooks).
+ * Sub-notebooks are notebooks linked parent→child via `db.relations`
+ * (`{type:"notebook", id: parent} → {type:"notebook", id: child}`); the sidebar
+ * loads roots (`db.notebooks.roots`) and each notebook's children lazily
+ * (`db.relations.from({type:"notebook", id}, "notebook").resolve()`).
+ */
+export interface NotebookTreeNode {
+  item: NotebookListItem;
+  children: NotebookTreeNode[];
+}
+
+/**
+ * Build a notebook tree from the roots + a lazy `childrenOf` map (parent id →
+ * its child items, loaded on expand). Roots + each level's children are sorted
+ * via the existing {@link sortCollections} (pinned-first + key/dir). Leaves get
+ * `children: []`. Non-mutating; a node whose children haven't been loaded yet
+ * (absent from the map) renders as a leaf until expanded.
+ */
+export function buildNotebookTree(
+  roots: readonly NotebookListItem[],
+  childrenOf: ReadonlyMap<string, NotebookListItem[]>,
+  key: CollectionSortKey,
+  dir: SortDir
+): NotebookTreeNode[] {
+  const build = (item: NotebookListItem): NotebookTreeNode => {
+    const raw = childrenOf.get(item.id) ?? [];
+    const sorted = sortCollections(raw, key, dir);
+    return { item, children: sorted.map(build) };
+  };
+  return sortCollections(roots, key, dir).map(build);
 }

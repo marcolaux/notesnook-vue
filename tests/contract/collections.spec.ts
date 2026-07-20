@@ -14,10 +14,24 @@ import type { Notebook, Tag } from "@notesnook-vue/contracts";
 // `collections.ts` imports `getDatabase` from the platform bootstrap; stub it
 // so the sodium/crypto/bridge graph isn't loaded for a pure store-logic test.
 // The fake db is per-test controllable via `mockDb`.
+type ItemRef = { type: "notebook" | "tag"; id: string };
 let mockDb: {
-  notebooks: { all: { items: () => Promise<Notebook[]> }; add: (arg: Partial<Notebook>) => Promise<string> };
+  notebooks: {
+    all: { items: () => Promise<Notebook[]> };
+    roots: { items: () => Promise<Notebook[]> };
+    add: (arg: Partial<Notebook>) => Promise<string>;
+  };
   tags: { all: { items: () => Promise<Tag[]> } };
   trash: { all: () => Promise<unknown[]> };
+  relations: {
+    from: (ref: ItemRef, type: "notebook") => { resolve: () => Promise<Notebook[]> };
+    add: (from: ItemRef, to: ItemRef) => Promise<void>;
+  };
+  // backing map for parent→child sub-notebook relations.
+  _childMap: Map<string, Notebook[]>;
+  // backing list for all notebooks (so createSubNotebook's all-items reload sees new ids).
+  _all: Notebook[];
+  _roots: Notebook[];
 };
 vi.mock("@/platform/bootstrap", () => ({
   getDatabase: () => mockDb,
@@ -65,9 +79,41 @@ const TAGS: Tag[] = [
 beforeEach(() => {
   setActivePinia(createPinia());
   mockDb = {
-    notebooks: { all: { items: async () => NOTEBOOKS }, add: vi.fn(async () => "nb-new") },
+    _all: [...NOTEBOOKS],
+    _roots: [...NOTEBOOKS],
+    _childMap: new Map<string, Notebook[]>(),
+    notebooks: {
+      all: { items: async () => mockDb._all },
+      roots: { items: async () => mockDb._roots },
+      add: vi.fn(async (arg: Partial<Notebook>) => {
+        const id = arg.id ?? `nb-${mockDb._all.length + 1}`;
+        const created = nb({ id, title: arg.title ?? "Untitled", dateCreated: 999, dateModified: 999 });
+        mockDb._all = [...mockDb._all, created];
+        if (mockDb._all.length === mockDb._roots.length + 1) {
+          // a freshly added notebook is a root unless linked as a child below.
+        }
+        return id;
+      })
+    },
     tags: { all: { items: async () => TAGS } },
-    trash: { all: async () => [{ id: "x" }, { id: "y" }] }
+    trash: { all: async () => [{ id: "x" }, { id: "y" }] },
+    relations: {
+      from: (ref: ItemRef, type: "notebook") => ({
+        resolve: async () =>
+          type === "notebook" ? (mockDb._childMap.get(ref.id) ?? []) : []
+      }),
+      add: vi.fn(async (from: ItemRef, to: ItemRef) => {
+        if (from.type === "notebook" && to.type === "notebook") {
+          const parent = mockDb._all.find((n) => n.id === from.id);
+          const child = mockDb._all.find((n) => n.id === to.id);
+          if (parent && child) {
+            mockDb._childMap.set(from.id, [...(mockDb._childMap.get(from.id) ?? []), child]);
+            // a linked child is no longer a root.
+            mockDb._roots = mockDb._roots.filter((n) => n.id !== to.id);
+          }
+        }
+      })
+    }
   };
 });
 
@@ -213,7 +259,11 @@ describe("collections store", () => {
   });
 
   it("load tolerates a thrown collection fetch (defensive .catch)", async () => {
-    mockDb.notebooks = { all: { items: async () => Promise.reject(new Error("boom")) }, add: vi.fn(async () => "nb-new") };
+    mockDb.notebooks = {
+      all: { items: async () => Promise.reject(new Error("boom")) },
+      roots: { items: async () => [] },
+      add: vi.fn(async () => "nb-new")
+    };
     const c = useCollectionsStore();
     await c.load();
     expect(c.notebooks).toEqual([]);
@@ -225,11 +275,11 @@ describe("collections store", () => {
     await c.load();
     const addSpy = mockDb.notebooks.add as unknown as { mock: { calls: unknown[][] } };
     const id = await c.createNotebook();
-    expect(id).toBe("nb-new");
+    expect(id).toBeTruthy();
     expect(addSpy.mock.calls).toHaveLength(1);
     expect(addSpy.mock.calls[0]?.[0]).toEqual({ title: "New notebook" });
-    // reload ran: notebooks still populated from the (unchanged) fake.
-    expect(c.notebooks.map((n) => n.id)).toEqual(["a", "b", "c"]);
+    // reload ran: the new notebook is now in the all-list.
+    expect(c.notebooks.map((n) => n.id)).toContain(id);
   });
 
   it("createNotebook never throws + returns null on db failure", async () => {
@@ -238,5 +288,98 @@ describe("collections store", () => {
     };
     const c = useCollectionsStore();
     await expect(c.createNotebook()).resolves.toBeNull();
+  });
+});
+
+describe("sub-notebooks (nested notebooks via db.relations)", () => {
+  it("buildNotebookTree nests roots + sorted children; leaves get []", async () => {
+    const c = useCollectionsStore();
+    c.setSortKey("title");
+    c.setSortDir("asc");
+    await c.load();
+    mockDb._childMap.set("a", [
+      nb({ id: "a2", title: "Zeta", dateCreated: 1, dateModified: 1 }),
+      nb({ id: "a1", title: "Alpha", dateCreated: 2, dateModified: 2 })
+    ]);
+    await c.loadChildren("a");
+    const tree = c.treeNotebooks;
+    // roots sorted by title asc: Alpha(a), Beta(b), Gamma(c) (b pinned-first)
+    expect(tree.map((n) => n.item.id)).toEqual(["b", "a", "c"]);
+    const aNode = tree.find((n) => n.item.id === "a");
+    expect(aNode?.children.map((n) => n.item.id)).toEqual(["a1", "a2"]); // title asc
+    expect(aNode?.children[0]?.children).toEqual([]); // leaf
+  });
+
+  it("load() populates roots (top-level) + all notebooks", async () => {
+    mockDb._roots = [nb({ id: "a", title: "Alpha", dateCreated: 100, dateModified: 300 })];
+    mockDb._all = [
+      nb({ id: "a", title: "Alpha", dateCreated: 100, dateModified: 300 }),
+      nb({ id: "a1", title: "Child", dateCreated: 1, dateModified: 1 })
+    ];
+    const c = useCollectionsStore();
+    await c.load();
+    expect(c.roots.map((n) => n.id)).toEqual(["a"]);
+    expect(c.notebooks.map((n) => n.id)).toEqual(["a", "a1"]);
+    expect(c.notebookCount).toBe(2);
+    // tree shows only roots until children are loaded.
+    expect(c.treeNotebooks.map((n) => n.item.id)).toEqual(["a"]);
+    expect(c.treeNotebooks[0].children).toEqual([]);
+  });
+
+  it("loadChildren reads children via db.relations.from(...).resolve()", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    mockDb._childMap.set("a", [nb({ id: "a1", title: "Child", dateCreated: 1, dateModified: 1 })]);
+    await c.loadChildren("a");
+    expect(c.children["a"]?.map((n) => n.id)).toEqual(["a1"]);
+  });
+
+  it("loadChildren never throws + leaves previous children on failure", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    mockDb._childMap.set("a", [nb({ id: "a1", title: "Child", dateCreated: 1, dateModified: 1 })]);
+    await c.loadChildren("a");
+    expect(c.children["a"]).toHaveLength(1);
+    // force relations.from to reject
+    mockDb.relations.from = () => ({ resolve: async () => Promise.reject(new Error("db down")) });
+    await c.loadChildren("a");
+    expect(c.children["a"]).toHaveLength(1); // previous list intact
+  });
+
+  it("toggleExpand loads children on first expand then flips", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    mockDb._childMap.set("a", [nb({ id: "a1", title: "Child", dateCreated: 1, dateModified: 1 })]);
+    expect(c.expanded.has("a")).toBe(false);
+    await c.toggleExpand("a");
+    expect(c.children["a"]).toBeDefined();
+    expect(c.expanded.has("a")).toBe(true);
+    await c.toggleExpand("a");
+    expect(c.expanded.has("a")).toBe(false);
+    // children already loaded — not reloaded, but still present.
+    expect(c.children["a"]).toBeDefined();
+  });
+
+  it("createSubNotebook adds notebook + parent→child relation + reloads children + expands", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    const id = await c.createSubNotebook("a");
+    expect(id).toBeTruthy();
+    expect(mockDb.relations.add).toHaveBeenCalledWith(
+      { type: "notebook", id: "a" },
+      { type: "notebook", id: id }
+    );
+    expect(c.children["a"]?.some((n) => n.id === id)).toBe(true);
+    expect(c.expanded.has("a")).toBe(true); // auto-expanded
+    expect(c.notebooks.some((n) => n.id === id)).toBe(true); // all-list refreshed
+  });
+
+  it("createSubNotebook never throws + returns null on db failure", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    mockDb.notebooks.add = async () => {
+      throw new Error("nope");
+    };
+    await expect(c.createSubNotebook("a")).resolves.toBeNull();
   });
 });

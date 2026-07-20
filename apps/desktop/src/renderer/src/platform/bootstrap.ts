@@ -148,6 +148,17 @@ async function seedIfEmpty(db: Database, contextId: ContextId): Promise<void> {
   const nbId = await db.notebooks.add({ title: "Getting started" });
   const welcomeNotes = (await db.notes.all.items()).slice(0, 2).map((n) => n.id);
   if (nbId) await db.notes.addToNotebook(nbId, ...welcomeNotes);
+  // Sub-notebook demo — a child notebook under "Getting started" linked
+  // parent→child via db.relations (sub-notebooks are nested notebooks, not
+  // Topics — Notebook.topics is @deprecated). Adding a welcome note to the
+  // child too exercises `db.notebooks.notes(parentId)` descendant recursion
+  // (selecting the parent filters to parent+child notes). Local-only.
+  const childId = await db.notebooks.add({ title: "Sub-topic" });
+  if (childId && nbId) {
+    await db.relations.add({ type: "notebook", id: nbId }, { type: "notebook", id: childId });
+    const secondNote = welcomeNotes[1];
+    if (secondNote) await db.notes.addToNotebook(childId, secondNote);
+  }
   const tagId = await db.tags.add({ title: "phase-3" });
   if (tagId) {
     for (const noteId of welcomeNotes) {
