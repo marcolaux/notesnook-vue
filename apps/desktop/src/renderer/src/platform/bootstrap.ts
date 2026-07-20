@@ -212,6 +212,16 @@ async function seedIfEmpty(db: Database, contextId: ContextId): Promise<void> {
       data: '<p>An image node renders a lazily-loaded, resizable image (select it to drag-resize from the bottom-right corner):</p><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNDAiIGhlaWdodD0iMTIwIj48cmVjdCB3aWR0aD0iMjQwIiBoZWlnaHQ9IjEyMCIgcng9IjEwIiBmaWxsPSIjNGY0NmU1Ii8+PHRleHQgeD0iMTIwIiB5PSI2OCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTYiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj4yLjRlIGltYWdlIG5vZGU8L3RleHQ+PC9zdmc+" width="240" height="120" data-align="center" data-aspect-ratio="2"><p>Attachment-backed images (a <code>hash</code> with no inline <code>src</code>) lazy-load their blob via the Phase-6 attachments bridge; until then a placeholder is shown.</p>'
     }
   });
+  // Reminders demo — one "once" reminder a few days out, so `npm run dev`
+  // exercises `db.reminders.add` and the headless reminders store has data for
+  // the future RemindersView (on-site). Accounts stay empty — sync fills them.
+  await db.reminders.add({
+    title: "Try the Reminders view",
+    description: "Seed reminder — the RemindersView lands on-site.",
+    date: Date.now() + 3 * 24 * 60 * 60 * 1000,
+    mode: "once",
+    priority: "vibrate"
+  });
 }
 
 /** Returns the initialised Database singleton. Throws if bootstrap hasn't run. */

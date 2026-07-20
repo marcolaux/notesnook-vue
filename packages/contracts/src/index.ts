@@ -80,7 +80,8 @@ export {
   Monographs,
   hosts,
   EV,
-  EVENTS
+  EVENTS,
+  isReminderActive
 } from "@notesnook/core";
 
 export type {
