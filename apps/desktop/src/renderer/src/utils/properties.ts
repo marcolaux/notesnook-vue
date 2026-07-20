@@ -60,17 +60,28 @@ export function htmlToText(html: string): string {
 }
 
 /**
- * Word/char/line counts for a note's HTML body. Words = whitespace tokens of
- * the trimmed text; chars = stripped-text length (incl. whitespace/newlines);
- * lines = number of non-empty block lines. An empty note is all zeros.
+ * Word/char/line counts for a plain-text body (the editor's `getText()`).
+ * Words = whitespace tokens of the trimmed text; chars = text length (incl.
+ * whitespace/newlines); lines = number of non-empty `\n`-separated lines.
+ * An empty string is all zeros. Shared with {@link noteStats} so the live
+ * editor push and the headless HTML-derived stats agree on the same counting
+ * rules (the editor pushes plain text; `noteStats` strips HTML first).
  */
-export function noteStats(html: string): NoteStats {
-  const text = htmlToText(html);
+export function textStats(text: string): NoteStats {
   return {
     words: countWords(text),
     chars: text.length,
     lines: text === "" ? 0 : text.split(/\n/).filter((l) => l.trim() !== "").length
   };
+}
+
+/**
+ * Word/char/line counts for a note's HTML body. Strips HTML to plain text
+ * (block boundaries → newlines), then delegates to {@link textStats}. An empty
+ * note is all zeros.
+ */
+export function noteStats(html: string): NoteStats {
+  return textStats(htmlToText(html));
 }
 
 /** Absolute, locale-formatted date for the created/modified fields. "" for 0. */

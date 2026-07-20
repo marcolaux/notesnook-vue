@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from "pinia";
 import {
   htmlToText,
   noteStats,
+  textStats,
   formatAbsoluteDate,
   toAssignedTag,
   toAssignedNotebook,
@@ -172,6 +173,36 @@ describe("noteStats", () => {
     // Non-empty lines: "One", "A", "B" → 3 lines.
     expect(s.lines).toBe(3);
     expect(s.words).toBe(3);
+  });
+});
+
+describe("textStats", () => {
+  it("empty text → all zeros", () => {
+    expect(textStats("")).toEqual({ words: 0, chars: 0, lines: 0 });
+  });
+
+  it("counts words, chars, non-empty lines from plain text", () => {
+    const text = "Hello world\nSecond line here";
+    const s = textStats(text);
+    expect(s.words).toBe(5);
+    expect(s.chars).toBe(text.length);
+    expect(s.lines).toBe(2);
+  });
+
+  it("ignores empty lines in the line count", () => {
+    const s = textStats("One\n\n\nTwo\n");
+    // Non-empty lines: "One", "Two" → 2 lines.
+    expect(s.lines).toBe(2);
+    expect(s.words).toBe(2);
+  });
+
+  it("agrees with noteStats on the same plain text (shared counting rules)", () => {
+    const text = "Hello world\nSecond line here";
+    expect(textStats(text)).toEqual({
+      words: noteStats("<p>Hello world</p><p>Second line here</p>").words,
+      chars: text.length,
+      lines: 2
+    });
   });
 });
 

@@ -47,6 +47,7 @@ import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useStatusStore } from "@/stores/status";
 import { usePropertiesStore } from "@/stores/properties";
 import { useCollectionsStore } from "@/stores/collections";
+import { textStats } from "@/utils/properties";
 import { useLinksStore } from "@/stores/links";
 import { readEditorStats } from "@/utils/status";
 import {
@@ -497,6 +498,13 @@ function refreshStatus(): void {
   if (!inst) return;
   if (editorStore.editor !== inst) return; // only the focused editor pushes
   status.setEditorStats(readEditorStats(inst));
+  // Live-stats push to the properties panel (Phase 5.1): word/char/line counts
+  // from the editor's plain text, computed on every edit + caret move (same
+  // `update`/`selectionUpdate` cadence as the status bar). `textStats` shares
+  // the counting rules with the headless `noteStats(html)` path so the panel
+  // stays consistent after a save/load reseeds from HTML. Reuses the focused-
+  // pane guard above so only the focused editor drives the panel.
+  properties.setStats(textStats(inst.getText({ blockSeparator: "\n" })));
 }
 
 watch(
