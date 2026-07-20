@@ -6,6 +6,7 @@ import { useCollectionsStore } from "@/stores/collections";
 import { useAuthStore } from "@/stores/auth";
 import { useStatusStore } from "@/stores/status";
 import { useVaultStore } from "@/stores/vault";
+import { useBackupsStore } from "@/stores/backup";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { bootstrap } from "@/platform/bootstrap";
 import { useCommandPalette } from "@/composables/use-command-palette";
@@ -19,6 +20,7 @@ const bootError = ref<string>("");
 const auth = useAuthStore();
 const status = useStatusStore();
 const vault = useVaultStore();
+const backups = useBackupsStore();
 const editorLayout = useEditorLayoutStore();
 
 // Command palette hotkey (Ctrl/Cmd+Shift+P) toggles the palette store; the
@@ -47,6 +49,8 @@ onMounted(async () => {
     // / lock state from `db.vault`. Safe pre-login — `exists()` is local.
     vault.bindVaultEvents();
     void vault.refresh();
+    // Seed the last-backup timestamp for the Backup/Restore UI (on-site).
+    void backups.refresh();
     if (auth.showShell) {
       await notes.load();
       void collections.load();
@@ -79,6 +83,7 @@ watch(
       void useCollectionsStore().load();
       void status.refreshSync();
       void vault.refresh();
+      void backups.refresh();
     }
   }
 );
