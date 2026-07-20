@@ -12,6 +12,7 @@ import { useEditorStore } from "@/stores/editor";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
 import { useShellStore } from "@/stores/shell";
+import { useSyncStore } from "@/stores/sync";
 import { getCommands, getCommandRouter, type Command, type CommandContext } from "@/commands/registry";
 import { filterCommands, cycleCommandIndex } from "@/commands/menu";
 
@@ -20,6 +21,7 @@ export const useCommandPaletteStore = defineStore("commandPalette", () => {
   const notes = useNotesStore();
   const auth = useAuthStore();
   const shell = useShellStore();
+  const sync = useSyncStore();
 
   const open = ref(false);
   const query = ref("");
@@ -30,6 +32,7 @@ export const useCommandPaletteStore = defineStore("commandPalette", () => {
     notes,
     auth,
     shell,
+    sync,
     router: getCommandRouter(),
     closePalette
   }));

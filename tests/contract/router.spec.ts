@@ -155,6 +155,7 @@ function stubCtx(opts: { showShell: boolean }, router?: unknown): CommandContext
     notes: undefined as unknown as CommandContext["notes"],
     auth: { showShell: opts.showShell } as unknown as CommandContext["auth"],
     shell: undefined as unknown as CommandContext["shell"],
+    sync: undefined as unknown as CommandContext["sync"],
     router: (router ?? undefined) as CommandContext["router"],
     closePalette: () => {}
   };

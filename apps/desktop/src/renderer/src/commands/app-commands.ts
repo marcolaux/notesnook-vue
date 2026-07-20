@@ -102,6 +102,16 @@ const appCommands: Command[] = [
     group: "app",
     when: (ctx) => ctx.auth.showShell,
     run: (ctx) => ctx.shell.toggleProperties()
+  },
+  {
+    id: "app:sync-now",
+    title: "Sync now",
+    keywords: ["sync", "synchronize", "push", "pull", "refresh"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => {
+      void ctx.sync.startSync({ type: "full" });
+    }
   }
 ];
 

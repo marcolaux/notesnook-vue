@@ -50,7 +50,8 @@ export type {
   TrashCleanupInterval,
   Profile,
   DayFormat,
-  WeekFormat
+  WeekFormat,
+  SyncOptions
 } from "@notesnook/core";
 
 export type {
