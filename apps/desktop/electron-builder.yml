@@ -1,0 +1,127 @@
+# electron-builder config (Phase 7.5) — produces distributable installers for
+# macOS / Windows / Linux from the `electron-vite` build output (`out/`).
+#
+# Adapted from the upstream `apps/desktop/electron-builder.config.js` to this
+# repo's stack:
+#   - The only native module is `better-sqlite3-multiple-ciphers` (M4 dropped
+#     FTS5 loadable extensions — `trigram` is a SQLite built-in; no
+#     `sqlite-better-trigram` / `sqlite3-fts5-html`). It is `asarUnpack`-ed so
+#     its `.node` binary loads from disk.
+#   - Sodium is the vendored JS/WASM build (`@notesnook/sodium` browser.js) —
+#     no `sodium-native` prebuilds to ship.
+#   - The `nn://` custom protocol (Phase 6.5 deep links) is registered as a
+#     URL-scheme handler.
+#   - `publish` (github provider) drives `electron-updater` (Phase 6.2):
+#     electron-builder auto-generates `app-update.yml` from this and bakes it
+#     into the app resources — no hand-maintained `app-update.yml` needed.
+#
+# DEFERRED (on-site / release gates — need assets + secrets unavailable here):
+#   - Icons: no branded `app.icns` / `app.ico` exist yet. electron-builder falls
+#     back to Electron's default icon and warns. Drop `build/icon.{png,icns,ico}`
+#     (512x512+) to brand; uncomment the per-OS `icon` fields below.
+#   - Code signing / notarization: no certs. `--publish never` builds unsigned
+#     artifacts (fine for local/dev). Add `afterSign`/`notarize`/entitlements
+#     for distribution (mac hardenedRuntime + notarize, win signtool).
+#   - Cross-arch builds (mac x64, win arm64, linux arm64) need the matching
+#     native-module prebuilds/toolchain; the host-arch build is the reliable
+#     default. The arch lists below follow the roadmap; a release pipeline
+#     produces the cross-arch variants on hosts that can compile them.
+#   - Snap base/plug polish + Snap Store publishing.
+#
+# Run from `apps/desktop`:
+#   npm run package           # current-OS installer(s)
+#   npm run package:dir       # unpacked .app / dir only (no installer) — fast
+#   npm run package:mac       # macOS only (dmg + zip)
+#   npm run package:win       # Windows only (nsis + portable)
+#   npm run package:linux     # Linux only (AppImage + snap)
+
+appId: org.notesnookvue.desktop
+productName: Notesnook Vue
+# Env-overridable so a release pipeline can set the public name/id without
+# editing this file (mirrors upstream's NN_PRODUCT_NAME / NN_APP_ID).
+artifactName: notesnook-vue_${os}_${arch}.${ext}
+asar: true
+# The native SQLite binary must be unpacked from asar so `require` can load the
+# `.node` file from disk (Electron cannot `require` binaries inside asar).
+asarUnpack:
+  - node_modules/better-sqlite3-multiple-ciphers/**
+
+directories:
+  # `build/` holds icons + entitlements (deferred — created on-site).
+  buildResources: build
+  # Packaged artifacts land in `apps/desktop/release/` (gitignored).
+  output: release
+
+# Ship the electron-vite build output + the app manifest. electron-builder
+# auto-includes production `node_modules` deps (externalized by electron-vite's
+# main/preload) into the asar; the renderer is a static Vite bundle under
+# `out/renderer` and needs no node_modules.
+files:
+  - out/**/*
+  - package.json
+  - "!**/*.{md,map}"
+  - "!**/.DS_Store"
+
+# Register the `nn://` custom protocol (Phase 6.5 deep links) with the OS so a
+# browser/shell `nn://note/<id>` opens this app.
+protocols:
+  - name: Notesnook Vue
+    schemes:
+      - nn
+
+mac:
+  category: public.app-category.productivity
+  darkModeSupport: true
+  # icon: build/icon.icns   # deferred — branded icon asset
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  # hardenedRuntime / notarize / entitlements = release gate (needs certs).
+
+dmg:
+  title: "Install Notesnook Vue"
+
+win:
+  # icon: build/icon.ico    # deferred — branded icon asset
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: true
+  createDesktopShortcut: always
+  deleteAppDataOnUninstall: true
+
+portable:
+  artifactName: notesnook-vue_${os}_${arch}_portable.${ext}
+
+linux:
+  category: Office
+  description: A from-scratch Vue 3 + Tailwind + Glassmorphism rewrite of the Notesnook desktop frontend.
+  executableName: notesnook-vue
+  mimeTypes:
+    - x-scheme-handler/nn
+  # icon: build/icon.png    # deferred — branded icon asset
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: snap
+      arch: [x64]
+
+snap:
+  confinement: strict
+  base: core22
+
+# Drives `electron-updater` (Phase 6.2): electron-builder generates
+# `app-update.yml` from this and bakes it into the app. The dev build is a
+# no-op (updater only runs when `app.isPackaged`); a real release overrides
+# owner/repo/channel via env or edits this. `--publish never` skips uploading.
+publish:
+  provider: github
+  owner: marco
+  repo: notesnook-vue
+  channel: latest
