@@ -17,27 +17,56 @@ describe("useEditorStore", () => {
     expect(s.isEditable).toBe(false);
   });
 
-  it("set publishes the editor; isEditable reflects it", () => {
+  it("register + setFocusedKey publishes the editor; isEditable reflects it", () => {
     const s = useEditorStore();
-    s.set(stubEditor(true));
-    expect(s.editor).toBeDefined();
+    const e = stubEditor(true);
+    s.register("tab-a", e);
+    s.setFocusedKey("tab-a");
+    expect(s.editor).toBe(e);
     expect(s.isEditable).toBe(true);
   });
 
-  it("clear removes the editor", () => {
+  it("unregister removes the editor (when it is the stored one)", () => {
     const s = useEditorStore();
-    s.set(stubEditor(false));
+    const e = stubEditor(false);
+    s.register("tab-a", e);
+    s.setFocusedKey("tab-a");
     expect(s.isEditable).toBe(false);
-    s.clear();
+    s.unregister("tab-a", e);
     expect(s.editor).toBeUndefined();
     expect(s.isEditable).toBe(false);
   });
 
-  it("isEditable follows editor.isEditable changes", () => {
+  it("unregister is a no-op when a different instance is registered under the key", () => {
     const s = useEditorStore();
-    s.set(stubEditor(true));
+    const first = stubEditor(true);
+    const second = stubEditor(false);
+    s.register("tab-a", first);
+    s.register("tab-a", second); // re-register overwrites
+    s.setFocusedKey("tab-a");
+    expect(s.editor).toBe(second);
+    // Unregistering the stale first instance must NOT clear the live second.
+    s.unregister("tab-a", first);
+    expect(s.editor).toBe(second);
+  });
+
+  it("isEditable follows the focused key's editor", () => {
+    const s = useEditorStore();
+    s.register("tab-a", stubEditor(true));
+    s.register("tab-b", stubEditor(false));
+    s.setFocusedKey("tab-a");
     expect(s.isEditable).toBe(true);
-    s.set(stubEditor(false));
+    s.setFocusedKey("tab-b");
     expect(s.isEditable).toBe(false);
+    s.setFocusedKey(null);
+    expect(s.editor).toBeUndefined();
+    expect(s.isEditable).toBe(false);
+  });
+
+  it("editor is undefined when the focused key has no registered editor", () => {
+    const s = useEditorStore();
+    s.register("tab-a", stubEditor(true));
+    s.setFocusedKey("tab-b");
+    expect(s.editor).toBeUndefined();
   });
 });

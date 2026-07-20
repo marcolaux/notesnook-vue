@@ -87,7 +87,7 @@ describe("useTocStore", () => {
     const notes = useNotesStore();
     const toc = useTocStore();
     expect(toc.items).toEqual([]); // no content yet
-    notes.activeContent = "<h1 id=\"intro\">Introduction</h1><h2 id=\"s\">Sub</h2>";
+    notes.contentCache = { a: { html: "<h1 id=\"intro\">Introduction</h1><h2 id=\"s\">Sub</h2>", state: "loaded" } };
     expect(toc.items.map((h) => h.id)).toEqual(["intro", "s"]);
     expect(toc.activeNoteId).toBe("a");
   });
@@ -96,7 +96,7 @@ describe("useTocStore", () => {
     await openNote();
     const notes = useNotesStore();
     const toc = useTocStore();
-    notes.activeContent = "<h2 id=\"x\">X</h2>";
+    notes.contentCache = { a: { html: "<h2 id=\"x\">X</h2>", state: "loaded" } };
     toc.refresh();
     expect(toc.items.map((h) => h.text)).toEqual(["X"]);
   });

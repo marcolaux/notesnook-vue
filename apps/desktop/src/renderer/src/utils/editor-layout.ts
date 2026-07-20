@@ -88,10 +88,16 @@ export function getTopRightGroupId(node: LayoutNode): string | undefined {
 
 /**
  * Replace the group leaf referencing `groupId` with a new split node holding
- * the original group (first) and a fresh group (second, right/bottom). Returns
- * a new tree; the input is not mutated. The new split's `id` and the new
- * group's layout `id` + `groupId` are passed in so the util stays deterministic
- * (no `Math.random`).
+ * the original group and a fresh group. Returns a new tree; the input is not
+ * mutated. The new split's `id` and the new group's layout `id` + `groupId` are
+ * passed in so the util stays deterministic (no `Math.random`).
+ *
+ * `position` controls which side the fresh group lands on:
+ *  - `"after"` (default) → the fresh group is the SECOND child (right of the
+ *    original for a vertical split, below it for a horizontal split);
+ *  - `"before"` → the fresh group is the FIRST child (left / above). This is
+ *    used by the drag-to-split drop zones so a tab dropped on a pane's left or
+ *    top edge opens in a new pane on that side.
  */
 export function splitGroupLeaf(
   root: LayoutNode,
@@ -99,19 +105,15 @@ export function splitGroupLeaf(
   direction: Direction,
   splitId: string,
   newLeafId: string,
-  newGroupId: string
+  newGroupId: string,
+  position: "before" | "after" = "after"
 ): LayoutNode {
   const walk = (node: LayoutNode): LayoutNode => {
     if (isGroupLeaf(node) && node.groupId === groupId) {
-      return {
-        id: splitId,
-        type: "split",
-        direction,
-        children: [
-          { ...node },
-          { id: newLeafId, type: "group", groupId: newGroupId }
-        ]
-      };
+      const original: LayoutNode = { ...node };
+      const fresh: LayoutNode = { id: newLeafId, type: "group", groupId: newGroupId };
+      const children = position === "before" ? [fresh, original] : [original, fresh];
+      return { id: splitId, type: "split", direction, children };
     }
     if (node.type === "split") {
       return { ...node, children: (node.children ?? []).map(walk) };
@@ -136,6 +138,51 @@ export function removeGroupLeaf(root: LayoutNode, groupId: string): LayoutNode |
     if (children.length === 0) return null;
     if (children.length === 1) return children[0]!; // collapse single-child split
     return { ...node, children };
+  };
+  return walk(root);
+}
+
+/**
+ * Set the persisted `size` ratio on the two adjacent children `[childIndex]` and
+ * `[childIndex+1]` of the split node whose id is `splitId`. `fraction` is the
+ * share of the FIRST of the two (clamped to `[0.05, 0.95]` so a pane can't be
+ * dragged to zero width); the second gets `1 - fraction`. Returns a new tree
+ * (immutable); the input is not mutated. A no-op (returns the same reference)
+ * when `splitId` is not found or `childIndex` is out of range.
+ *
+ * Used by the split-pane sash drag to persist resize ratios on the `LayoutNode`
+ * (the renderer falls back to equal `1/n` shares when `size` is absent, so this
+ * only writes sizes once the user actually drags a sash).
+ */
+export function setSplitChildSizes(
+  root: LayoutNode,
+  splitId: string,
+  childIndex: number,
+  fraction: number
+): LayoutNode {
+  const clamped = Math.max(0.05, Math.min(0.95, fraction));
+  const walk = (node: LayoutNode): LayoutNode => {
+    if (node.type === "split" && node.id === splitId) {
+      const children = node.children ?? [];
+      if (childIndex < 0 || childIndex >= children.length - 1) return node;
+      const next = children.slice();
+      next[childIndex] = { ...next[childIndex]!, size: clamped };
+      next[childIndex + 1] = { ...next[childIndex + 1]!, size: 1 - clamped };
+      return { ...node, children: next };
+    }
+    if (node.type === "split") {
+      // Preserve reference identity when no descendant changed (so a no-op
+      // resize returns the same tree).
+      const children = node.children ?? [];
+      let changed = false;
+      const mapped = children.map((c) => {
+        const m = walk(c);
+        if (m !== c) changed = true;
+        return m;
+      });
+      return changed ? { ...node, children: mapped } : node;
+    }
+    return node;
   };
   return walk(root);
 }

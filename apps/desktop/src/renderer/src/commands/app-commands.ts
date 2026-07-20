@@ -30,6 +30,99 @@ const appCommands: Command[] = [
       if (id) ctx.notes.closeTab(id);
     }
   },
+  // Split-pane + tab navigation commands (Phase 4.2/4.3). `split-*` add a new
+  // pane to the right/bottom of the focused one; `close-pane` collapses it.
+  // `focus-next-pane` cycles focus through the panes; `go-back`/`go-forward`
+  // step the focused tab's back/forward history; `next-tab`/`prev-tab` cycle the
+  // focused pane's tabs.
+  {
+    id: "app:split-vertical",
+    title: "Split editor right",
+    keywords: ["split", "pane", "vertical", "right", "side"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => {
+      ctx.layout.splitGroup("vertical");
+    }
+  },
+  {
+    id: "app:split-horizontal",
+    title: "Split editor down",
+    keywords: ["split", "pane", "horizontal", "down", "below"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => {
+      ctx.layout.splitGroup("horizontal");
+    }
+  },
+  {
+    id: "app:close-pane",
+    title: "Close editor pane",
+    keywords: ["split", "pane", "close", "collapse"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && ctx.layout.groupCount > 1,
+    run: (ctx) => {
+      ctx.layout.closeGroup(ctx.layout.activeGroupId);
+    }
+  },
+  {
+    id: "app:focus-next-pane",
+    title: "Focus next pane",
+    keywords: ["focus", "pane", "split", "next", "cycle"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && ctx.layout.groupCount > 1,
+    run: (ctx) => {
+      ctx.layout.focusNextGroup();
+    }
+  },
+  {
+    id: "app:go-back",
+    title: "Go back",
+    keywords: ["history", "back", "previous", "navigate", "tab"],
+    group: "app",
+    when: (ctx) => {
+      const id = ctx.notes.activeTabId;
+      return !!id && ctx.layout.canGoBack(id);
+    },
+    run: (ctx) => {
+      const id = ctx.notes.activeTabId;
+      if (id) ctx.layout.goBack(id);
+    }
+  },
+  {
+    id: "app:go-forward",
+    title: "Go forward",
+    keywords: ["history", "forward", "next", "navigate", "tab"],
+    group: "app",
+    when: (ctx) => {
+      const id = ctx.notes.activeTabId;
+      return !!id && ctx.layout.canGoForward(id);
+    },
+    run: (ctx) => {
+      const id = ctx.notes.activeTabId;
+      if (id) ctx.layout.goForward(id);
+    }
+  },
+  {
+    id: "app:next-tab",
+    title: "Next tab",
+    keywords: ["tab", "next", "cycle", "switch"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeTabId,
+    run: (ctx) => {
+      ctx.layout.cycleTab(1);
+    }
+  },
+  {
+    id: "app:prev-tab",
+    title: "Previous tab",
+    keywords: ["tab", "previous", "prev", "cycle", "switch"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeTabId,
+    run: (ctx) => {
+      ctx.layout.cycleTab(-1);
+    }
+  },
   {
     id: "app:sign-out",
     title: "Log out",
@@ -69,6 +162,21 @@ const appCommands: Command[] = [
       ctx.notes.focusSearch();
     }
   },
+  // In-content find & replace (per tab) — opens the focused tab's find bar via
+  // the editor-store `findSignal`. The bar itself (state, keybindings, replace)
+  // lives in `FindBar.vue` inside `Editor.vue`; this is the palette entry point
+  // (the `Cmd+F` keybinding is wired in `Editor.vue` and hits the focused pane
+  // directly). Mirrors `app:search-notes` → `notes.focusSearch()`.
+  {
+    id: "app:find-in-note",
+    title: "Find in note",
+    keywords: ["find", "search", "replace", "in note", "editor", "content"],
+    group: "app",
+    when: (ctx) => !!ctx.editor && ctx.auth.showShell,
+    run: (ctx) => {
+      ctx.editorStore.requestFind();
+    }
+  },
   // Pane/panel toggle commands (Phase 5.3) — the toolbar + "rest over command
   // palette" entry points for collapsing the sidebar / list and showing the
   // right-side ToC + properties panels. The panel UI itself is on-site.
@@ -103,6 +211,18 @@ const appCommands: Command[] = [
     group: "app",
     when: (ctx) => ctx.auth.showShell,
     run: (ctx) => ctx.shell.toggleProperties()
+  },
+  // Focus mode (multi-window): hides the sidebar AND the notes list for a
+  // distraction-free writing surface. The torn-off note window boots with this
+  // on; in the main window it's a palette toggle. Overrides the individual
+  // collapse flags — toggling it off restores whatever they were.
+  {
+    id: "app:toggle-focus-mode",
+    title: "Toggle focus mode",
+    keywords: ["focus", "distraction", "zen", "hide", "sidebar", "list"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => ctx.shell.toggleFocusMode()
   },
   {
     id: "app:sync-now",

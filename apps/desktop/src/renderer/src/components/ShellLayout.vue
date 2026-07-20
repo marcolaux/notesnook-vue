@@ -16,8 +16,8 @@ const shell = useShellStore();
     <TitleBar />
     <div class="relative flex min-h-0 flex-1">
       <Sidebar
-        v-show="!shell.sidebarCollapsed"
-        class="w-60 shrink-0 border-r border-white/10 backdrop-blur-2xl"
+        v-show="!shell.sidebarCollapsed && !shell.focusMode"
+        class="w-60 shrink-0 border-r border-glass-border backdrop-blur-2xl"
       />
       <RouterView />
     </div>

@@ -51,11 +51,11 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="titlebar-drag flex h-10 shrink-0 items-center gap-2 border-b border-white/10 bg-white/5 backdrop-blur-2xl"
+    class="titlebar-drag flex h-10 shrink-0 items-center gap-2 border-b border-glass-border bg-glass-surface backdrop-blur-2xl"
     :style="{ paddingLeft: titlebar.padding.left + 'px', paddingRight: titlebar.padding.right + 'px' }"
   >
     <button
-      class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-white/70 hover:bg-white/10"
+      class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted hover:bg-glass-hover"
       title="Toggle Sidebar"
       @click="shell.toggleSidebar()"
     >
@@ -64,9 +64,12 @@ onUnmounted(() => {
         <line x1="9" y1="3" x2="9" y2="21" />
       </svg>
     </button>
-    <div class="text-xs font-medium text-white/80">Notesnook</div>
-    <div class="ml-auto flex items-center gap-1">
-      <span class="text-[10px] text-white/40">v0.0.1</span>
+    <!-- The editor tab strips now live per-pane (Phase 4.2/4.3), so the title
+         bar just shows the app label. Platform-aware padding still keeps this
+         content clear of the OS window controls. -->
+    <div class="flex-1 text-xs font-medium text-text">Notesnook</div>
+    <div class="flex items-center gap-1">
+      <span class="text-[10px] text-text-muted">v0.0.1</span>
     </div>
   </div>
 </template>

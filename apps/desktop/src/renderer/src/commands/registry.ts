@@ -17,11 +17,13 @@ import type { useShellStore } from "@/stores/shell";
 import type { useSyncStore } from "@/stores/sync";
 import type { useUpdaterStore } from "@/stores/updater";
 import type { useSpellCheckerStore } from "@/stores/spell-checker";
+import type { useEditorLayoutStore } from "@/stores/editor-layout";
+import type { useEditorStore } from "@/stores/editor";
 
 export type CommandGroup = "app" | "editor";
 
 export interface CommandContext {
-  /** The active TipTap editor (undefined when no note is open). */
+  /** The focused pane's TipTap editor (undefined when no editor is live). */
   editor: Editor | undefined;
   notes: ReturnType<typeof useNotesStore>;
   auth: ReturnType<typeof useAuthStore>;
@@ -33,6 +35,10 @@ export interface CommandContext {
   updater: ReturnType<typeof useUpdaterStore>;
   /** Spell-checker control (enable/languages/dictionary — Phase 6.6). */
   spellChecker: ReturnType<typeof useSpellCheckerStore>;
+  /** Editor split/group/tab layout (Phase 4.2/4.3) — split/close-pane/tab nav. */
+  layout: ReturnType<typeof useEditorLayoutStore>;
+  /** Focused-editor registry — `requestFind()` opens the focused tab's find bar. */
+  editorStore: ReturnType<typeof useEditorStore>;
   /** The Vue Router instance (set from `main.ts`; undefined outside the app). */
   router: Router | undefined;
   /** Close the palette overlay (called by the store after execute). */

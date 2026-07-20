@@ -284,7 +284,7 @@ describe("usePropertiesStore", () => {
     const props = usePropertiesStore();
     await props.loadNote();
     expect(props.stats.words).toBe(0); // no content yet
-    notes.activeContent = "<p>Hello world</p><p>Second line here</p>";
+    notes.contentCache = { a: { html: "<p>Hello world</p><p>Second line here</p>", state: "loaded" } };
     // the activeContent watch recomputes stats
     expect(props.stats.words).toBe(5);
     expect(props.stats.lines).toBe(2);

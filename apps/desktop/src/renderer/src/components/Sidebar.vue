@@ -59,7 +59,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
 </script>
 
 <template>
-  <nav class="flex h-full flex-col gap-1 overflow-y-auto bg-white/5 p-2 text-sm">
+  <nav class="flex h-full flex-col gap-1 overflow-y-auto bg-glass-surface p-2 text-sm">
     <!-- Plain top links (All Notes / Monographs / Archive) -->
     <RouterLink
       v-for="v in linkTopViews"
@@ -68,8 +68,8 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
       class="titlebar-no-drag rounded-md px-2 py-1.5 text-left transition-colors"
       :class="
         isActive(v.path)
-          ? 'bg-white/15 text-white'
-          : 'text-white/80 hover:bg-white/10'
+          ? 'bg-glass-active text-text'
+          : 'text-text hover:bg-glass-hover'
       "
       @click="v.name === 'all' ? showAllNotes() : undefined"
     >
@@ -79,7 +79,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
     <!-- Notebooks section (expandable; pinned-first) -->
     <div class="mt-1">
       <button
-        class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-white/70 hover:bg-white/10"
+        class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
         @click="collections.toggleSection('notebooks')"
       >
         <svg
@@ -95,7 +95,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
           <path d="M9 18l6-6-6-6" />
         </svg>
         <span>{{ t("sidebar.notebooks") }}</span>
-        <span class="ml-auto text-[10px] text-white/40">{{ collections.notebooks.length }}</span>
+        <span class="ml-auto text-[10px] text-text-muted">{{ collections.notebooks.length }}</span>
       </button>
       <div v-if="!collections.collapsed.notebooks" class="mt-0.5 flex flex-col gap-0.5 pl-3">
         <button
@@ -104,8 +104,8 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
           class="titlebar-no-drag flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
           :class="
             isSelected('notebook', nb.id)
-              ? 'bg-white/15 text-white'
-              : 'text-white/75 hover:bg-white/10'
+              ? 'bg-glass-active text-text'
+              : 'text-text hover:bg-glass-hover'
           "
           :title="nb.description || nb.title"
           @click="selectCollection('notebook', nb.id)"
@@ -115,7 +115,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
         </button>
         <div
           v-if="collections.notebooks.length === 0"
-          class="px-2 py-1 text-[10px] text-white/30"
+          class="px-2 py-1 text-[10px] text-text-muted"
         >
           {{ t("sidebar.noNotebooks") }}
         </div>
@@ -125,7 +125,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
     <!-- Tags section (expandable; flat — subtags deferred) -->
     <div class="mt-1">
       <button
-        class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-white/70 hover:bg-white/10"
+        class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
         @click="collections.toggleSection('tags')"
       >
         <svg
@@ -141,7 +141,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
           <path d="M9 18l6-6-6-6" />
         </svg>
         <span>{{ t("sidebar.tags") }}</span>
-        <span class="ml-auto text-[10px] text-white/40">{{ collections.tags.length }}</span>
+        <span class="ml-auto text-[10px] text-text-muted">{{ collections.tags.length }}</span>
       </button>
       <div v-if="!collections.collapsed.tags" class="mt-0.5 flex flex-col gap-0.5 pl-3">
         <button
@@ -150,17 +150,17 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
           class="titlebar-no-drag flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
           :class="
             isSelected('tag', tag.id)
-              ? 'bg-white/15 text-white'
-              : 'text-white/75 hover:bg-white/10'
+              ? 'bg-glass-active text-text'
+              : 'text-text hover:bg-glass-hover'
           "
           @click="selectCollection('tag', tag.id)"
         >
-          <span class="text-white/40">#</span>
+          <span class="text-text-muted">#</span>
           <span class="truncate">{{ tag.title }}</span>
         </button>
         <div
           v-if="collections.tags.length === 0"
-          class="px-2 py-1 text-[10px] text-white/30"
+          class="px-2 py-1 text-[10px] text-text-muted"
         >
           {{ t("sidebar.noTags") }}
         </div>
@@ -177,13 +177,13 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
       class="titlebar-no-drag rounded-md px-2 py-1.5 text-left transition-colors"
       :class="
         isActive(v.path)
-          ? 'bg-white/15 text-white'
-          : 'text-white/60 hover:bg-white/10'
+          ? 'bg-glass-active text-text'
+          : 'text-text-muted hover:bg-glass-hover'
       "
     >
       <span class="flex items-center gap-1">
         {{ v.label }}
-        <span v-if="v.name === 'trash' && collections.trashCount > 0" class="text-[10px] text-white/40">
+        <span v-if="v.name === 'trash' && collections.trashCount > 0" class="text-[10px] text-text-muted">
           ({{ collections.trashCount }})
         </span>
       </span>
@@ -191,17 +191,17 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
 
     <!-- Settings opens its own window (singleton) via IPC, not a route. -->
     <button
-      class="titlebar-no-drag rounded-md px-2 py-1.5 text-left text-white/60 transition-colors hover:bg-white/10"
+      class="titlebar-no-drag rounded-md px-2 py-1.5 text-left text-text-muted transition-colors hover:bg-glass-hover"
       @click="openSettings"
     >
       Settings
     </button>
 
     <!-- Account area -->
-    <div v-if="auth.isLoggedIn" class="mt-1 rounded-md bg-white/5 px-2 py-1.5">
-      <div class="truncate text-[11px] text-white/70">{{ auth.user?.email }}</div>
+    <div v-if="auth.isLoggedIn" class="mt-1 rounded-md bg-glass-surface px-2 py-1.5">
+      <div class="truncate text-[11px] text-text-muted">{{ auth.user?.email }}</div>
       <button
-        class="mt-1 w-full rounded px-1 py-0.5 text-left text-[10px] text-white/50 hover:bg-white/10"
+        class="mt-1 w-full rounded px-1 py-0.5 text-left text-[10px] text-text-muted hover:bg-glass-hover"
         @click="auth.logout()"
       >
         Log out
@@ -209,13 +209,13 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
     </div>
     <button
       v-else
-      class="mt-1 rounded-md px-2 py-1.5 text-left text-[11px] text-white/60 hover:bg-white/10"
+      class="mt-1 rounded-md px-2 py-1.5 text-left text-[11px] text-text-muted hover:bg-glass-hover"
       @click="auth.requestSignIn()"
     >
       Sign in
     </button>
 
-    <div class="mt-1 rounded-md bg-white/5 px-2 py-1.5 text-[10px] text-white/50">
+    <div class="mt-1 rounded-md bg-glass-surface px-2 py-1.5 text-[10px] text-text-muted">
       Notes: {{ notes.count }}
     </div>
   </nav>

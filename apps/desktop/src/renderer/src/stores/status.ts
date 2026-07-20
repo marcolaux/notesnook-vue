@@ -27,6 +27,10 @@ export const useStatusStore = defineStore("status", () => {
   /** True when `db.hasUnsyncedChanges()` reports local changes not yet pushed
    * (only meaningful when logged in; the view shows a `• unsynced` marker). */
   const hasUnsyncedChanges = ref(false);
+  /** Bumped on each `syncCompleted` event (after `refreshSync`). Watched by
+   * `App.vue` to reload notes + collections so freshly-synced server data
+   * appears in the list without a manual refresh. */
+  const syncCompletedSignal = ref(0);
 
   const wordCount = ref(0);
   const charCount = ref(0);
@@ -63,6 +67,9 @@ export const useStatusStore = defineStore("status", () => {
     EV.subscribe(EVENTS.syncCompleted, () => {
       void refreshSync().then(() => {
         if (syncState.value === "syncing") syncState.value = "synced";
+        // Bump after refresh so watchers (App.vue) reload notes/collections
+        // with the freshly-synced data.
+        syncCompletedSignal.value += 1;
       });
     });
     EV.subscribe(EVENTS.syncAborted, () => {
@@ -120,6 +127,7 @@ export const useStatusStore = defineStore("status", () => {
     syncState,
     lastSynced,
     hasUnsyncedChanges,
+    syncCompletedSignal,
     now,
     wordCount,
     charCount,

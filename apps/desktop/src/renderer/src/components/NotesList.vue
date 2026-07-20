@@ -2,13 +2,11 @@
 import { ref, watch, computed } from "vue";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
-import { useShellStore } from "@/stores/shell";
 import { groupNotes, highlightSegments, type SortKey, type GroupKey } from "@/utils/notes-list";
 import type { NotePreview } from "@/utils/note-preview";
 
 const notes = useNotesStore();
 const collections = useCollectionsStore();
-const shell = useShellStore();
 
 const searchInput = ref<HTMLInputElement | null>(null);
 
@@ -77,31 +75,22 @@ watch(
 </script>
 
 <template>
-  <div class="flex h-full flex-col bg-white/5">
+  <div class="flex h-full flex-col bg-glass-surface">
     <div
-      class="flex h-10 shrink-0 items-center gap-2 border-b border-white/10 px-3"
+      class="flex h-10 shrink-0 items-center gap-2 border-b border-glass-border px-3"
     >
-      <button
-        class="grid h-7 w-7 place-items-center rounded-md text-white/70 hover:bg-white/10"
-        title="Collapse sidebar"
-        @click="shell.toggleSidebar()"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
-      </button>
       <input
         ref="searchInput"
         type="text"
         :value="notes.query"
         placeholder="Search…"
-        class="titlebar-no-drag min-w-0 flex-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80 placeholder:text-white/30 focus:border-white/20 focus:outline-none"
+        class="titlebar-no-drag min-w-0 flex-1 rounded-md border border-glass-border bg-glass-surface px-2 py-1 text-xs text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
         :title="notes.regexSearch ? 'Regex search' : 'Search title / headline / tags'"
         @input="notes.setQuery(($event.target as HTMLInputElement).value)"
       />
       <button
         class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-xs"
-        :class="notes.regexSearch ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10'"
+        :class="notes.regexSearch ? 'bg-glass-active text-text' : 'text-text-muted hover:bg-glass-hover'"
         :title="notes.regexSearch ? 'Regex search on' : 'Regex search off'"
         @click="notes.toggleRegex()"
       >
@@ -109,7 +98,7 @@ watch(
       </button>
       <button
         v-if="notes.query"
-        class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-white/70 hover:bg-white/10"
+        class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-text-muted hover:bg-glass-hover"
         title="Clear search"
         @click="notes.clearSearch()"
       >
@@ -119,7 +108,7 @@ watch(
         </svg>
       </button>
       <button
-        class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-white/70 hover:bg-white/10"
+        class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-text-muted hover:bg-glass-hover"
         title="New Note"
         @click="notes.create()"
       >
@@ -129,16 +118,16 @@ watch(
         </svg>
       </button>
     </div>
-    <div class="flex h-7 shrink-0 items-center gap-2 border-b border-white/10 px-3 text-[10px] text-white/50">
+    <div class="flex h-7 shrink-0 items-center gap-2 border-b border-glass-border px-3 text-[10px] text-text-muted">
       <span class="shrink-0">{{ notes.visibleItems.length }}{{ notes.query ? ` / ${notes.count}` : "" }}</span>
       <!-- Active collection filter (notebook/tag) with a clear (×) button. -->
       <span
         v-if="notes.collectionFilter && collections.selectedLabel"
-        class="titlebar-no-drag flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-1.5 py-0.5 text-white/70"
+        class="titlebar-no-drag flex shrink-0 items-center gap-1 rounded-full bg-glass-hover px-1.5 py-0.5 text-text-muted"
       >
         <span class="max-w-[10rem] truncate">{{ collections.selectedLabel }}</span>
         <button
-          class="grid h-3.5 w-3.5 place-items-center rounded-full text-white/60 hover:bg-white/20 hover:text-white"
+          class="grid h-3.5 w-3.5 place-items-center rounded-full text-text-muted hover:bg-glass-active hover:text-text"
           title="Clear collection filter"
           @click="clearCollectionFilter()"
         >
@@ -150,7 +139,7 @@ watch(
       </span>
       <span class="ml-auto flex items-center gap-1">
         <select
-          class="titlebar-no-drag rounded-sm border border-white/10 bg-white/5 px-1 py-0.5 text-white/70 focus:outline-none"
+          class="titlebar-no-drag rounded-sm border border-glass-border bg-glass-surface px-1 py-0.5 text-text-muted focus:outline-none"
           :value="notes.groupKey"
           title="Group by"
           @change="notes.setGroupKey(($event.target as HTMLSelectElement).value as GroupKey)"
@@ -158,7 +147,7 @@ watch(
           <option v-for="g in groupKeys" :key="g.value" :value="g.value">{{ g.label }}</option>
         </select>
         <select
-          class="titlebar-no-drag rounded-sm border border-white/10 bg-white/5 px-1 py-0.5 text-white/70 focus:outline-none"
+          class="titlebar-no-drag rounded-sm border border-glass-border bg-glass-surface px-1 py-0.5 text-text-muted focus:outline-none"
           :value="notes.sortKey"
           title="Sort by"
           @change="notes.setSortKey(($event.target as HTMLSelectElement).value as SortKey)"
@@ -166,7 +155,7 @@ watch(
           <option v-for="k in sortKeys" :key="k.value" :value="k.value">{{ k.label }}</option>
         </select>
         <button
-          class="titlebar-no-drag grid h-5 w-5 place-items-center rounded-sm text-white/70 hover:bg-white/10"
+          class="titlebar-no-drag grid h-5 w-5 place-items-center rounded-sm text-text-muted hover:bg-glass-hover"
           :title="notes.sortDir === 'asc' ? 'Ascending' : 'Descending'"
           @click="notes.toggleSortDir()"
         >
@@ -181,23 +170,23 @@ watch(
       <template v-for="group in groups" :key="group.key">
         <div
           v-if="group.label"
-          class="sticky top-0 z-10 bg-white/5 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-white/40"
+          class="sticky top-0 z-10 bg-glass-surface px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-text-muted"
         >
           {{ group.label }}
         </div>
         <button
           v-for="note in group.items"
           :key="note.id"
-          class="block w-full rounded-md px-2 py-1.5 text-left hover:bg-white/10"
-          :class="notes.activeNote?.id === note.id ? 'bg-white/15' : ''"
+          class="block w-full rounded-md px-2 py-1.5 text-left hover:bg-glass-hover"
+          :class="notes.activeNote?.id === note.id ? 'bg-glass-active' : ''"
           @click="notes.selectNote(note.id)"
         >
           <div class="flex items-center gap-1">
             <span v-if="note.pinned" class="text-[10px] text-amber-300/80" title="Pinned">📌</span>
             <span v-if="note.favorite" class="text-[10px] text-rose-300/80" title="Favorite">★</span>
-            <span class="truncate text-xs font-medium text-white/90">
+            <span class="truncate text-xs font-medium text-text">
               <template v-for="(seg, i) in segmentsOf(note.title)" :key="i">
-                <mark v-if="seg.match" class="rounded-sm bg-amber-400/30 px-0.5 text-white">{{ seg.text }}</mark>
+                <mark v-if="seg.match" class="rounded-sm bg-amber-400/30 px-0.5 text-text">{{ seg.text }}</mark>
                 <template v-else>{{ seg.text }}</template>
               </template>
             </span>
@@ -212,46 +201,48 @@ watch(
               draggable="false"
             />
             <div class="min-w-0 flex-1">
-              <div class="truncate text-[10px] text-white/40">
+              <div class="truncate text-[10px] text-text-muted">
                 <template v-if="note.headline">
                   <template v-for="(seg, i) in segmentsOf(note.headline)" :key="i">
-                    <mark v-if="seg.match" class="rounded-sm bg-amber-400/30 px-0.5 text-white/70">{{ seg.text }}</mark>
+                    <mark v-if="seg.match" class="rounded-sm bg-amber-400/30 px-0.5 text-text-muted">{{ seg.text }}</mark>
                     <template v-else>{{ seg.text }}</template>
                   </template>
                 </template>
                 <template v-else>No additional text</template>
               </div>
-              <!-- Checklist progress bar (x / y checked). -->
+              <!-- Checklist progress bar (x / y checked) + tags. -->
               <div
-                v-if="previewOf(note.id)?.checklist && previewOf(note.id)!.checklist!.total > 0"
-                class="mt-1 flex items-center gap-1"
+                v-if="(previewOf(note.id)?.checklist && previewOf(note.id)!.checklist!.total > 0) || note.tags.length"
+                class="mt-1 flex items-center gap-1.5"
               >
-                <div class="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    class="h-full rounded-full bg-emerald-400/70"
-                    :style="{ width: `${progressWidth(previewOf(note.id)!)}%` }"
-                  />
-                </div>
-                <span class="shrink-0 text-[8px] text-white/40">
-                  {{ previewOf(note.id)!.checklist!.checked }}/{{ previewOf(note.id)!.checklist!.total }}
-                </span>
+                <template v-if="previewOf(note.id)?.checklist && previewOf(note.id)!.checklist!.total > 0">
+                  <div class="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-glass-hover">
+                    <div
+                      class="h-full rounded-full bg-emerald-400/70"
+                      :style="{ width: `${progressWidth(previewOf(note.id)!)}%` }"
+                    />
+                  </div>
+                  <span class="shrink-0 text-[8px] text-text-muted">
+                    {{ previewOf(note.id)!.checklist!.checked }}/{{ previewOf(note.id)!.checklist!.total }}
+                  </span>
+                </template>
+                <span
+                  v-for="tag in note.tags.slice(0, 3)"
+                  :key="tag"
+                  class="shrink-0 rounded-sm bg-glass-hover px-1 text-[8px] text-text-muted"
+                >#{{ tag }}</span>
               </div>
             </div>
           </div>
-          <div class="mt-0.5 flex items-center gap-1.5 text-[9px] text-white/30">
+          <div class="mt-0.5 flex items-center gap-1.5 text-[9px] text-text-muted">
             <span>{{ formatDate(note.dateEdited) }}</span>
-            <span
-              v-for="tag in note.tags.slice(0, 3)"
-              :key="tag"
-              class="rounded-sm bg-white/10 px-1 text-white/50"
-            >#{{ tag }}</span>
           </div>
         </button>
       </template>
-      <div v-if="notes.visibleItems.length === 0 && notes.query" class="px-2 py-4 text-center text-[10px] text-white/30">
+      <div v-if="notes.visibleItems.length === 0 && notes.query" class="px-2 py-4 text-center text-[10px] text-text-muted">
         No notes match “{{ notes.query }}”
       </div>
-      <div v-else-if="notes.items.length === 0" class="px-2 py-4 text-center text-[10px] text-white/30">
+      <div v-else-if="notes.items.length === 0" class="px-2 py-4 text-center text-[10px] text-text-muted">
         No notes yet
       </div>
     </div>

@@ -5,9 +5,11 @@ import {
   removeGroupLeaf,
   countGroups,
   getTopRightGroupId,
+  allGroupIds,
   pushHistory,
   navBack,
   navForward,
+  setSplitChildSizes,
   type Direction,
   type LayoutNode,
   type EditorGroup
@@ -134,8 +136,14 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     return openTab(activeGroupId.value, noteId);
   }
 
-  /** Split an arbitrary group; returns the new group id (and focuses it). */
-  function splitGroupAt(groupId: string, direction: Direction = "vertical"): string {
+  /** Split an arbitrary group; returns the new group id (and focuses it).
+   *  `position` controls which side the fresh sibling lands on (`"after"` =
+   *  right/bottom, `"before"` = left/top) — used by the drag-to-split drop zones. */
+  function splitGroupAt(
+    groupId: string,
+    direction: Direction = "vertical",
+    position: "before" | "after" = "after"
+  ): string {
     if (layout.value === null || !groups.value[groupId]) return "";
     const newGroupId = genId();
     layout.value = splitGroupLeaf(
@@ -144,11 +152,78 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
       direction,
       genId(), // split node id
       genId(), // new group-leaf layout id
-      newGroupId
+      newGroupId,
+      position
     );
     groups.value = { ...groups.value, [newGroupId]: { id: newGroupId } };
     activeGroupId.value = newGroupId;
     return newGroupId;
+  }
+
+  /**
+   * Drop a tab onto an editor pane's edge zone: split the target group in the
+   * zone's direction (the new sibling on the zone's side) and move the dragged
+   * tab into the new sibling. `zone` is the pane edge the cursor was in
+   * (`left`/`right` → a vertical split; `top`/`bottom` → horizontal); the new
+   * sibling is placed on the zone's side (`before` for left/top, `after` for
+   * right/bottom). If the move empties the source group it collapses (handled
+   * by `moveTab`), so dragging the only tab of a pane to an edge tears it into
+   * its own pane without leaving an empty pane behind.
+   */
+  function dropTabToSplit(
+    targetGroupId: string,
+    tabId: string,
+    zone: "left" | "right" | "top" | "bottom"
+  ): void {
+    if (layout.value === null || !groups.value[targetGroupId]) return;
+    const tab = tabs.value[tabId];
+    if (!tab) return;
+    const vertical = zone === "left" || zone === "right";
+    const position: "before" | "after" =
+      zone === "right" || zone === "bottom" ? "after" : "before";
+    const newGroupId = splitGroupAt(
+      targetGroupId,
+      vertical ? "vertical" : "horizontal",
+      position
+    );
+    if (!newGroupId) return;
+    moveTab(tabId, newGroupId);
+  }
+
+  /**
+   * Open `noteId` split off from `targetGroupId` in `zone`'s direction — the
+   * cross-window counterpart to {@link dropTabToSplit}: split the target group
+   * (new sibling on the zone's side) and open the note as a new tab in that
+   * sibling. Used by the cross-window `app:open-note-at` handler when a tab
+   * dragged from another window is released over this window's editor body
+   * edge. If the note is already a tab in this window, just activate it (no
+   * split). Falls back to a plain {@link openNote} (active group) when the
+   * target group can't be split.
+   */
+  function openNoteSplit(
+    targetGroupId: string,
+    noteId: string,
+    zone: "left" | "right" | "top" | "bottom"
+  ): string {
+    if (layout.value === null) return "";
+    // Reuse an existing tab for the note if one is already open in this window
+    // (openTab reuses across groups) — activating it is better than splitting.
+    const existing = tabForNote(noteId);
+    if (existing) {
+      activateTab(existing.id);
+      return existing.id;
+    }
+    if (!groups.value[targetGroupId]) return openNote(noteId);
+    const vertical = zone === "left" || zone === "right";
+    const position: "before" | "after" =
+      zone === "right" || zone === "bottom" ? "after" : "before";
+    const newGroupId = splitGroupAt(
+      targetGroupId,
+      vertical ? "vertical" : "horizontal",
+      position
+    );
+    if (!newGroupId) return openNote(noteId);
+    return openTab(newGroupId, noteId);
   }
 
   /**
@@ -169,6 +244,19 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
       delete nextTabs[t.id];
       tabs.value = nextTabs;
     }
+    collapseGroup(groupId);
+  }
+
+  /**
+   * Remove a group leaf from the layout tree + the `groups` registry, collapsing
+   * the single-child split left behind, and re-home the active group if it was
+   * the one removed. Assumes the group's tabs have already been dropped (by
+   * `closeGroup` or `closeTab`); does NOT touch `tabs`/`sessions`. Re-initialises
+   * a fresh root only when the removed leaf WAS the root (the last group —
+   * callers guard against this).
+   */
+  function collapseGroup(groupId: string): void {
+    if (layout.value === null) return;
     const next = removeGroupLeaf(layout.value, groupId);
     if (next === null) {
       init(); // root group removed (shouldn't happen — last group refused)
@@ -179,9 +267,33 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     delete nextGroups[groupId];
     groups.value = nextGroups;
     if (activeGroupId.value === groupId) {
-      const ids = getTopRightGroupId(next) ?? Object.keys(nextGroups)[0] ?? "";
-      activeGroupId.value = ids;
+      activeGroupId.value = getTopRightGroupId(next) ?? Object.keys(nextGroups)[0] ?? "";
     }
+  }
+
+  /**
+   * Collapse a group when it has no tabs left AND other panes remain. Used by
+   * `closeTab` (closing the last tab of a pane removes the pane) and `moveTab`
+   * (moving the last tab out of a pane removes the pane), so empty panes never
+   * linger — the split collapses cleanly. The last pane is always kept (an
+   * empty root pane hosts the draft editor / new tabs).
+   */
+  function collapseGroupIfEmpty(groupId: string): void {
+    if (layout.value === null) return;
+    if (countGroups(layout.value) <= 1) return;
+    if (tabsOf(groupId).length !== 0) return;
+    collapseGroup(groupId);
+  }
+
+  /**
+   * Persist a sash drag: set the `size` ratio on the two adjacent children
+   * `[childIndex]` / `[childIndex+1]` of the split node `splitId`. `fraction`
+   * is the first child's share (clamped to `[0.05, 0.95]` by the pure util).
+   * No-op when the split id is unknown (the tree may have changed mid-drag).
+   */
+  function resizeSplitChildren(splitId: string, childIndex: number, fraction: number): void {
+    if (layout.value === null) return;
+    layout.value = setSplitChildSizes(layout.value, splitId, childIndex, fraction);
   }
 
   // --- tabs -----------------------------------------------------------------
@@ -227,9 +339,11 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     };
   }
 
-  /** Close a tab. Its sessions are dropped; the group is left in place (an
-   * empty group can host a new tab). The group's active tab moves to a
-   * neighbour when the active tab closes. */
+  /** Close a tab. Its sessions are dropped. The group's active tab moves to a
+   *  neighbour when the active tab closes. When this close empties the group and
+   *  other panes remain, the group is removed (the pane collapses) — so closing
+   *  the last tab of a pane removes the pane. The last pane is always kept (it
+   *  hosts the draft editor / new tabs). */
   function closeTab(tabId: string): void {
     const tab = tabs.value[tabId];
     if (!tab) return;
@@ -254,6 +368,31 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
         [group.id]: { id: group.id, ...(nextActive !== undefined ? { activeTabId: nextActive } : {}) }
       };
     }
+    collapseGroupIfEmpty(tab.groupId);
+  }
+
+  /**
+   * Close every tab across all groups, dropping their sessions. The layout tree
+   * + groups are kept (an empty group can host a new tab); each group's
+   * `activeTabId` is cleared. Used on an account/context switch — open tabs
+   * reference note ids from the *previous* context's database, which either
+   * don't exist or point at different notes in the new context, so keeping
+   * them would show stale/wrong content. Search/sort prefs live in the notes
+   * store and are not reset here.
+   */
+  function closeAllTabs(): void {
+    if (layout.value === null) {
+      init();
+      return;
+    }
+    tabs.value = {};
+    sessions.value = {};
+    // Strip every group's active tab (keep the groups themselves).
+    const nextGroups: Record<string, EditorGroup> = {};
+    for (const [id, g] of Object.entries(groups.value)) {
+      nextGroups[id] = { id: g.id };
+    }
+    groups.value = nextGroups;
   }
 
   /** Activate a tab: set its group's `activeTabId` + focus the group. */
@@ -272,12 +411,80 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     if (groups.value[groupId]) activeGroupId.value = groupId;
   }
 
-  /** Move a tab to a different group (and activate it there). */
+  /** Focus the next group in tree (pre-order) order, wrapping. No-op with <2
+   *  groups. Used by the "Focus next pane" command. */
+  function focusNextGroup(): void {
+    if (layout.value === null) return;
+    const ids = allGroupIds(layout.value);
+    if (ids.length < 2) return;
+    const idx = ids.indexOf(activeGroupId.value);
+    const next = idx < 0 ? ids[0]! : ids[(idx + 1) % ids.length]!;
+    activeGroupId.value = next;
+  }
+
+  /** Move a tab to a different group (and activate it there). When the move
+   *  empties the source group and other panes remain, the source group is
+   *  removed (the pane collapses) — so moving the last tab out of a pane
+   *  removes the pane (and dragging a pane's only tab to a split edge tears it
+   *  into its own pane without leaving an empty pane behind).
+   *
+   *  When the moved tab WAS the source group's active tab, the source group's
+   *  `activeTabId` is reassigned to a remaining sibling (cleared when none
+   *  remain) — otherwise the source pane would keep a stale reference to the
+   *  now-moved tab and render its note's content in BOTH panes (and never switch
+   *  to the next tab). */
   function moveTab(tabId: string, toGroupId: string): void {
     const tab = tabs.value[tabId];
     if (!tab || !groups.value[toGroupId] || tab.groupId === toGroupId) return;
+    const fromGroupId = tab.groupId;
     tabs.value = { ...tabs.value, [tabId]: { ...tab, groupId: toGroupId } };
-    activateTab(tabId);
+    // Reassign the SOURCE group's active tab if it was the moved tab, so the
+    // source pane switches to a remaining sibling instead of clinging to the
+    // moved tab (which now renders in the destination pane).
+    const fromGroup = groups.value[fromGroupId];
+    if (fromGroup?.activeTabId === tabId) {
+      const next = Object.values(tabs.value).find(
+        (t) => t.groupId === fromGroupId && t.id !== tabId
+      );
+      groups.value = {
+        ...groups.value,
+        [fromGroupId]: { id: fromGroupId, ...(next ? { activeTabId: next.id } : {}) }
+      };
+    }
+    activateTab(tabId); // activate in the DESTINATION group + focus it
+    collapseGroupIfEmpty(fromGroupId);
+  }
+
+  /**
+   * Reorder a tab within its group to `toIndex` (the index in the group's tab
+   * list AFTER the tab is removed — i.e. the desired final position, clamped to
+   * `[0, groupSize-1]`). Tab order is the insertion order of the `tabs` record
+   * (`tabsOf` uses `Object.values`), so reordering rebuilds the record with the
+   * group's tabs in the new sequence while leaving other groups' tabs in place.
+   * No-op (skips the rebuild) when the resulting order is unchanged.
+   */
+  function reorderTab(groupId: string, tabId: string, toIndex: number): void {
+    if (!groups.value[groupId]) return;
+    const groupTabs = tabsOf(groupId);
+    const fromIdx = groupTabs.findIndex((t) => t.id === tabId);
+    if (fromIdx < 0) return;
+    const moved = groupTabs[fromIdx]!;
+    const arr = groupTabs.filter((t) => t.id !== tabId); // after removal
+    const clamped = Math.max(0, Math.min(toIndex, arr.length));
+    arr.splice(clamped, 0, moved);
+    // Skip the rebuild (and the reactivity churn) if the order is unchanged.
+    if (arr.every((t, i) => t.id === groupTabs[i]?.id)) return;
+    const next: Record<string, EditorTab> = {};
+    let gi = 0;
+    for (const [id, t] of Object.entries(tabs.value)) {
+      if (t.groupId === groupId) {
+        const replacement = arr[gi++]!;
+        next[replacement.id] = replacement;
+      } else {
+        next[id] = t;
+      }
+    }
+    tabs.value = next;
   }
 
   // --- history --------------------------------------------------------------
@@ -338,6 +545,20 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     if (id) closeTab(id);
   }
 
+  /** Cycle the active group's active tab by `dir` (+1 next, −1 prev), wrapping.
+   *  No-op when the active group has fewer than 2 tabs. */
+  function cycleTab(dir: 1 | -1): void {
+    const g = groups.value[activeGroupId.value];
+    const id = g?.activeTabId;
+    if (!id) return;
+    const siblings = tabsOf(activeGroupId.value);
+    if (siblings.length < 2) return;
+    const idx = siblings.findIndex((t) => t.id === id);
+    if (idx < 0) return;
+    const next = siblings[(idx + dir + siblings.length) % siblings.length]!;
+    activateTab(next.id);
+  }
+
   /** Tabs in a group, in insertion order. */
   function tabsOf(groupId: string): EditorTab[] {
     return Object.values(tabs.value).filter((t) => t.groupId === groupId);
@@ -358,15 +579,22 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     registerSession,
     splitGroup,
     splitGroupAt,
+    dropTabToSplit,
+    openNoteSplit,
     closeGroup,
+    resizeSplitChildren,
     openNote,
     openTab,
     navigateTab,
     closeTab,
+    closeAllTabs,
     closeActiveTab,
+    cycleTab,
     activateTab,
     setActiveGroup,
+    focusNextGroup,
     moveTab,
+    reorderTab,
     canGoBack,
     canGoForward,
     goBack,

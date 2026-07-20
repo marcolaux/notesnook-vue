@@ -82,7 +82,8 @@ describe("useCommandPaletteStore", () => {
 
   it("editor commands become visible once an editor is published", () => {
     const editorStore = useEditorStore();
-    editorStore.set(stubEditor());
+    editorStore.register("tab", stubEditor());
+    editorStore.setFocusedKey("tab");
     const palette = useCommandPaletteStore();
     palette.openPalette();
     expect(palette.items.map((c) => c.id)).toContain("needs-editor");
@@ -90,7 +91,8 @@ describe("useCommandPaletteStore", () => {
 
   it("setQuery filters by subsequence on title + keywords and resets activeIndex", () => {
     const editorStore = useEditorStore();
-    editorStore.set(stubEditor()); // make needs-editor visible
+    editorStore.register("tab", stubEditor()); // make needs-editor visible
+    editorStore.setFocusedKey("tab");
     const palette = useCommandPaletteStore();
     palette.openPalette();
     palette.setQuery("bold");
@@ -103,7 +105,8 @@ describe("useCommandPaletteStore", () => {
 
   it("next/prev wrap around the filtered list", () => {
     const editorStore = useEditorStore();
-    editorStore.set(stubEditor());
+    editorStore.register("tab", stubEditor());
+    editorStore.setFocusedKey("tab");
     const palette = useCommandPaletteStore();
     palette.openPalette();
     const n = palette.items.length;

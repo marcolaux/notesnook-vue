@@ -8,7 +8,10 @@ import type { NoteListItem } from "@/stores/notes";
 // sodium/crypto/bridge graph isn't loaded. The fake db is per-test controllable.
 let mockDb: {
   notebooks: { notes: (id: string) => Promise<string[]> };
-  relations: { to: (ref: unknown, type: unknown) => { resolve: () => Promise<{ id: string }[]> } };
+  relations: {
+    to: (ref: unknown, type: unknown) => { resolve: () => Promise<{ id: string }[]> };
+    from: (ref: unknown, type: unknown) => { resolve: () => Promise<{ id: string }[]> };
+  };
 };
 vi.mock("@/platform/bootstrap", () => ({
   getDatabase: () => mockDb,
@@ -39,7 +42,10 @@ beforeEach(() => {
   setActivePinia(createPinia());
   mockDb = {
     notebooks: { notes: async () => [] },
-    relations: { to: () => ({ resolve: async () => [] }) }
+    relations: {
+      to: () => ({ resolve: async () => [] }),
+      from: () => ({ resolve: async () => [] })
+    }
   };
 });
 
@@ -56,8 +62,11 @@ describe("notes store — collection filter", () => {
     });
   });
 
-  it("filterByCollection('tag') resolves notes via db.relations.to().resolve()", async () => {
-    mockDb.relations.to = (ref: any, type: any) => {
+  it("filterByCollection('tag') resolves notes via db.relations.from().resolve()", async () => {
+    // Tag→note relations are stored `from=tag, to=note`, so notes are resolved
+    // from the tag's **from** side (not `.to`, which would look for tags on the
+    // to side and always return empty).
+    mockDb.relations.from = (ref: any, type: any) => {
       expect(type).toBe("note");
       expect(ref).toEqual({ type: "tag", id: "t1" });
       return { resolve: async () => [{ id: "c" }, { id: "d" }] };
