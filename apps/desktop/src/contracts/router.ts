@@ -233,6 +233,23 @@ function requireSpellChecker(): SpellCheckerServer {
 }
 
 // ---------------------------------------------------------------------------
+// Window server — native window/theme controls implemented in `src/main/window.ts`
+// (Electron `nativeTheme`). Injected via `registerWindowServer`.
+// ---------------------------------------------------------------------------
+export interface WindowServer {
+  /** Set the OS-native theme source (drives vibrancy/acrylic material). */
+  setNativeTheme(mode: "light" | "dark" | "system"): void;
+}
+let windowServer: WindowServer | undefined;
+export function registerWindowServer(server: WindowServer): void {
+  windowServer = server;
+}
+function requireWindowServer(): WindowServer {
+  if (!windowServer) throw new Error("Window server not registered (main boot incomplete)");
+  return windowServer;
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -267,7 +284,13 @@ export const appRouter = t.router({
     restore: t.procedure.mutation(() => ({ ok: true as const })),
     minimize: t.procedure.mutation(() => ({ ok: true as const })),
     fullscreen: t.procedure.query(() => false),
-    list: t.procedure.query(() => [] as Array<{ id: number; title: string }>)
+    list: t.procedure.query(() => [] as Array<{ id: number; title: string }>),
+    // Sync the OS-native theme (macOS vibrancy / Windows acrylic material)
+    // to the renderer's `themeMode` so the window chrome matches the app
+    // theme. Implemented in `src/main/window.ts` via `nativeTheme.themeSource`.
+    setNativeTheme: t.procedure
+      .input(z.enum(["light", "dark", "system"]))
+      .mutation(({ input }) => requireWindowServer().setNativeTheme(input))
   }),
 
   // SQLite — matches upstream apps/desktop/src/api/sqlite-kysely.ts

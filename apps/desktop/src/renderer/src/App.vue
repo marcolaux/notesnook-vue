@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { ref, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
@@ -9,7 +9,10 @@ import { useVaultStore } from "@/stores/vault";
 import { useBackupsStore } from "@/stores/backup";
 import { useSpellCheckerStore } from "@/stores/spell-checker";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
+import { useSettingsStore } from "@/stores/settings";
 import { bootstrap } from "@/platform/bootstrap";
+import { desktop } from "@/platform/desktop-bridge";
+import { setTheme, ThemeDark, ThemeLight } from "@notesnook-vue/theme-vue";
 import { useCommandPalette } from "@/composables/use-command-palette";
 import CommandPalette from "@/components/CommandPalette.vue";
 
@@ -24,6 +27,42 @@ const vault = useVaultStore();
 const backups = useBackupsStore();
 const spellChecker = useSpellCheckerStore();
 const editorLayout = useEditorLayoutStore();
+const settings = useSettingsStore();
+
+// --- Theme application (Phase 7.0 on-site) ---------------------------------
+// `bootstrap()` injects `ThemeDark` as the pre-mount default (no flash); here
+// we apply the user's stored `themeMode` (light/dark/system) and keep it in
+// sync. `setTheme` rewrites the runtime CSS vars; `desktop.window.setNativeTheme`
+// mirrors the choice to the OS-native material (macOS vibrancy / Windows
+// acrylic) so the window chrome matches. "system" follows the OS preference;
+// we also listen to `prefers-color-scheme` so the renderer theme re-applies
+// when the OS flips while in system mode (the native side tracks automatically).
+function resolveSystemDark(): boolean {
+  return typeof window !== "undefined" && window.matchMedia
+    ? window.matchMedia("(prefers-color-scheme: dark)").matches
+    : true;
+}
+
+function applyTheme(mode: "light" | "dark" | "system"): void {
+  const effective = mode === "system" ? (resolveSystemDark() ? "dark" : "light") : mode;
+  setTheme(effective === "dark" ? ThemeDark : ThemeLight);
+  // nativeTheme.themeSource accepts "system" natively (tracks OS); for
+  // light/dark it pins the material. Best-effort — never throws.
+  void desktop.window.setNativeTheme.mutate(mode).catch(() => {
+    /* main unreachable (e.g. tests) — renderer theme still applies */
+  });
+}
+
+let mediaCleanup: (() => void) | undefined;
+function bindSystemThemeListener(): void {
+  if (typeof window === "undefined" || !window.matchMedia) return;
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  const onChange = () => {
+    if (settings.themeMode === "system") applyTheme("system");
+  };
+  mq.addEventListener("change", onChange);
+  mediaCleanup = () => mq.removeEventListener("change", onChange);
+}
 
 // Command palette hotkey (Ctrl/Cmd+Shift+P) toggles the palette store; the
 // <CommandPalette> overlay below renders the store's items.
@@ -73,6 +112,11 @@ onMounted(async () => {
     if (id) notes.closeTab(id);
   });
 
+  // Apply the stored theme on boot (corrects bootstrap's dark default to the
+  // user's choice) + listen for OS preference changes while in system mode.
+  applyTheme(settings.themeMode);
+  bindSystemThemeListener();
+
   try {
     await bootstrap();
     await auth.init();
@@ -115,6 +159,16 @@ onMounted(async () => {
     // eslint-disable-next-line no-console
     console.error("[boot]", e);
   }
+});
+
+// Re-apply the theme when the user changes it in Settings (Phase 7.0).
+watch(
+  () => settings.themeChangeSignal,
+  () => applyTheme(settings.themeMode)
+);
+
+onUnmounted(() => {
+  mediaCleanup?.();
 });
 
 // Load notes the first time the shell becomes visible (logged in, or the user

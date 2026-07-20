@@ -18,6 +18,7 @@ import { registerTray } from "./tray";
 import { registerUpdater } from "./updater";
 import { registerSpellChecker } from "./spell-checker";
 import { registerAppMenu } from "./menu";
+import { registerWindow } from "./window";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -80,6 +81,12 @@ void app.whenReady().then(() => {
   // TODO(phase7): track the renderer's `themeMode` (light/dark/system) via IPC
   // so this follows the user's settings choice instead of hard-coding dark.
   nativeTheme.themeSource = "dark";
+
+  // Window server: lets the renderer sync `nativeTheme.themeSource` to its
+  // `themeMode` (light/dark/system) so the acrylic/vibrancy follows the app
+  // theme. The `dark` default above is the pre-window fallback; the renderer
+  // corrects it to the stored choice on boot.
+  registerWindow();
 
   // Application menu: binds `Cmd/Ctrl+W` to "Close Tab" (renderer closes the
   // active editor tab via `app:close-tab`) instead of the default "Close
