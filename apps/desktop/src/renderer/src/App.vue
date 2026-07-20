@@ -27,7 +27,26 @@ const editorLayout = useEditorLayoutStore();
 // <CommandPalette> overlay below renders the store's items.
 useCommandPalette();
 
+// Deep-link (Phase 6.5): the main process forwards `nn://note/<id>` URLs as
+// `app:open-note` events. Open the note in the editor when the shell is
+// visible; otherwise queue until login/local-only shows the shell.
+const pendingDeepLinkNote = ref<string | null>(null);
+
+function openNoteFromDeepLink(noteId: string): void {
+  if (auth.showShell) {
+    // Ensure the editor-bearing route is active (the editor only renders on
+    // /all), then open the note as a tab.
+    void router.push("/all").then(() => useNotesStore().selectNote(noteId));
+  } else {
+    pendingDeepLinkNote.value = noteId;
+  }
+}
+
 onMounted(async () => {
+  // Subscribe to deep-link note events as early as possible so a cold-start
+  // `nn://note/<id>` (queued in main until the page loads) is not missed.
+  window.appEvents?.onOpenNote((noteId) => openNoteFromDeepLink(noteId));
+
   const notes = useNotesStore();
   const collections = useCollectionsStore();
   try {
@@ -84,6 +103,12 @@ watch(
       void status.refreshSync();
       void vault.refresh();
       void backups.refresh();
+    }
+    // Flush a deep link that arrived while the user was logged out.
+    if (show && pendingDeepLinkNote.value) {
+      const noteId = pendingDeepLinkNote.value;
+      pendingDeepLinkNote.value = null;
+      void router.push("/all").then(() => useNotesStore().selectNote(noteId));
     }
   }
 );

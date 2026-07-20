@@ -7,10 +7,21 @@ import { registerCompressor } from "./compress";
 import { registerSafeStorage } from "./safe-storage";
 import { registerFileStorage } from "./file-storage";
 import { buildBrowserWindowOptionsForOS } from "./titlebar";
+import {
+  enableDeepLinkProtocol,
+  findDeepLinkInArgv,
+  handleDeepLinkUrl,
+  registerDeepLinkListeners,
+  setDeepLinkWindow
+} from "./deep-link";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const isDev = !app.isPackaged;
+
+// Register deep-link listeners BEFORE `app.whenReady()` so a cold-start
+// `open-url` (macOS) is caught and queued rather than dropped.
+registerDeepLinkListeners();
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow(
@@ -64,7 +75,21 @@ void app.whenReady().then(() => {
   registerSafeStorage();
   registerFileStorage();
 
-  createMainWindow();
+  // Register the `nn://` custom protocol with the OS.
+  enableDeepLinkProtocol();
+
+  // A cold-start deep link (Win/Linux) may be in argv; queue it so it is
+  // dispatched once the window exists. On macOS the `open-url` listener already
+  // queued it.
+  const argvLink = findDeepLinkInArgv(process.argv);
+  if (argvLink) {
+    // handleDeepLinkUrl queues internally when no window exists yet.
+    handleDeepLinkUrl(argvLink);
+  }
+
+  const window = createMainWindow();
+  // Bind the window + flush any queued deep links (cold-start open-url / argv).
+  setDeepLinkWindow(window);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
