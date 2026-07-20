@@ -18,8 +18,9 @@
  *    the Database constructor's options bag, and `FileStorageAccessor` is
  *    derived similarly from the options bag. If a future `core` version
  *    re-exports them, replace the derived types with direct re-exports.
- *  - `Monograph` (singular) does not exist — only the `Monographs` collection
- *    class is exported.
+ *  - `Monograph` (singular, the published-note row) and `HistorySession`
+ *    (per-note revision) ARE exported by core's types barrel — re-exported
+ *    below for the Phase 5.1 publish + note-history stores.
  *
  * When adding a type that your code depends on, add it here first.
  */
@@ -51,7 +52,10 @@ export type {
   Profile,
   DayFormat,
   WeekFormat,
-  SyncOptions
+  SyncOptions,
+  Monograph,
+  HistorySession,
+  SessionContentItem
 } from "@notesnook/core";
 
 export type {
