@@ -74,9 +74,9 @@ function clearCompleted(): void {
 <template>
   <NodeViewWrapper
     as="div"
-    class="tasklist-wrapper my-2 overflow-hidden rounded-lg border border-white/10 bg-white/5"
+    class="tasklist-wrapper my-2 overflow-hidden rounded-lg border border-glass-border bg-glass-surface"
   >
-    <div class="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+    <div class="flex items-center gap-2 border-b border-glass-border px-3 py-2">
       <button
         type="button"
         class="grid h-4 w-4 shrink-0 place-items-center rounded border transition-colors"
@@ -85,7 +85,7 @@ function clearCompleted(): void {
             ? 'border-indigo-500 bg-indigo-500 text-white'
             : someChecked
               ? 'border-indigo-400/60 bg-indigo-400/30 text-indigo-100'
-              : 'border-white/30 hover:border-white/50'
+              : 'border-glass-active hover:border-text-muted'
         "
         :title="allChecked ? 'Uncheck all' : 'Check all'"
         @click.prevent="toggleAll"
@@ -98,18 +98,18 @@ function clearCompleted(): void {
         v-model="titleModel"
         type="text"
         placeholder="Checklist title"
-        class="min-w-0 flex-1 bg-transparent text-sm text-white/80 outline-none placeholder:text-white/30"
+        class="min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-muted"
         @change="commitTitle"
         @blur="commitTitle"
         @mousedown.stop
       />
-      <span class="shrink-0 text-xs tabular-nums text-white/40"
+      <span class="shrink-0 text-xs tabular-nums text-text-muted"
         >{{ stats.checked }}/{{ stats.total }}</span
       >
       <button
         v-if="stats.checked > 0"
         type="button"
-        class="shrink-0 rounded px-1.5 py-0.5 text-xs text-white/50 hover:bg-white/10 hover:text-white/80"
+        class="shrink-0 rounded px-1.5 py-0.5 text-xs text-text-muted hover:bg-glass-hover hover:text-text"
         title="Clear completed"
         @click.prevent="clearCompleted"
         @mousedown.prevent.stop
@@ -117,9 +117,9 @@ function clearCompleted(): void {
         Clear
       </button>
     </div>
-    <div class="h-0.5 w-full bg-white/10">
+    <div class="h-0.5 w-full bg-glass-border">
       <div class="h-full bg-indigo-500 transition-all" :style="{ width: progressPct + '%' }" />
     </div>
-    <NodeViewContent as="ul" class="block space-y-0.5 px-3 py-2" />
+    <NodeViewContent as="ul" class="block space-y-2 px-3 py-2" />
   </NodeViewWrapper>
 </template>

@@ -149,7 +149,15 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     title: "Image",
     keywords: ["picture", "photo", "img"],
     slash: true,
-    run: (e) => chain(e).insertImage().run()
+    // Open the host-provided attachment picker (renderer wires
+    // `editor.storage.openAttachmentPicker` to a file input → ingest → insert).
+    // Upstream's `addImage` does the same; the picker is a host concern. A
+    // no-op until the storage hook is wired (so no regression in isolation).
+    run: (e) => {
+      (
+        e.storage as { openAttachmentPicker?: (type: string) => void }
+      ).openAttachmentPicker?.("image");
+    }
   },
   {
     id: "table",

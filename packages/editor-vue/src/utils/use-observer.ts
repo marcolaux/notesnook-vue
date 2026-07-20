@@ -40,6 +40,27 @@ export function useObserver<T extends Element = Element>(
         (entries) => {
           const entry = entries[0];
           if (!entry) return;
+          const r = entry.boundingClientRect;
+          // eslint-disable-next-line no-console
+          console.log(
+            "[image-obs] observer fired",
+            "isIntersecting=",
+            entry.isIntersecting,
+            "ratio=",
+            entry.intersectionRatio,
+            "rect=",
+            r
+              ? { top: r.top, left: r.left, width: r.width, height: r.height }
+              : "(none)",
+            "viewport=",
+            typeof window !== "undefined"
+              ? `${window.innerWidth}x${window.innerHeight}`
+              : "(no window)",
+            "inView=",
+            inView.value,
+            "once=",
+            options.once
+          );
           if (inView.value && options.once) return;
           inView.value = entry.isIntersecting;
         },

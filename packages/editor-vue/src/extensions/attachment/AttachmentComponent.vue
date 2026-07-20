@@ -24,12 +24,12 @@ const icon = computed(() =>
   <NodeViewWrapper as="span" class="inline-flex select-none" contenteditable="false">
     <span
       data-drag-handle
-      class="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/10 px-2 py-0.5 text-xs text-white/85 transition-shadow"
+      class="inline-flex items-center gap-1.5 rounded-md border border-glass-border bg-glass-hover px-2 py-0.5 text-xs text-text transition-shadow"
       :class="{ 'ring-2 ring-indigo-400/70': props.selected }"
     >
       <span aria-hidden="true">{{ icon }}</span>
       <span class="max-w-[12rem] truncate">{{ attrs.filename || "Untitled" }}</span>
-      <span class="text-white/40">{{ sizeLabel }}</span>
+      <span class="text-text-muted">{{ sizeLabel }}</span>
     </span>
   </NodeViewWrapper>
 </template>

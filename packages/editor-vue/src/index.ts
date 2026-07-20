@@ -45,6 +45,20 @@ export { TableRow } from "@tiptap/extension-table-row";
 export { SlashCommands } from "./extensions/slash-commands/slash-commands";
 export { default as SlashMenu } from "./extensions/slash-commands/SlashMenu.vue";
 
+// Find & Replace (per-tab in-content find). A TipTap extension wrapping a
+// ProseMirror highlight plugin + commands (`setFind`/`findNext`/`findPrev`/
+// `replace`/`replaceAll`/`clearFind`); the pure matcher lives in
+// `./extensions/search/match`. `findReplacePluginKey` is exported so the
+// `FindBar` component can read live match state for its counter.
+export { FindReplace } from "./extensions/search/find-replace";
+export { findReplacePluginKey } from "./extensions/search/find-replace";
+export type { FindReplaceState } from "./extensions/search/find-replace";
+export {
+  findMatches,
+  buildTextMap
+} from "./extensions/search/match";
+export type { SearchMatch, SearchOptions, TextMap } from "./extensions/search/match";
+
 // Editor-action metadata (2.5) — vendored parity source for the command
 // palette + slash menu. `import type { ToolId }` from @notesnook/editor is
 // erased, so React/theme-ui/zustand stay out of the renderer bundle.

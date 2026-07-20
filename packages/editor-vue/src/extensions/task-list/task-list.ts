@@ -99,16 +99,27 @@ export const TaskListNode = TaskList.extend({
 
   addNodeView() {
     return VueNodeViewRenderer(TaskListComponent, {
-      // Re-render the header when attrs (stats/title/readonly) or the set of
-      // checked children changes.
-      update: ({ oldNode, newNode }) =>
-        !hasSameAttributes(oldNode.attrs, newNode.attrs) ||
-        !hasSameAttributes(
-          oldNode.attrs.stats as Record<string, unknown>,
-          newNode.attrs.stats as Record<string, unknown>
-        ) ||
-        oldNode.childCount !== newNode.childCount ||
-        countCheckedItems(oldNode).checked !== countCheckedItems(newNode).checked
+      // Re-render the header only when attrs (stats/title/readonly) or the set
+      // of checked children changes — content keystrokes are handled by the
+      // child task-item node views + ProseMirror's contentDOM, so they don't
+      // need a header re-render. CRITICAL: a custom `update` MUST call
+      // `updateProps()` to push the new node to the Vue component; returning
+      // true alone only tells ProseMirror to reuse this node view, leaving the
+      // component pinned to the OLD node (so the progress bar + N/M count would
+      // never update despite `stats` changing in the doc).
+      update: ({ oldNode, newNode, updateProps }) => {
+        if (newNode.type !== oldNode.type) return false;
+        const needsRender =
+          !hasSameAttributes(oldNode.attrs, newNode.attrs) ||
+          !hasSameAttributes(
+            oldNode.attrs.stats as Record<string, unknown>,
+            newNode.attrs.stats as Record<string, unknown>
+          ) ||
+          oldNode.childCount !== newNode.childCount ||
+          countCheckedItems(oldNode).checked !== countCheckedItems(newNode).checked;
+        if (needsRender) updateProps();
+        return true;
+      }
     });
   },
 

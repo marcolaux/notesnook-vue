@@ -36,7 +36,7 @@ Scoped differences from upstream (this 2.4e increment):
     target is the always-rendered frame (not the `<img>`) so it fires even
     before the blob loads and the img has a src.
 */
-import { computed, ref, watch, onBeforeUnmount } from "vue";
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/vue-3";
 import Resizer from "../../components/Resizer.vue";
 import { useObserver } from "../../utils/use-observer";
@@ -84,28 +84,111 @@ const justifyClass = computed(() =>
 // Lazy blob fetch (Phase-6-gated): only when the image has a hash, no inline
 // src, no blob yet, and the attachment-data bridge is wired. The `?.` chain
 // keeps it a no-op until Phase 6 (the storage helpers are undefined then).
+//
+// Self-healing with retry. The IntersectionObserver is `once`, so a single
+// missed attempt would otherwise leave the image on the placeholder
+// permanently — the "first click shows a placeholder, switching notes fixes
+// it" symptom. Two failure modes are covered:
+//  - `getAttachmentData` not wired yet (the editor watch that installs it can
+//    flush after this node-view mounts) → retry on `nextTick`.
+//  - `getAttachmentData` wired but the read returns empty / throws (the
+//    attachment data can be momentarily unavailable on the first note open
+//    after launch) → retry with a short backoff. A full Editor remount (note
+//    switch) is what currently recovers this; the backoff mirrors that without
+//    requiring the user to switch notes.
+// `editor.storage` is a plain (non-reactive) object, so we poll rather than
+// watch it. `cancelled` aborts the retry chain when the node-view unmounts.
+let attachmentLoadAttempts = 0;
+let cancelled = false;
+const MAX_ATTACHMENT_ATTEMPTS = 8;
+async function loadAttachmentBlob(): Promise<void> {
+  if (cancelled || src.value || !hash.value || bloburl.value) return;
+  const getAttachmentData = (
+    props.editor.storage as { getAttachmentData?: (p: unknown) => Promise<unknown> }
+  ).getAttachmentData;
+  if (typeof getAttachmentData !== "function") {
+    if (attachmentLoadAttempts === 0) {
+      // eslint-disable-next-line no-console
+      console.debug("[image] loadAttachmentBlob: getAttachmentData not wired yet", hash.value);
+    }
+    if (attachmentLoadAttempts++ < MAX_ATTACHMENT_ATTEMPTS) {
+      await nextTick().then(loadAttachmentBlob);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn("[image] gave up: getAttachmentData never wired for hash", hash.value);
+    }
+    return;
+  }
+  let data: unknown;
+  try {
+    data = await getAttachmentData({ type: "image", hash: hash.value });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[image] getAttachmentData threw for hash", hash.value, e);
+    data = undefined;
+  }
+  if (cancelled) return;
+  if (typeof data !== "string" || !data) {
+    if (attachmentLoadAttempts++ < MAX_ATTACHMENT_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, 150));
+      return loadAttachmentBlob();
+    }
+    // eslint-disable-next-line no-console
+    console.warn("[image] gave up: no attachment data for hash", hash.value);
+    return;
+  }
+  attachmentLoadAttempts = 0;
+  bloburl.value = toBlobURL(data, "image", mime.value ?? undefined, hash.value);
+}
+
 watch(
   () => inView.value,
-  async (visible) => {
+  (visible) => {
+    // eslint-disable-next-line no-console
+    console.log("[image-obs] inView changed", visible, "hash=", hash.value);
     if (!visible) return;
-    if (src.value || !hash.value || bloburl.value) return;
-    const getAttachmentData = (
-      props.editor.storage as { getAttachmentData?: (p: unknown) => Promise<unknown> }
-    ).getAttachmentData;
-    if (typeof getAttachmentData !== "function") return;
-    let data: unknown;
-    try {
-      data = await getAttachmentData({ type: "image", hash: hash.value });
-    } catch {
-      return;
-    }
-    if (typeof data !== "string" || !data) return;
-    bloburl.value = toBlobURL(data, "image", mime.value ?? undefined, hash.value);
+    void loadAttachmentBlob();
   },
   { immediate: true }
 );
 
+// Safety net for the first editor mount after app launch: the viewport-rooted
+// IntersectionObserver can fail to report a visible image as intersecting on
+// that first mount (the `once` observer then never retries, leaving a visible
+// image on the placeholder permanently — the "first click shows a placeholder,
+// switching notes fixes it" symptom; a fresh Editor remount on note switch is
+// what currently recovers it). After a short delay, if the blob still hasn't
+// loaded and the frame is actually within the viewport (verified directly via
+// getBoundingClientRect, not trusting the observer), load it directly. This
+// preserves lazy-loading for genuinely off-screen images (rect outside the
+// viewport → skip) while recovering the observer's first-mount miss.
+onMounted(() => {
+  setTimeout(() => {
+    if (cancelled || bloburl.value || src.value || !hash.value) return;
+    if (inView.value) return; // observer already drove a load
+    const el = frameRef.value;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const inViewport =
+      r.top < window.innerHeight &&
+      r.bottom > 0 &&
+      r.left < window.innerWidth &&
+      r.right > 0;
+    if (inViewport) {
+      // eslint-disable-next-line no-console
+      console.log(
+        "[image-obs] safety-net load (observer missed on first mount), inView=",
+        inView.value,
+        "hash=",
+        hash.value
+      );
+      void loadAttachmentBlob();
+    }
+  }, 250);
+});
+
 onBeforeUnmount(() => {
+  cancelled = true;
   if (hash.value) revokeBloburl(hash.value);
 });
 

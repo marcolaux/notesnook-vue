@@ -112,6 +112,23 @@ describe("editor node-view round-trip (2.4a + 2.4b + 2.4c + 2.4h)", () => {
     expect((out.match(/checklist--item/g) || []).length).toBe(2);
   });
 
+  it("task item data-indent round-trips and is omitted at indent 0", () => {
+    // indented item keeps its data-indent; the un-indented sibling emits none.
+    const html =
+      '<ul class="checklist"><li class="checklist--item" data-indent="2"><p>indented</p></li><li class="checklist--item"><p>flat</p></li></ul>';
+    const out = roundTrip(html);
+    expect(out).toContain('data-indent="2"');
+    // the flat item must NOT carry a data-indent attribute
+    expect(out).toContain('<li class="checklist--item"><p>flat</p></li>');
+  });
+
+  it("task item data-indent is clamped to the max on parse", () => {
+    const html =
+      '<ul class="checklist"><li class="checklist--item" data-indent="99"><p>way too deep</p></li></ul>';
+    const out = roundTrip(html);
+    expect(out).toContain('data-indent="8"');
+  });
+
   it("a note with an attachment + checklist round-trips together (seed-shape)", () => {
     const html =
       '<p>Intro</p><ul class="checklist" data-title="2.4a progress"><li class="checklist--item checked"><p>Attachment chip</p></li><li class="checklist--item"><p>Task list</p></li></ul><p>Sample: <span data-hash="demo-001" data-filename="phase-2.4.md" data-mime="text/markdown" data-size="2048"></span></p>';

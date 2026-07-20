@@ -12,6 +12,13 @@ import type { NodeViewProps } from "@tiptap/vue-3";
 const props = defineProps<NodeViewProps>();
 
 const checked = computed(() => Boolean(props.node.attrs.checked));
+// Visual indent level (Tab/Shift-Tab) → left padding. 0 leaves the row
+// untouched so the stored `data-indent` attribute stays absent for legacy
+// notes that predate the indent feature.
+const indent = computed(() => Number(props.node.attrs.indent ?? 0));
+const indentStyle = computed(() =>
+  indent.value > 0 ? { paddingLeft: `${indent.value * 20}px` } : undefined
+);
 
 function toggle(): void {
   props.updateAttributes({ checked: !checked.value });
@@ -23,11 +30,14 @@ function toggle(): void {
     as="li"
     class="checklist--item group relative flex items-start gap-2"
     :class="{ checked }"
+    :style="indentStyle"
   >
     <span
       data-drag-handle
-      class="mt-1 w-3 shrink-0 cursor-grab select-none text-white/20 opacity-0 transition-opacity group-hover:opacity-100"
-      >⋮⋮</span
+      draggable="true"
+      contenteditable="false"
+      class="mt-0 w-3 shrink-0 cursor-grab select-none whitespace-nowrap text-text-muted opacity-0 transition-opacity group-hover:opacity-100"
+      >⠿</span
     >
     <button
       type="button"
@@ -35,7 +45,7 @@ function toggle(): void {
       :class="
         checked
           ? 'border-indigo-500 bg-indigo-500 text-white'
-          : 'border-white/30 bg-transparent hover:border-white/50'
+          : 'border-glass-active bg-transparent hover:border-text-muted'
       "
       @click.prevent="toggle"
       @mousedown.prevent.stop

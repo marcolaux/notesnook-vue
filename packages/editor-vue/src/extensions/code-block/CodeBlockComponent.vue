@@ -11,8 +11,9 @@ Scoped differences from upstream (this 2.4c increment):
   - No `@notesnook/intl` strings (not on npm — decision #1); English strings
     are inlined. i18n arrives in Phase 7.
   - No theme engine (`useThemeEngineStore`/`theme.codeBlockCSS`); styling is
-    Tailwind + a small scoped `<style>`, matching the editor's existing
-    `prose-invert` dark surface.
+    Tailwind theme tokens (`bg-code-bg`/`bg-glass-*`/`text-text*`) so the block
+    follows the app theme. The Prism syntax palette is branched dark/light in the
+    app's global `style.css` (by `<html data-theme>`), not a scoped `<style>`.
   - No `ResponsivePresenter` popup (mobile sheet / desktop popup); a minimal
     absolutely-positioned searchable list is used instead. Mobile arrives
     with decision #8.
@@ -110,7 +111,7 @@ function onSearchKeydown(e: KeyboardEvent): void {
 </script>
 
 <template>
-  <NodeViewWrapper as="div" class="codeblock-node my-3 overflow-hidden rounded-md border border-white/10 bg-[#0d1117]">
+  <NodeViewWrapper as="div" class="codeblock-node my-3 overflow-hidden rounded-md border border-glass-border bg-code-bg">
     <NodeViewContent
       as="pre"
       class="node-content-wrapper scroll-bar m-0 w-full px-3 py-2.5 font-mono leading-5 outline-none"
@@ -119,7 +120,7 @@ function onSearchKeydown(e: KeyboardEvent): void {
       :spellcheck="false"
     />
     <div
-      class="flex items-center justify-end gap-1 border-t border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/60"
+      class="flex items-center justify-end gap-1 border-t border-glass-border bg-glass-surface px-2 py-1 text-[11px] text-text-muted"
       contenteditable="false"
     >
       <span v-if="caret" class="mr-1 tabular-nums">
@@ -129,7 +130,7 @@ function onSearchKeydown(e: KeyboardEvent): void {
 
       <button
         type="button"
-        class="rounded px-1.5 py-0.5 hover:bg-white/10 disabled:opacity-40"
+        class="rounded px-1.5 py-0.5 hover:bg-glass-hover disabled:opacity-40"
         :title="`Toggle indentation (${indentType})`"
         :disabled="!editorEditable"
         @click="toggleIndentation"
@@ -139,8 +140,8 @@ function onSearchKeydown(e: KeyboardEvent): void {
 
       <button
         type="button"
-        class="rounded px-1.5 py-0.5 hover:bg-white/10 disabled:opacity-40"
-        :class="{ 'bg-white/15': isOpen }"
+        class="rounded px-1.5 py-0.5 hover:bg-glass-hover disabled:opacity-40"
+        :class="{ 'bg-glass-active': isOpen }"
         :title="'Change language'"
         :disabled="!editorEditable"
         @click="isOpen = !isOpen"
@@ -151,7 +152,7 @@ function onSearchKeydown(e: KeyboardEvent): void {
       <button
         v-if="node.textContent && node.textContent.length > 0"
         type="button"
-        class="rounded px-1.5 py-0.5 text-white/70 hover:bg-white/10"
+        class="rounded px-1.5 py-0.5 text-text-muted hover:bg-glass-hover"
         title="Copy code"
         @click="copyCode"
       >
@@ -160,12 +161,12 @@ function onSearchKeydown(e: KeyboardEvent): void {
     </div>
 
     <div v-if="isOpen" class="codeblock-langpopup relative">
-      <div class="absolute bottom-full right-0 z-30 mb-1 w-64 overflow-hidden rounded-md border border-white/15 bg-[#161b22] shadow-lg">
+      <div class="absolute bottom-full right-0 z-30 mb-1 w-64 overflow-hidden rounded-md border border-glass-border bg-code-bg shadow-lg">
         <input
           v-model="query"
           type="text"
           placeholder="Search languages…"
-          class="w-full border-b border-white/10 bg-transparent px-2 py-1.5 text-xs text-white outline-none"
+          class="w-full border-b border-glass-border bg-transparent px-2 py-1.5 text-xs text-text outline-none placeholder:text-text-muted"
           spellcheck="false"
           @keydown="onSearchKeydown"
         />
@@ -174,12 +175,12 @@ function onSearchKeydown(e: KeyboardEvent): void {
             v-for="lang in filteredLanguages"
             :key="lang.filename"
             type="button"
-            class="flex w-full items-center justify-between px-2 py-1 text-left text-xs text-white/80 hover:bg-white/10"
+            class="flex w-full items-center justify-between px-2 py-1 text-left text-xs text-text hover:bg-glass-hover"
             @click="selectLanguage(lang.filename)"
           >
             <span>{{ lang.title }}</span>
-            <span v-if="languageDefinition?.filename === lang.filename" class="text-indigo-300">✓</span>
-            <span v-else-if="lang.alias" class="text-[9px] text-white/35">
+            <span v-if="languageDefinition?.filename === lang.filename" class="text-indigo-500">✓</span>
+            <span v-else-if="lang.alias" class="text-[9px] text-text-muted">
               {{ lang.alias.slice(0, 3).join(", ").toUpperCase() }}
             </span>
           </button>
@@ -188,46 +189,3 @@ function onSearchKeydown(e: KeyboardEvent): void {
     </div>
   </NodeViewWrapper>
 </template>
-
-<style scoped>
-.codeblock-node :deep(pre.node-content-wrapper) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-.codeblock-node :deep(.token.comment),
-.codeblock-node :deep(.token.prolog),
-.codeblock-node :deep(.token.doctype),
-.codeblock-node :deep(.token.cdata) {
-  color: #8b949e;
-}
-.codeblock-node :deep(.token.punctuation) {
-  color: #c9d1d9;
-}
-.codeblock-node :deep(.token.keyword),
-.codeblock-node :deep(.token.boolean),
-.codeblock-node :deep(.token.tag) {
-  color: #ff7b72;
-}
-.codeblock-node :deep(.token.string),
-.codeblock-node :deep(.token.attr-value),
-.codeblock-node :deep(.token.char) {
-  color: #a5d6ff;
-}
-.codeblock-node :deep(.token.function),
-.codeblock-node :deep(.token.class-name) {
-  color: #d2a8ff;
-}
-.codeblock-node :deep(.token.number),
-.codeblock-node :deep(.token.constant),
-.codeblock-node :deep(.token.symbol) {
-  color: #79c0ff;
-}
-.codeblock-node :deep(.token.property),
-.codeblock-node :deep(.token.attr-name) {
-  color: #79c0ff;
-}
-.codeblock-node :deep(.token.operator),
-.codeblock-node :deep(.token.entity),
-.codeblock-node :deep(.token.url) {
-  color: #ffa657;
-}
-</style>
