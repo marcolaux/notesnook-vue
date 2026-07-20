@@ -60,7 +60,15 @@ const editor = useEditor({
     TableHeader,
     SlashCommands
   ],
-  content: notes.activeContent || "",
+  // NOTE: `content` is intentionally empty. The active note's content is
+  // loaded after mount via `loadCurrentNote()` (see below). Initialising with
+  // `notes.activeContent` here would seed the editor with the *previous*
+  // note's (stale) content when this component is keyed by note id and
+  // remounts on switch — and `setContent` into a doc that already has the
+  // previous note's node-views can leave the new content nested inside them
+  // (e.g. a table rendered inside the prior code-block). Starting empty and
+  // `setContent`-ing into a clean doc avoids that bleed.
+  content: "",
   autofocus: false,
   editable: true,
   onUpdate: ({ editor }) => scheduleSave(editor.getHTML())
@@ -101,10 +109,34 @@ async function flushSave(): Promise<void> {
 
 // --- Note switching -------------------------------------------------------
 /**
- * When the active note changes: flush the previous note's pending edit,
- * load the new note's content, then push it into the editor without
- * triggering an `onUpdate` (so a load never marks the note dirty).
+ * When the active note changes: flush the previous note's pending edit, load
+ * the new note's content, then push it into the editor without triggering an
+ * `onUpdate` (so a load never marks the note dirty). The Editor component is
+ * keyed by note id (see `NotesView`), so a switch remounts a fresh editor
+ * (empty doc) and this loads the note's content into it.
+ *
+ * `loadedNoteId` guards against the race where the id watch fires before the
+ * editor instance exists (useEditor creates it lazily) — the editor-ready
+ * watch below then triggers the load once the editor is available.
  */
+let loadedNoteId: string | null = null;
+
+async function loadCurrentNote(): Promise<void> {
+  const id = notes.activeNote?.id ?? null;
+  if (!id) {
+    loadedNoteId = null;
+    return;
+  }
+  await notes.loadActiveContent();
+  // The active note may have changed again while loading; bail if so.
+  if (notes.activeNote?.id !== id) return;
+  const inst = editor.value;
+  if (inst) {
+    inst.chain().setContent(notes.activeContent || "", false).run();
+    loadedNoteId = id;
+  }
+}
+
 async function onNoteChange(
   newId: string | null | undefined,
   oldId: string | null | undefined
@@ -113,9 +145,7 @@ async function onNoteChange(
     await flushSave();
   }
   if (!newId) return;
-  await notes.loadActiveContent();
-  const inst = editor.value;
-  if (inst) inst.chain().setContent(notes.activeContent || "", false).run();
+  await loadCurrentNote();
 }
 
 watch(
@@ -143,6 +173,11 @@ watch(
       e.on("update", refreshStatus);
       e.on("selectionUpdate", refreshStatus);
       refreshStatus();
+      // If the id watch fired before the editor existed, the load was
+      // skipped — do it now that the editor is ready.
+      if (loadedNoteId !== (notes.activeNote?.id ?? null)) {
+        void loadCurrentNote();
+      }
     }
   },
   { immediate: true }

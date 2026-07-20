@@ -43,6 +43,11 @@ export function registerAppMenu(): void {
           label: "Close Tab",
           accelerator: "CmdOrCtrl+W",
           click: () => sendToRenderer("app:close-tab", "")
+        },
+        {
+          label: "Close Window",
+          accelerator: "CmdOrCtrl+Shift+W",
+          click: () => focusedWindow()?.close()
         }
       ]
     },

@@ -14,8 +14,22 @@
  * before `db.init()` runs. Switching servers at the login screen writes the
  * new config and reloads (re-initialising the Database against the new hosts);
  * that path only runs while logged-out, so no session is in flight.
+ *
+ * The "Notesnook (default)" profile MUST use the real production URLs — NOT
+ * the `hosts` bag re-exported from `@notesnook/core`. That bag is
+ * environment-dependent: core's `hosts` picks its values via `isProduction()`
+ * (`process.env.NODE_ENV === "production" || === "test"`), so in `npm run dev`
+ * (Vite statically defines `process.env.NODE_ENV` as `"development"` in the
+ * renderer, and that literal can't be overridden at runtime) every default host
+ * collapses to `http://localhost:5264/8264/…` — where no server runs, so login
+ * silently fails in dev. Instead the default profile uses `PRODUCTION_HOSTS`
+ * (from `./production-hosts.generated`), a typed constant codegenned from the
+ * upstream `hosts` production branch by `scripts/gen-production-hosts.mjs` — so
+ * the URLs stay in sync with upstream without hand-maintaining them here, and
+ * the default profile is decoupled from `NODE_ENV` (works in dev + packaged).
  */
 import { hosts } from "@notesnook-vue/contracts";
+import { PRODUCTION_HOSTS } from "./production-hosts.generated";
 
 /** The full per-component server-URL bag `Database.host()` expects. */
 export type Hosts = typeof hosts;
@@ -95,9 +109,9 @@ export function writeServerConfig(config: ServerConfig): void {
  */
 export function resolveHosts(config: ServerConfig): Hosts {
   if (config.profile === "custom") {
-    return { ...hosts, ...config.hosts };
+    return { ...PRODUCTION_HOSTS, ...config.hosts };
   }
-  return { ...hosts };
+  return { ...PRODUCTION_HOSTS };
 }
 
 /**
@@ -105,5 +119,5 @@ export function resolveHosts(config: ServerConfig): Hosts {
  * server form so the user edits only what differs for their self-hosted setup.
  */
 export function defaultHosts(): Hosts {
-  return { ...hosts };
+  return { ...PRODUCTION_HOSTS };
 }
