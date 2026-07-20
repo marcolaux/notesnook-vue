@@ -979,7 +979,40 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     ohne Login `lastError` (live Sync = on-site nach Login).
     **On-Site-Gate:** (nach UI) "Sync now" aus Palette/Button → Status wechselt
     auf syncing → completed; ohne Login → Fehleranzeige.
-- [ ] **6.2 Auto-Updater** — `electron-updater` im Main, tRPC `updater.*`
+- [~] **6.2 Auto-Updater** — `electron-updater` im Main, tRPC `updater.*`
+  - **Status 2026-07-20 (headless store + main impl, live update on-site):**
+    das Updater-Backend steht. Neuer Dep `electron-updater@^6.8.9`
+    (`apps/desktop`, workspace-install; `@tiptap/*`-Overrides unangetastet,
+    single `core@2.6.6` bleibt). `contracts/router.ts`: Stub-`updater`-Router
+    ersetzt durch echten `UpdaterServer` (`check`/`download`/`install`/
+    `status` → `UpdateStatus {available,version,downloaded,progress}`) +
+    `registerUpdaterServer`. `main/updater.ts`: lazy `import("electron-updater")`
+    (nur wenn `app.isPackaged` — dev/Tests sind No-Op, kein Singleton-Konstrukt
+    beim Boot), `autoUpdater.autoDownload=false`/`autoInstallOnAppQuit=false`,
+    Event-Spiegelung (`update-downloaded`/`download-progress`/`error`) in lokale
+    Snapshot-Variable → `status()` ohne Netzwerk; optionales `updater:status`-
+    IPC an das Renderer-Fenster (on-site UI). `main/index.ts` registriert nach
+    `createMainWindow` mit Window-Handle. Renderer: `utils/updater.ts` (pure
+    `classifyUpdatePhase`→`UpdatePhase`, `updateStatusText`, `isUpdateAvailable`/
+    `isReadyToInstall`) + `stores/updater.ts` (`useUpdaterStore`: `busy`/
+    `status`/`lastError` + Computeds `phase`/`updateAvailable`/`readyToInstall`/
+    `statusText`; `checkForUpdates`/`downloadUpdate`/`installUpdate`/
+    `refreshStatus` alle never-throws über `desktop.updater.*`-Bridge). Palette:
+    `CommandContext.updater` (viral — 4 ctx-stub-Specs aktualisiert) +
+    `app:check-updates` (`when: showShell`) / `app:download-update` (`when:
+    showShell && updateAvailable`) / `app:install-update` (`when: showShell &&
+    readyToInstall`). 25 neue Contract-Tests in `updater.spec.ts` (pure Helper
+    + Store mit `vi.hoisted`-gemockter `desktop-bridge` + Palette-Cmds).
+    **536 Contract-Tests grün (511 + 25)** über 38 Spec-Dateien, typecheck
+    (node+web+contracts) + build clean, 0 React/theme-ui/zustand-Leck
+    (`electron-updater` nur im Main-Bundle, nicht im Renderer).
+    **Aufgeschoben (on-site/release):** Updater-UI (Update-Notifier unten in
+    der Sidebar §4.1 + "Check/Download/Install"-Buttons), `updater:status`-
+    IPC-Subscribe im Renderer für Live-Fortschritt, echter Live-Update-Test
+    (braucht published+signed Build + Netz + Provider-URL in `app-update.yml`).
+    **On-Site-Gate:** (nach UI) "Check for updates" aus Palette → Status
+    "Up to date" im Dev (No-Stub) / "Update available" im packaged Build →
+    Download → "Ready to install" → Install startet App neu.
 - [~] **6.3 Vault** — Lock/Unlock via `database.vaults`, Secure-Storage via
   Electron `safeStorage`
   - **Status 2026-07-20 (headless store, UI on-site):** das Vault-Store-Backend
@@ -1075,7 +1108,19 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
   native Vibrancy auf macOS, Acrylic auf Win11, `<KeepAlive>` für Tabs
 - [ ] **7.5 electron-builder** — dmg + zip (macOS arm64/x64), nsis + portable
   (Win), AppImage + snap (Linux)
-- [ ] **7.6 CI** — GitHub Actions: typecheck + tests + build für Win/macOS/Linux
+- [x] **7.6 CI** — GitHub Actions: typecheck + tests + build für Win/macOS/Linux
+  - **Status 2026-07-20 (done, headless):** neuer Workflow
+    `.github/workflows/ci.yml`. Matrix `ubuntu/macos/windows` × `Node 20/22`,
+    `fail-fast:false`, `concurrency`-Cancel auf superseded Runs. Steps:
+    checkout (kein Submodule nötig — `vendor-dist/@notesnook/*` sind committed)
+    → `setup-node` mit `cache:npm` → `npm ci` (kompiliert
+    `better-sqlite3-multiple-ciphers` pro OS/ABI; kein Electron-ABI-Rebuild —
+    das ist nur `predev` für `dev`) → `npm run typecheck` (node+web+contracts)
+    → `npm run test:contract` → `npm run build`. YAML + alle referenzierten
+    Scripts validiert; Baseline lokal grün (536 Tests). Cross-Platform-Matrix
+    fängt OS-spezifische Native-Module-Builds + Path-Regressionen.
+    **Aufgeschoben:** Code-Signing/Release-Upload (7.5 electron-builder),
+    Coverage-Upload, `npm audit`-Gate.
 
 ---
 

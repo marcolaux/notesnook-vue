@@ -14,6 +14,7 @@ function stubCtx(shell: ReturnType<typeof useShellStore>, showShell: boolean): C
     auth: { showShell } as unknown as CommandContext["auth"],
     shell,
     sync: undefined as unknown as CommandContext["sync"],
+    updater: undefined as unknown as CommandContext["updater"],
     router: undefined as CommandContext["router"],
     closePalette: () => {}
   };

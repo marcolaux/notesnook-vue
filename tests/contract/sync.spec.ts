@@ -181,6 +181,7 @@ describe("app:sync-now command", () => {
       auth: { showShell } as unknown as CommandContext["auth"],
       shell: undefined as unknown as CommandContext["shell"],
       sync: useSyncStore(),
+      updater: undefined as unknown as CommandContext["updater"],
       router: undefined as CommandContext["router"],
       closePalette: () => {}
     };

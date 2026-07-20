@@ -112,6 +112,40 @@ const appCommands: Command[] = [
     run: (ctx) => {
       void ctx.sync.startSync({ type: "full" });
     }
+  },
+  // Auto-updater commands (Phase 6.2) — check / download / install over the
+  // bridge. `check-updates` is always available in the shell; download/install
+  // are gated on the derived snapshot so they only surface when actionable.
+  // The actual update is on-site (needs a packaged, signed build + network).
+  {
+    id: "app:check-updates",
+    title: "Check for updates",
+    keywords: ["update", "updater", "version", "check", "latest"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => {
+      void ctx.updater.checkForUpdates();
+    }
+  },
+  {
+    id: "app:download-update",
+    title: "Download update",
+    keywords: ["update", "updater", "download", "fetch"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && ctx.updater.updateAvailable,
+    run: (ctx) => {
+      void ctx.updater.downloadUpdate();
+    }
+  },
+  {
+    id: "app:install-update",
+    title: "Install update and restart",
+    keywords: ["update", "updater", "install", "restart", "quit"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && ctx.updater.readyToInstall,
+    run: (ctx) => {
+      void ctx.updater.installUpdate();
+    }
   }
 ];
 

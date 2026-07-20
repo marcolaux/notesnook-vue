@@ -14,6 +14,8 @@ import {
   registerDeepLinkListeners,
   setDeepLinkWindow
 } from "./deep-link";
+import { registerTray } from "./tray";
+import { registerUpdater } from "./updater";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -90,6 +92,12 @@ void app.whenReady().then(() => {
   const window = createMainWindow();
   // Bind the window + flush any queued deep links (cold-start open-url / argv).
   setDeepLinkWindow(window);
+  // Auto-updater (electron-updater). No-op in dev; the window is used to
+  // forward `updater:status` state changes to the renderer (on-site UI).
+  registerUpdater(window);
+  // System tray (New Note / New Notebook / Show / Quit). The tray forwards
+  // new-note/new-notebook to the renderer over `app:tray-action`.
+  registerTray(window);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

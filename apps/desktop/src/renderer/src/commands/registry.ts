@@ -15,6 +15,7 @@ import type { useNotesStore } from "@/stores/notes";
 import type { useAuthStore } from "@/stores/auth";
 import type { useShellStore } from "@/stores/shell";
 import type { useSyncStore } from "@/stores/sync";
+import type { useUpdaterStore } from "@/stores/updater";
 
 export type CommandGroup = "app" | "editor";
 
@@ -27,6 +28,8 @@ export interface CommandContext {
   shell: ReturnType<typeof useShellStore>;
   /** Sync control (start/stop/cancel a sync — Phase 6.1). */
   sync: ReturnType<typeof useSyncStore>;
+  /** Auto-updater control (check/download/install — Phase 6.2). */
+  updater: ReturnType<typeof useUpdaterStore>;
   /** The Vue Router instance (set from `main.ts`; undefined outside the app). */
   router: Router | undefined;
   /** Close the palette overlay (called by the store after execute). */

@@ -143,6 +143,49 @@ function requireFileStorage(): FileStorageServer {
 }
 
 // ---------------------------------------------------------------------------
+// Updater — matches upstream apps/desktop/src/api/updater.ts
+// ---------------------------------------------------------------------------
+// Auto-update is a main-process capability (`electron-updater` only runs in a
+// packaged, signed build — in dev it is a no-op). The renderer triggers +
+// observes it through this structural server over the bridge; the impl lives
+// in `src/main/updater.ts` and is injected via `registerUpdaterServer`.
+
+/** Snapshot of the updater state. `progress` is 0–100 during a download. */
+export interface UpdateStatus {
+  /** An update newer than the running app was found. */
+  available: boolean;
+  /** Version string of the available update, or `null` when none/up-to-date. */
+  version: string | null;
+  /** The update has been downloaded and is ready to install. */
+  downloaded: boolean;
+  /** Download progress 0–100 (0 when not downloading). */
+  progress: number;
+}
+
+export interface UpdaterServer {
+  /** Check the update provider for a newer release. Returns the current
+   *  status snapshot (no side effects beyond the network check). */
+  check(): Promise<UpdateStatus>;
+  /** Download the available update. Returns `true` on success. No-op (returns
+   *  `false`) when no update is available or not packaged. */
+  download(): Promise<boolean>;
+  /** Quit and install the downloaded update. Returns `true` if the call was
+   *  dispatched (the app then restarts). */
+  install(): Promise<boolean>;
+  /** Read the current status snapshot without a network check. */
+  status(): Promise<UpdateStatus>;
+}
+
+let updaterServer: UpdaterServer | undefined;
+export function registerUpdaterServer(server: UpdaterServer): void {
+  updaterServer = server;
+}
+function requireUpdater(): UpdaterServer {
+  if (!updaterServer) throw new Error("Updater server not registered (main boot incomplete)");
+  return updaterServer;
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -260,9 +303,10 @@ export const appRouter = t.router({
 
   // Updater — matches upstream apps/desktop/src/api/updater.ts
   updater: t.router({
-    check: t.procedure.query(() => ({ available: false, version: null as string | null })),
-    download: t.procedure.mutation(() => ({ ok: true as const })),
-    install: t.procedure.mutation(() => ({ ok: true as const }))
+    check: t.procedure.query(() => requireUpdater().check()),
+    download: t.procedure.mutation(() => requireUpdater().download()),
+    install: t.procedure.mutation(() => requireUpdater().install()),
+    status: t.procedure.query(() => requireUpdater().status())
   })
 });
 
