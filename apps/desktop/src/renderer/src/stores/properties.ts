@@ -2,9 +2,15 @@ import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
 import { getDatabase } from "@/platform/bootstrap";
 import { useNotesStore } from "@/stores/notes";
+import type { Notebook, Tag } from "@notesnook-vue/contracts";
 import {
   noteStats,
+  toAssignedTag,
+  toAssignedNotebook,
+  uniqueById,
   TOGGLE_KEYS,
+  type AssignedNotebook,
+  type AssignedTag,
   type NoteStats,
   type ToggleKey,
   type ToggleState
@@ -16,9 +22,12 @@ import {
  * backed per-note toggles, and the created/modified dates.
  *
  * Bounded to the toggles `@notesnook/core`'s `Notes` collection exposes
- * dedicated setters for (`pin`/`favorite`/`readonly`/`localOnly`). Tags,
- * notebooks, vault-lock, archive, and spell-check are deferred (see
- * `utils/properties.ts`). The panel UI itself is on-site.
+ * dedicated setters for (`pin`/`favorite`/`readonly`/`localOnly`), plus the
+ * active note's tag + notebook assignments (read via `db.relations.to(...,
+ * "tag"|"notebook").resolve()`, written via `db.relations.add`/`unlink` for
+ * tags and `db.notes.addToNotebook`/`removeFromNotebook` for notebooks — the
+ * `Note.tags`/`Note.notebooks` fields are `@deprecated`). Vault-lock, archive,
+ * and spell-check are still deferred. The panel UI itself is on-site.
  *
  * Coupling: reads the active note + its loaded HTML from the notes store (a
  * facade over the editor-layout store) and the toggle setters from the db.
@@ -55,6 +64,19 @@ export const usePropertiesStore = defineStore("properties", () => {
   /** True while the full note is being loaded for toggle state. */
   const loadingNote = ref(false);
 
+  /** Tags assigned to the active note (loaded via `db.relations.to(note,
+   * "tag").resolve()`). Empty when no note is active. */
+  const tags = ref<AssignedTag[]>([]);
+  /** Notebooks the active note belongs to (loaded via `db.relations.to(note,
+   * "notebook").resolve()`; a note may belong to several). */
+  const notebooks = ref<AssignedNotebook[]>([]);
+  /** True while tag/notebook assignments are being (re)loaded. */
+  const loadingAssignments = ref(false);
+  /** True while a tag/notebook mutation is in flight (gates the panel UI). */
+  const busy = ref(false);
+  /** Last assignment-mutation error message, or `null`. Cleared on success. */
+  const lastError = ref<string | null>(null);
+
   const activeNoteId = computed(() => notes.activeNote?.id ?? null);
 
   /** Created/modified dates (absolute) for the active note's list item. */
@@ -87,6 +109,35 @@ export const usePropertiesStore = defineStore("properties", () => {
       console.error("[properties] loadNote failed:", e);
     } finally {
       loadingNote.value = false;
+    }
+  }
+
+  /** Load the active note's tag + notebook assignments in parallel via
+   * `db.relations.to(note, "tag"|"notebook").resolve()`. Idempotent + never
+   * throws — a failure leaves the previous assignments intact. Resets to
+   * empty when no note is active. */
+  async function loadAssignments(): Promise<void> {
+    const id = activeNoteId.value;
+    if (!id) {
+      tags.value = [];
+      notebooks.value = [];
+      return;
+    }
+    loadingAssignments.value = true;
+    try {
+      const db = getDatabase();
+      const ref = { id, type: "note" as const };
+      const [tagItems, notebookItems] = await Promise.all([
+        db.relations.to(ref, "tag").resolve().catch(() => []),
+        db.relations.to(ref, "notebook").resolve().catch(() => [])
+      ]);
+      tags.value = uniqueById((tagItems as Tag[]).map(toAssignedTag));
+      notebooks.value = uniqueById((notebookItems as Notebook[]).map(toAssignedNotebook));
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[properties] loadAssignments failed:", e);
+    } finally {
+      loadingAssignments.value = false;
     }
   }
 
@@ -126,15 +177,159 @@ export const usePropertiesStore = defineStore("properties", () => {
     }
   }
 
+  /**
+   * Attach an existing tag to the active note via
+   * `db.relations.add({tag}, {note})` (tag→note direction, per upstream), then
+   * reload assignments + the notes list. Returns `true` on success, `false`
+   * if no note is active or the call threw.
+   */
+  async function addTag(tagId: string): Promise<boolean> {
+    const id = activeNoteId.value;
+    if (!id) return false;
+    busy.value = true;
+    try {
+      const db = getDatabase();
+      await db.relations.add(
+        { id: tagId, type: "tag" },
+        { id, type: "note" }
+      );
+      await loadAssignments();
+      await notes.load();
+      lastError.value = null;
+      return true;
+    } catch (e) {
+      lastError.value = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error("[properties] addTag failed:", e);
+      return false;
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  /**
+   * Detach a tag from the active note via `db.relations.unlink({tag}, {note})`,
+   * then reload. See {@link addTag} for the return contract.
+   */
+  async function removeTag(tagId: string): Promise<boolean> {
+    const id = activeNoteId.value;
+    if (!id) return false;
+    busy.value = true;
+    try {
+      const db = getDatabase();
+      await db.relations.unlink(
+        { id: tagId, type: "tag" },
+        { id, type: "note" }
+      );
+      await loadAssignments();
+      await notes.load();
+      lastError.value = null;
+      return true;
+    } catch (e) {
+      lastError.value = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error("[properties] removeTag failed:", e);
+      return false;
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  /**
+   * Create a new tag (`db.tags.add({title})` → id) and attach it to the active
+   * note. Data-returning (unlike the boolean mutators): on success returns the
+   * new `{id, title}` so the panel can render the chip without a reload; on
+   * failure (no active note, duplicate title, or a relation error) returns
+   * `null`. The sidebar's collections store is NOT refreshed here — the view
+   * composes `collections.load()` after a successful create (on-site).
+   */
+  async function createTag(title: string): Promise<AssignedTag | null> {
+    const id = activeNoteId.value;
+    if (!id || !title.trim()) return null;
+    busy.value = true;
+    try {
+      const db = getDatabase();
+      const tagId = await db.tags.add({ title: title.trim() });
+      await db.relations.add(
+        { id: tagId, type: "tag" },
+        { id, type: "note" }
+      );
+      await loadAssignments();
+      await notes.load();
+      lastError.value = null;
+      return tags.value.find((t) => t.id === tagId) ?? { id: tagId, title: title.trim() };
+    } catch (e) {
+      lastError.value = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error("[properties] createTag failed:", e);
+      return null;
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  /**
+   * Add the active note to a notebook via `db.notes.addToNotebook(notebookId,
+   * noteId)`, then reload. See {@link addTag} for the return contract.
+   */
+  async function addNotebook(notebookId: string): Promise<boolean> {
+    const id = activeNoteId.value;
+    if (!id) return false;
+    busy.value = true;
+    try {
+      const db = getDatabase();
+      await db.notes.addToNotebook(notebookId, id);
+      await loadAssignments();
+      await notes.load();
+      lastError.value = null;
+      return true;
+    } catch (e) {
+      lastError.value = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error("[properties] addNotebook failed:", e);
+      return false;
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  /**
+   * Remove the active note from a notebook via
+   * `db.notes.removeFromNotebook(notebookId, noteId)`, then reload. See
+   * {@link addTag} for the return contract.
+   */
+  async function removeNotebook(notebookId: string): Promise<boolean> {
+    const id = activeNoteId.value;
+    if (!id) return false;
+    busy.value = true;
+    try {
+      const db = getDatabase();
+      await db.notes.removeFromNotebook(notebookId, id);
+      await loadAssignments();
+      await notes.load();
+      lastError.value = null;
+      return true;
+    } catch (e) {
+      lastError.value = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error("[properties] removeNotebook failed:", e);
+      return false;
+    } finally {
+      busy.value = false;
+    }
+  }
+
   // When the active note changes: reset stats to the loaded content + reload
-  // the full note for toggle state. `immediate` so an already-open note seeds
-  // the panel on first mount. `flush: "sync"` so stats update in the same tick
-  // (the headless tests assert synchronously after a content change).
+  // the full note for toggle state + reload tag/notebook assignments. `immediate`
+  // so an already-open note seeds the panel on first mount. `flush: "sync"` so
+  // stats update in the same tick (the headless tests assert synchronously after
+  // a content change).
   watch(
     activeNoteId,
     () => {
       refreshStats();
       void loadNote();
+      void loadAssignments();
     },
     { immediate: true, flush: "sync" }
   );
@@ -151,13 +346,24 @@ export const usePropertiesStore = defineStore("properties", () => {
     stats,
     toggles,
     loadingNote,
+    tags,
+    notebooks,
+    loadingAssignments,
+    busy,
+    lastError,
     activeNoteId,
     dateCreated,
     dateEdited,
     TOGGLE_KEYS,
     loadNote,
+    loadAssignments,
     refreshStats,
     setStats,
-    toggle
+    toggle,
+    addTag,
+    removeTag,
+    createTag,
+    addNotebook,
+    removeNotebook
   };
 });

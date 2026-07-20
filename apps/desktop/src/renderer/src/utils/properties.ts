@@ -6,13 +6,15 @@
  * `usePropertiesStore` composes these for the active note.
  *
  * Bounded to the four toggles `@notesnook/core`'s `Notes` collection exposes
- * dedicated setters for (`pin`/`favorite`/`readonly`/`localOnly`). Tags and
- * notebooks live behind `db.relations` (the `Note.tags`/`Note.notebooks`
- * fields are `@deprecated`); vault-lock and archive are Phase 6; spell-check
- * is a `db.settings` setting, not a per-note toggle — all deferred.
+ * dedicated setters for (`pin`/`favorite`/`readonly`/`localOnly`), plus the
+ * tag + notebook assignments for the active note (read + written via
+ * `db.relations`; the `Note.tags`/`Note.notebooks` fields are `@deprecated`).
+ * Vault-lock and archive are Phase 6; spell-check is a `db.settings` setting,
+ * not a per-note toggle — both still deferred.
  */
 
 import { countWords } from "@/utils/status";
+import type { Notebook, Tag } from "@notesnook-vue/contracts";
 
 /** Per-note toggles the properties panel exposes, backed by `db.notes.*`. */
 export type ToggleKey = "pinned" | "favorite" | "readonly" | "localOnly";
@@ -81,4 +83,45 @@ export function formatAbsoluteDate(ts: number): string {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+/**
+ * Minimal tag reference assigned to a note — enough for the properties panel
+ * (id for the relation calls, title for the chip). The full `Tag` carries
+ * dates + sync state the panel doesn't need.
+ */
+export interface AssignedTag {
+  id: string;
+  title: string;
+}
+
+/** Minimal notebook reference assigned to a note (see {@link AssignedTag}). */
+export interface AssignedNotebook {
+  id: string;
+  title: string;
+}
+
+/** Map a core `Tag` to the panel's minimal tag reference. "Untitled" fallback
+ * mirrors the sidebar list-item mapper. */
+export function toAssignedTag(t: Tag): AssignedTag {
+  return { id: t.id, title: t.title || "Untitled" };
+}
+
+/** Map a core `Notebook` to the panel's minimal notebook reference. */
+export function toAssignedNotebook(n: Notebook): AssignedNotebook {
+  return { id: n.id, title: n.title || "Untitled" };
+}
+
+/** De-duplicate a list of `{id}` items by id, preserving first-seen order.
+ * Defensive: `db.relations.to().resolve()` can in principle return duplicate
+ * rows after a re-link; the panel should never show a chip twice. */
+export function uniqueById<T extends { id: string }>(items: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const item of items) {
+    if (!item || seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
 }
