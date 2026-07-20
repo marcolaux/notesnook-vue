@@ -28,6 +28,14 @@ const appEvents = {
     ipcRenderer.on("app:open-note", handler);
     return () => ipcRenderer.removeListener("app:open-note", handler);
   },
+  onOpenNoteAt(listener: (payload: { noteId: string; x: number; y: number }) => void): () => void {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { noteId: string; x: number; y: number }
+    ) => listener(payload);
+    ipcRenderer.on("app:open-note-at", handler);
+    return () => ipcRenderer.removeListener("app:open-note-at", handler);
+  },
   onCloseTab(listener: (tabId: string) => void): () => void {
     const handler = (_event: Electron.IpcRendererEvent, tabId: string) =>
       listener(tabId);
@@ -45,6 +53,11 @@ const appEvents = {
       listener(actionId);
     ipcRenderer.on("app:tray-action", handler);
     return () => ipcRenderer.removeListener("app:tray-action", handler);
+  },
+  onDataChanged(listener: () => void): () => void {
+    const handler = () => listener();
+    ipcRenderer.on("app:data-changed", handler);
+    return () => ipcRenderer.removeListener("app:data-changed", handler);
   }
 };
 

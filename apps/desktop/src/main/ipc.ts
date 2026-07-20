@@ -22,7 +22,15 @@ let handler: ReturnType<typeof createIPCHandler> | undefined;
 
 export function attachTRPC(win: BrowserWindow): void {
   if (!handler) {
-    handler = createIPCHandler({ router: appRouter, windows: [win] });
+    handler = createIPCHandler({
+      router: appRouter,
+      windows: [win],
+      // Expose the calling window's webContents id to procedures as `ctx.senderId`
+      // (called per request with the `IpcMainEvent`). Used by `window.notifyNoteChanged`
+      // to broadcast `app:note-changed` to every window EXCEPT the one that issued the
+      // save, so the actively-edited editor is never disrupted by its own save.
+      createContext: async ({ event }) => ({ senderId: event.sender.id })
+    });
     return;
   }
   handler.attachWindow(win);
