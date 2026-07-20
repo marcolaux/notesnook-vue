@@ -65,5 +65,15 @@ export type { SearchMatch, SearchOptions, TextMap } from "./extensions/search/ma
 export { EDITOR_ACTIONS, SLASH_ITEMS, filterSlashItems, PARITY } from "./tool-definitions";
 export type { EditorAction, SlashItem } from "./tool-definitions";
 
+// Inline marks (Phase 5.3) — thin re-exports of the standard TipTap mark
+// extensions, pinned to 2.6.6 via the root overrides (see header). Pure
+// toggles, no node-view; exported here so the editor-vue package owns every
+// extension the editor loads. Underline round-trips as `<u>`, Highlight as
+// `<mark>` (plain toggle, no colour arg — the colour picker is deferred).
+export { Underline } from "./extensions/underline/underline";
+export type { UnderlineOptions } from "./extensions/underline/underline";
+export { Highlight } from "./extensions/highlight/highlight";
+export type { HighlightOptions } from "./extensions/highlight/highlight";
+
 export { getSandboxFeatures } from "./utils/sandbox";
 export { filterByKey, subsequenceMatch, cycleIndex } from "./utils/filter";

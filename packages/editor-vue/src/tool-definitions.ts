@@ -10,9 +10,9 @@
  * upstream `ToolId`s we cover — `import type { ToolId }` is erased at compile
  * time so React/theme-ui/zustand stay out of the renderer bundle (the same
  * 0-leck rule theme-vue uses for `@notesnook/theme`). Unported actions
- * (subscript/superscript/highlight/textColor/fontFamily/fontSize/math/
- * textDirection/indent/outdent/link-prompt) are registered when those
- * extensions land.
+ * (subscript/superscript/textColor/fontFamily/fontSize/math/textDirection/
+ * indent/outdent/link-prompt) are registered when those extensions land.
+ * Underline + highlight landed in Phase 5.3 (plain toggles, no picker).
  */
 import type { Editor } from "@tiptap/vue-3";
 import type { ToolId } from "@notesnook/editor";
@@ -22,8 +22,10 @@ import { filterByKey } from "./utils/filter";
 export const PARITY: ToolId[] = [
   "bold",
   "italic",
+  "underline",
   "strikethrough",
   "code",
+  "highlight",
   "bulletList",
   "numberedList",
   "checkList",
@@ -68,8 +70,10 @@ export const EDITOR_ACTIONS: EditorAction[] = [
   // --- Inline marks (palette only) ---
   { id: "bold", title: "Bold", keywords: ["strong"], run: (e) => chain(e).toggleBold().run() },
   { id: "italic", title: "Italic", keywords: ["emphasize"], run: (e) => chain(e).toggleItalic().run() },
+  { id: "underline", title: "Underline", keywords: ["u"], run: (e) => chain(e).toggleUnderline().run() },
   { id: "strikethrough", title: "Strikethrough", keywords: ["strike"], run: (e) => chain(e).toggleStrike().run() },
   { id: "code", title: "Inline code", keywords: ["mono"], run: (e) => chain(e).toggleCode().run() },
+  { id: "highlight", title: "Highlight", keywords: ["marker", "highlighter"], run: (e) => chain(e).toggleHighlight().run() },
   { id: "undo", title: "Undo", run: (e) => chain(e).undo().run() },
   { id: "redo", title: "Redo", run: (e) => chain(e).redo().run() },
 

@@ -37,7 +37,9 @@ import {
   TableCell,
   TableHeader,
   SlashCommands,
-  FindReplace
+  FindReplace,
+  Underline,
+  Highlight
 } from "@notesnook-vue/editor-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorStore } from "@/stores/editor";
@@ -279,6 +281,10 @@ const editor = useEditor({
     EmbedNode,
     ImageNode,
     CodeBlock,
+    // Inline marks (Phase 5.3) — pure toggles, no node-view. Underline
+    // round-trips as <u>, Highlight as <mark> (plain, no colour picker yet).
+    Underline,
+    Highlight,
     Table.configure({ resizable: true, showResizeHandleOnSelection: true }),
     TableRow,
     TableCell,

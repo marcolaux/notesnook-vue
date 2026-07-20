@@ -7,7 +7,7 @@
  *
  * Button groups (in `EDITOR_ACTIONS` order, with separators):
  *  - History: undo/redo (disabled via `editor.can()`).
- *  - Inline marks: bold/italic/strikethrough/code.
+ *  - Inline marks: bold/italic/underline/strikethrough/code/highlight.
  *  - Headings + paragraph: H1/H2/H3/¶.
  *  - Lists: bullet/numbered/task.
  *  - Blocks: blockquote/code block/horizontal rule.
@@ -22,9 +22,10 @@
  * (`bg-glass-*`/`text-text*`/`border-glass-border`) follow the app theme.
  *
  * Not yet covered (upstream supports, but the extension isn't loaded here):
- * underline / link / highlight / text-color / font-family / math. Loading those
- * extensions + adding their `EditorAction` makes their buttons appear here
- * automatically; link + text-color additionally need picker UIs (deferred).
+ * link / text-color / font-family / math. Loading those extensions + adding
+ * their `EditorAction` makes their buttons appear here automatically; link +
+ * text-color additionally need picker UIs (deferred). Underline + highlight
+ * landed in Phase 5.3 (plain toggles).
  */
 import { ref, watch, onBeforeUnmount, computed } from "vue";
 import type { Editor } from "@tiptap/vue-3";
@@ -63,8 +64,10 @@ const GLYPHS: Record<string, string> = {
   redo: "↷",
   bold: "B",
   italic: "I",
+  underline: "U",
   strikethrough: "S",
   code: "</>",
+  highlight: "🖍",
   "headings-1": "H1",
   "headings-2": "H2",
   "headings-3": "H3",
@@ -91,10 +94,14 @@ function isActive(action: EditorAction): boolean {
       return e.isActive("bold");
     case "italic":
       return e.isActive("italic");
+    case "underline":
+      return e.isActive("underline");
     case "strikethrough":
       return e.isActive("strike");
     case "code":
       return e.isActive("code");
+    case "highlight":
+      return e.isActive("highlight");
     case "headings-1":
       return e.isActive("heading", { level: 1 });
     case "headings-2":

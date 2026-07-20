@@ -29,7 +29,9 @@ import {
   Table,
   TableRow,
   TableCell,
-  TableHeader
+  TableHeader,
+  Underline,
+  Highlight
 } from "@notesnook-vue/editor-vue";
 
 const editor = new Editor({
@@ -48,7 +50,11 @@ const editor = new Editor({
     Table.configure({ resizable: true, showResizeHandleOnSelection: true }),
     TableRow,
     TableCell,
-    TableHeader
+    TableHeader,
+    // Inline marks (Phase 5.3) — pure toggles, mirror Editor.vue. Underline
+    // round-trips as <u>, Highlight as <mark>.
+    Underline,
+    Highlight
   ],
   content: ""
 });
@@ -68,6 +74,21 @@ function roundTrip(html: string): string {
 }
 
 describe("editor node-view round-trip (2.4a + 2.4b + 2.4c + 2.4h)", () => {
+  it("underline mark round-trips as <u>", () => {
+    // Phase 5.3 — pure-toggle re-export of @tiptap/extension-underline.
+    const out = roundTrip("<p><u>underlined</u> plain</p>");
+    expect(out).toContain("<u>underlined</u>");
+    expect(out).toContain("plain");
+  });
+
+  it("highlight mark round-trips as <mark>", () => {
+    // Phase 5.3 — plain @tiptap/extension-highlight (no colour arg) renders a
+    // bare <mark>; the data-colour attribute is absent on the default toggle.
+    const out = roundTrip("<p><mark>highlighted</mark> plain</p>");
+    expect(out).toContain("<mark>highlighted</mark>");
+    expect(out).toContain("plain");
+  });
+
   it("attachment chip preserves data-hash/filename/mime/size", () => {
     const html =
       '<p>see <span data-hash="abc" data-filename="readme.md" data-mime="text/markdown" data-size="2048"></span></p>';

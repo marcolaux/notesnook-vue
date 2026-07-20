@@ -60,6 +60,18 @@ describe("tool-definitions (editor-vue parity)", () => {
     expect(calls).toEqual(["focus", "toggleBold", "run"]);
   });
 
+  it("underline run invokes toggleUnderline (Phase 5.3)", () => {
+    const { editor, calls } = fakeEditor();
+    EDITOR_ACTIONS.find((a) => a.id === "underline")!.run(editor);
+    expect(calls).toEqual(["focus", "toggleUnderline", "run"]);
+  });
+
+  it("highlight run invokes toggleHighlight (Phase 5.3)", () => {
+    const { editor, calls } = fakeEditor();
+    EDITOR_ACTIONS.find((a) => a.id === "highlight")!.run(editor);
+    expect(calls).toEqual(["focus", "toggleHighlight", "run"]);
+  });
+
   it("heading-2 run invokes toggleHeading with level 2", () => {
     const { editor, calls } = fakeEditor();
     const h2 = EDITOR_ACTIONS.find((a) => a.id === "headings-2")!;
