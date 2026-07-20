@@ -82,6 +82,22 @@ export const useCollectionsStore = defineStore("collections", () => {
     trashCount.value = Array.isArray(trash) ? trash.length : 0;
   }
 
+  /**
+   * Create a new notebook (tray "New Notebook" / future palette command), then
+   * reload so the sidebar lists it. Never throws — returns the new id, or
+   * `null` on failure. Mirrors `notes.create()`'s `db.notes.add({ title })`.
+   */
+  async function createNotebook(): Promise<string | null> {
+    try {
+      const db = getDatabase();
+      const id = await db.notebooks.add({ title: "New notebook" });
+      await load();
+      return id;
+    } catch {
+      return null;
+    }
+  }
+
   function toggleSection(section: CollectionSection): void {
     collapsed.value = { ...collapsed.value, [section]: !collapsed.value[section] };
   }
@@ -115,6 +131,7 @@ export const useCollectionsStore = defineStore("collections", () => {
     sortedTags,
     selectedLabel,
     load,
+    createNotebook,
     toggleSection,
     setSortKey,
     setSortDir,

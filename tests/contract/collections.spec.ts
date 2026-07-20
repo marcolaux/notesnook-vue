@@ -15,7 +15,7 @@ import type { Notebook, Tag } from "@notesnook-vue/contracts";
 // so the sodium/crypto/bridge graph isn't loaded for a pure store-logic test.
 // The fake db is per-test controllable via `mockDb`.
 let mockDb: {
-  notebooks: { all: { items: () => Promise<Notebook[]> } };
+  notebooks: { all: { items: () => Promise<Notebook[]> }; add: (arg: Partial<Notebook>) => Promise<string> };
   tags: { all: { items: () => Promise<Tag[]> } };
   trash: { all: () => Promise<unknown[]> };
 };
@@ -65,7 +65,7 @@ const TAGS: Tag[] = [
 beforeEach(() => {
   setActivePinia(createPinia());
   mockDb = {
-    notebooks: { all: { items: async () => NOTEBOOKS } },
+    notebooks: { all: { items: async () => NOTEBOOKS }, add: vi.fn(async () => "nb-new") },
     tags: { all: { items: async () => TAGS } },
     trash: { all: async () => [{ id: "x" }, { id: "y" }] }
   };
@@ -213,10 +213,30 @@ describe("collections store", () => {
   });
 
   it("load tolerates a thrown collection fetch (defensive .catch)", async () => {
-    mockDb.notebooks = { all: { items: async () => Promise.reject(new Error("boom")) } };
+    mockDb.notebooks = { all: { items: async () => Promise.reject(new Error("boom")) }, add: vi.fn(async () => "nb-new") };
     const c = useCollectionsStore();
     await c.load();
     expect(c.notebooks).toEqual([]);
     expect(c.tags.map((t) => t.id)).toEqual(["t1", "t2", "t3"]); // others still load
+  });
+
+  it("createNotebook adds a notebook, reloads, and returns the new id", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    const addSpy = mockDb.notebooks.add as unknown as { mock: { calls: unknown[][] } };
+    const id = await c.createNotebook();
+    expect(id).toBe("nb-new");
+    expect(addSpy.mock.calls).toHaveLength(1);
+    expect(addSpy.mock.calls[0]?.[0]).toEqual({ title: "New notebook" });
+    // reload ran: notebooks still populated from the (unchanged) fake.
+    expect(c.notebooks.map((n) => n.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("createNotebook never throws + returns null on db failure", async () => {
+    mockDb.notebooks.add = async () => {
+      throw new Error("nope");
+    };
+    const c = useCollectionsStore();
+    await expect(c.createNotebook()).resolves.toBeNull();
   });
 });

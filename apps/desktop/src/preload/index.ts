@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { exposeElectronTRPC } from "../shared/electron-trpc-shim";
+import type { TrayActionId } from "../contracts/tray";
 
 /**
  * Preload bridge — exposes a tiny, typed surface to the renderer via
@@ -38,6 +39,12 @@ const appEvents = {
       listener(paths);
     ipcRenderer.on("app:external-drop", handler);
     return () => ipcRenderer.removeListener("app:external-drop", handler);
+  },
+  onTrayAction(listener: (actionId: TrayActionId) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, actionId: TrayActionId) =>
+      listener(actionId);
+    ipcRenderer.on("app:tray-action", handler);
+    return () => ipcRenderer.removeListener("app:tray-action", handler);
   }
 };
 

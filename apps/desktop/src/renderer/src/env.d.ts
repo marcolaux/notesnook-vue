@@ -12,6 +12,7 @@ interface Window {
     onOpenNote(listener: (noteId: string) => void): () => void;
     onCloseTab(listener: (tabId: string) => void): () => void;
     onExternalDrop(listener: (paths: string[]) => void): () => void;
+    onTrayAction(listener: (actionId: import("@contracts/tray").TrayActionId) => void): () => void;
   };
   os: string;
   /**

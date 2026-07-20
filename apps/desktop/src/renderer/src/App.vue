@@ -47,6 +47,19 @@ onMounted(async () => {
   // `nn://note/<id>` (queued in main until the page loads) is not missed.
   window.appEvents?.onOpenNote((noteId) => openNoteFromDeepLink(noteId));
 
+  // System-tray actions (Phase 6.4): the tray forwards new-note/new-notebook
+  // here. Only act once the shell is visible (creating notes/notebooks pre-login
+  // would open them invisibly); the tray's "Show" item already surfaces the
+  // window for a logged-out user.
+  window.appEvents?.onTrayAction((actionId) => {
+    if (!auth.showShell) return;
+    if (actionId === "new-note") {
+      void router.push("/all").then(() => useNotesStore().create());
+    } else if (actionId === "new-notebook") {
+      void useCollectionsStore().createNotebook();
+    }
+  });
+
   const notes = useNotesStore();
   const collections = useCollectionsStore();
   try {
