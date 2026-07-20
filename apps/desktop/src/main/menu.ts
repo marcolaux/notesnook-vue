@@ -1,4 +1,5 @@
 import { BrowserWindow, Menu, type MenuItemConstructorOptions } from "electron";
+import { openSettingsWindow, isSettingsWindow } from "./settings-window";
 
 /**
  * Application menu (Phase 4.2 on-site).
@@ -12,6 +13,11 @@ import { BrowserWindow, Menu, type MenuItemConstructorOptions } from "electron";
  *
  * `New Note` (`Cmd/Ctrl+N`) reuses the existing `app:tray-action` channel with
  * the `new-note` action that `App.vue` already handles (gated on `showShell`).
+ *
+ * `Settings…` (`Cmd/Ctrl+,` — the standard Preferences shortcut) opens the
+ * shared singleton Settings window directly from main, mirroring the
+ * `WindowServer.openSettings` bridge procedure the renderer's
+ * `app:open-settings` command uses.
  *
  * The `editMenu`/`viewMenu`/`windowMenu`/`appMenu` roles are kept so the
  * standard clipboard/navigation/devtools/menu-bar behaviours (critical on
@@ -27,7 +33,7 @@ function sendToRenderer(channel: "app:close-tab" | "app:tray-action", payload: u
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
-export function registerAppMenu(): void {
+export function registerAppMenu(preloadPath: string): void {
   const template: MenuItemConstructorOptions[] = [
     { role: "appMenu" },
     {
@@ -40,9 +46,25 @@ export function registerAppMenu(): void {
         },
         { type: "separator" },
         {
+          label: "Settings…",
+          accelerator: "CmdOrCtrl+,",
+          click: () => openSettingsWindow(preloadPath)
+        },
+        { type: "separator" },
+        {
           label: "Close Tab",
           accelerator: "CmdOrCtrl+W",
-          click: () => sendToRenderer("app:close-tab", "")
+          click: () => {
+            // The Settings window has no editor tabs — `Cmd/Ctrl+W` closes the
+            // window there (matching the OS "close window" expectation) instead
+            // of forwarding a no-op `app:close-tab` to its renderer.
+            const win = focusedWindow();
+            if (isSettingsWindow(win)) {
+              win?.close();
+              return;
+            }
+            sendToRenderer("app:close-tab", "");
+          }
         },
         {
           label: "Close Window",

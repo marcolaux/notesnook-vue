@@ -16,6 +16,8 @@ const db = {
       weekFormat: "Mon" as WeekFormat,
       trashCleanupInterval: 7 as TrashCleanupInterval,
       defaultNotebook: undefined as string | undefined,
+      defaultTag: undefined as string | undefined,
+      vaultLockAfter: 1000 * 60 * 30 as number,
       profile: undefined as Profile | undefined
     },
     getDateFormat: () => db.settings._d.dateFormat,
@@ -51,6 +53,16 @@ const db = {
     getDefaultNotebook: () => db.settings._d.defaultNotebook,
     setDefaultNotebook: vi.fn(async (n: string | undefined) => {
       db.settings._d.defaultNotebook = n;
+      return "id";
+    }),
+    getDefaultTag: () => db.settings._d.defaultTag,
+    setDefaultTag: vi.fn(async (t: string | undefined) => {
+      db.settings._d.defaultTag = t;
+      return "id";
+    }),
+    getVaultLockAfter: () => db.settings._d.vaultLockAfter,
+    setVaultLockAfter: vi.fn(async (ms: number) => {
+      db.settings._d.vaultLockAfter = ms;
       return "id";
     }),
     getProfile: () => db.settings._d.profile,
@@ -95,6 +107,8 @@ function resetState(): void {
     weekFormat: "Mon",
     trashCleanupInterval: 7,
     defaultNotebook: undefined,
+    defaultTag: undefined,
+    vaultLockAfter: 1000 * 60 * 30,
     profile: undefined
   };
   for (const k of Object.keys(db.settings) as (keyof typeof db.settings)[]) {
@@ -118,6 +132,8 @@ describe("useSettingsStore — defaults + load", () => {
     expect(s.weekFormat).toBe("Mon");
     expect(s.trashCleanupInterval).toBe(7);
     expect(s.defaultNotebook).toBeUndefined();
+    expect(s.defaultTag).toBeUndefined();
+    expect(s.vaultLockAfter).toBe(1000 * 60 * 30); // upstream default
     expect(s.profile).toBeUndefined();
     expect(s.themeMode).toBe("dark"); // empty localStorage → default
     expect(s.themeChangeSignal).toBe(0);
@@ -145,6 +161,8 @@ describe("useSettingsStore — defaults + load", () => {
     db.settings._d.weekFormat = "Sun";
     db.settings._d.trashCleanupInterval = 30;
     db.settings._d.defaultNotebook = "nb-1";
+    db.settings._d.defaultTag = "tag-9";
+    db.settings._d.vaultLockAfter = 1000 * 60 * 5;
     db.settings._d.profile = { fullName: "Ada" };
     setActivePinia(createPinia());
     const s = useSettingsStore();
@@ -156,6 +174,8 @@ describe("useSettingsStore — defaults + load", () => {
     expect(s.weekFormat).toBe("Sun");
     expect(s.trashCleanupInterval).toBe(30);
     expect(s.defaultNotebook).toBe("nb-1");
+    expect(s.defaultTag).toBe("tag-9");
+    expect(s.vaultLockAfter).toBe(1000 * 60 * 5);
     expect(s.profile).toEqual({ fullName: "Ada" });
   });
 });
@@ -210,6 +230,26 @@ describe("useSettingsStore — setters", () => {
     await s.setDefaultNotebook(undefined);
     expect(db.settings.setDefaultNotebook).toHaveBeenCalledWith(undefined);
     expect(s.defaultNotebook).toBeUndefined();
+  });
+
+  it("setDefaultTag + clear (undefined) round-trips", async () => {
+    const s = useSettingsStore();
+    await s.setDefaultTag("tag-2");
+    expect(db.settings.setDefaultTag).toHaveBeenCalledWith("tag-2");
+    expect(s.defaultTag).toBe("tag-2");
+    await s.setDefaultTag(undefined);
+    expect(db.settings.setDefaultTag).toHaveBeenCalledWith(undefined);
+    expect(s.defaultTag).toBeUndefined();
+  });
+
+  it("setVaultLockAfter calls db + updates state (synced ms value)", async () => {
+    const s = useSettingsStore();
+    await s.setVaultLockAfter(-1); // Never
+    expect(db.settings.setVaultLockAfter).toHaveBeenCalledWith(-1);
+    expect(s.vaultLockAfter).toBe(-1);
+    await s.setVaultLockAfter(1000 * 60 * 60); // 1 hour
+    expect(db.settings.setVaultLockAfter).toHaveBeenCalledWith(1000 * 60 * 60);
+    expect(s.vaultLockAfter).toBe(1000 * 60 * 60);
   });
 
   it("setProfile merges + re-reads the full profile", async () => {

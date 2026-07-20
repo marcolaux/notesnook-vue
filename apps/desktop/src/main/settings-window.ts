@@ -35,6 +35,16 @@ let settingsWindow: BrowserWindow | null = null;
  * @param preloadPath absolute path to the preload bundle (same as the main
  *   window — resolved from the main module's `__dirname`).
  */
+/**
+ * Is `win` the shared Settings window? Used by the app menu to give `Cmd/Ctrl+W`
+ * window-close semantics in the Settings window (it has no editor tabs — the
+ * renderer's `app:close-tab` handler is a no-op there) instead of the
+ * tab-close semantics used in the main/note windows.
+ */
+export function isSettingsWindow(win: BrowserWindow | undefined | null): boolean {
+  return !!win && !win.isDestroyed() && win === settingsWindow;
+}
+
 export function openSettingsWindow(preloadPath: string): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     // eslint-disable-next-line no-console
