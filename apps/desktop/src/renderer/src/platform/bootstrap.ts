@@ -222,6 +222,11 @@ async function seedIfEmpty(db: Database, contextId: ContextId): Promise<void> {
     mode: "once",
     priority: "vibrate"
   });
+  // Colors demo — one custom color beyond the `DefaultColors` palette, so
+  // `npm run dev` exercises `db.colors.add` and the headless colors store has
+  // data for the future sidebar "colors" section + note-color picker (on-site).
+  // Accounts stay empty — sync fills them.
+  await db.colors.add({ title: "Indigo", colorCode: "#5C6BC0" });
 }
 
 /** Returns the initialised Database singleton. Throws if bootstrap hasn't run. */
