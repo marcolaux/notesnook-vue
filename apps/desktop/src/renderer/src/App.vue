@@ -64,6 +64,15 @@ onMounted(async () => {
 
   const notes = useNotesStore();
   const collections = useCollectionsStore();
+
+  // App-menu "Close Tab" (Cmd/Ctrl+W, sent from main's ApplicationMenu) closes
+  // the active editor tab. The renderer is the source of truth for the active
+  // tab id; main only signals the intent (payload ignored).
+  window.appEvents?.onCloseTab(() => {
+    const id = notes.activeTabId;
+    if (id) notes.closeTab(id);
+  });
+
   try {
     await bootstrap();
     await auth.init();

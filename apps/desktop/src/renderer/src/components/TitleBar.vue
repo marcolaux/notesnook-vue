@@ -25,7 +25,11 @@ const titlebar = useTitleBarStore();
 // API is absent and the store keeps its fallback (0 → ignored on macOS).
 function measureControlsWidth(): void {
   const wco = navigator.windowControlsOverlay;
-  if (!wco) return;
+  // The WCO object can be present without an active overlay (e.g. macOS
+  // `hiddenInset` titlebar has no WCO), in which case `getTitlebarArea` is
+  // undefined — calling it throws and crashes the mounted hook. Guard on the
+  // method itself, not just the object.
+  if (!wco || typeof wco.getTitlebarArea !== "function") return;
   const area = wco.getTitlebarArea();
   const controls = window.innerWidth - (area.x + area.width);
   titlebar.setControlsWidth(controls > 0 ? controls : 0);

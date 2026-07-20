@@ -166,12 +166,19 @@ onBeforeUnmount(() => {
         <div
           v-for="tab in notes.openTabs"
           :key="tab.id"
-          class="group flex items-center gap-1 border-r border-white/5 bg-white/5 px-3 py-1.5 text-xs text-white/70"
+          class="group flex cursor-pointer items-center gap-1 border-r border-white/5 px-3 py-1.5 text-xs"
+          :class="
+            notes.activeTabId === tab.id
+              ? 'bg-white/15 text-white'
+              : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-white/90'
+          "
+          @click="notes.selectNote(tab.noteId)"
         >
           <span class="max-w-32 truncate">{{ tab.title }}</span>
           <button
             class="opacity-0 group-hover:opacity-100 hover:text-white"
-            @click="notes.closeTab(tab.id)"
+            @click.stop="notes.closeTab(tab.id)"
+            title="Close tab"
           >
             ×
           </button>

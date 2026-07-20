@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, nativeTheme, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { attachTRPC } from "./ipc";
@@ -17,6 +17,7 @@ import {
 import { registerTray } from "./tray";
 import { registerUpdater } from "./updater";
 import { registerSpellChecker } from "./spell-checker";
+import { registerAppMenu } from "./menu";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -71,6 +72,21 @@ function createMainWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(() => {
+  // Force the OS-native theme to dark so macOS `vibrancy: "under-window"` /
+  // Windows `backgroundMaterial: "acrylic"` render a *dark* material that
+  // matches the app's dark UI. Without this the acrylic follows the system
+  // appearance — a light-mode system yields a bright acrylic that washes out
+  // the dark theme's white text and translucent glassmorphism surfaces.
+  // TODO(phase7): track the renderer's `themeMode` (light/dark/system) via IPC
+  // so this follows the user's settings choice instead of hard-coding dark.
+  nativeTheme.themeSource = "dark";
+
+  // Application menu: binds `Cmd/Ctrl+W` to "Close Tab" (renderer closes the
+  // active editor tab via `app:close-tab`) instead of the default "Close
+  // Window", plus `Cmd/Ctrl+N` → "New Note". Standard edit/view/window menus
+  // are preserved via roles (clipboard etc.).
+  registerAppMenu();
+
   // Register main-process capability impls before the window/bridge is
   // created so procedures are ready when the renderer first calls them.
   registerSQLite();
