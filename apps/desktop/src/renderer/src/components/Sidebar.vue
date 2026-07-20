@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
 import { useCollectionsStore } from "@/stores/collections";
@@ -12,6 +13,7 @@ const auth = useAuthStore();
 const collections = useCollectionsStore();
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 
 /** Plain-link top views (All Notes / Monographs / Archive) — Notebooks &
  * Tags render as expandable collection sections below. */
@@ -81,7 +83,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
         >
           <path d="M9 18l6-6-6-6" />
         </svg>
-        <span>Notebooks</span>
+        <span>{{ t("sidebar.notebooks") }}</span>
         <span class="ml-auto text-[10px] text-white/40">{{ collections.notebooks.length }}</span>
       </button>
       <div v-if="!collections.collapsed.notebooks" class="mt-0.5 flex flex-col gap-0.5 pl-3">
@@ -104,7 +106,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
           v-if="collections.notebooks.length === 0"
           class="px-2 py-1 text-[10px] text-white/30"
         >
-          No notebooks
+          {{ t("sidebar.noNotebooks") }}
         </div>
       </div>
     </div>
@@ -127,7 +129,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
         >
           <path d="M9 18l6-6-6-6" />
         </svg>
-        <span>Tags</span>
+        <span>{{ t("sidebar.tags") }}</span>
         <span class="ml-auto text-[10px] text-white/40">{{ collections.tags.length }}</span>
       </button>
       <div v-if="!collections.collapsed.tags" class="mt-0.5 flex flex-col gap-0.5 pl-3">
@@ -149,7 +151,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
           v-if="collections.tags.length === 0"
           class="px-2 py-1 text-[10px] text-white/30"
         >
-          No tags
+          {{ t("sidebar.noTags") }}
         </div>
       </div>
     </div>
