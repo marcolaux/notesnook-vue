@@ -14,8 +14,25 @@ import { initDatabase, createDesktopPlatform } from "./database";
 import { injectTheme, ThemeDark } from "@notesnook-vue/theme-vue";
 import type { Database } from "@notesnook-vue/contracts";
 import { readServerConfig, resolveHosts } from "./server-config";
+import {
+  readCurrentContext,
+  isLocal,
+  LOCAL_CONTEXT,
+  type ContextId
+} from "./account-context";
+import { migrateLegacyDatabaseKeyIfNeeded } from "./key-store";
+import { bindEventBridge } from "./event-bridge";
+import { ensureLocalUser } from "./local-user";
 
 let database: Database | undefined;
+
+/** The context id of the currently-open database (set during bootstrap/switch). */
+let currentContext: ContextId = LOCAL_CONTEXT;
+
+/** Returns the context id of the currently-open database. */
+export function getCurrentContext(): ContextId {
+  return currentContext;
+}
 
 export async function bootstrap(): Promise<Database> {
   // 0. Theme — inject before anything else so the first paint is already
@@ -38,14 +55,35 @@ export async function bootstrap(): Promise<Database> {
 
   // 2. Database init. Resolve the persisted server config (default Notesnook
   // servers, or a self-hosted bag chosen at the login screen) before init —
-  // `db.host()` must run before `db.init()`.
+  // `db.host()` must run before `db.init()`. Open the *current context's* DB
+  // (local mode, or a logged-in account) — each context has its own encrypted
+  // SQLite file + keychain key + IndexedDB KV (see `account-context.ts`).
   try {
+    const contextId = readCurrentContext();
+    currentContext = contextId;
+    // One-time legacy migration: adopt the pre-per-context single DB
+    // (`notesnook.sql` + global `databaseKey`) as the local context's DB. The
+    // file rename is main-side (at startup); here we copy the keychain key so
+    // `getDatabaseKey("local")` retrieves the legacy key. No-op once migrated
+    // or for account contexts.
+    if (isLocal(contextId)) {
+      await migrateLegacyDatabaseKeyIfNeeded(LOCAL_CONTEXT);
+    }
     const serverHosts = resolveHosts(readServerConfig());
-    const platform = await createDesktopPlatform();
+    const platform = await createDesktopPlatform(contextId);
     const db = await initDatabase(platform, serverHosts);
     database = db;
-    await seedIfEmpty(db);
-    await desktop.log.mutate({ level: "info", message: "database initialised" });
+    // Bridge the Database's instance-local event bus to the global `EV` so the
+    // renderer stores' sync/vault/session-expiry subscriptions fire (re-bound
+    // on every switchContext below — a new Database has a new eventManager).
+    bindEventBridge(db);
+    await seedIfEmpty(db, contextId);
+    // Local mode has no server login, so `db.attachments` (which needs a user
+    // master key) would throw on save. Synthesise a local user + derive a master
+    // key so drag-and-drop / paste of images works in local mode too. Account
+    // contexts get a real user via login. Idempotent + offline (no network).
+    if (isLocal(contextId)) await ensureLocalUser(db);
+    await desktop.log.mutate({ level: "info", message: `database initialised (context: ${contextId})` });
     return db;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -56,8 +94,44 @@ export async function bootstrap(): Promise<Database> {
   }
 }
 
-/** Seed a couple of welcome notes on a fresh database so the list isn't empty. */
-async function seedIfEmpty(db: Database): Promise<void> {
+/**
+ * Live-swap the database singleton to a different context. Constructs a fresh
+ * `@notesnook/core` `Database` against the new context's file/key/IndexedDB and
+ * replaces the singleton — used by `auth.login` to authenticate *into* the
+ * account DB (so the local DB is never authenticated, keeping local and
+ * account data separate). Stores re-resolve `getDatabase()` per action, so
+ * they pick up the swap on their next call.
+ *
+ * The previous `Database` JS object is orphaned (core has no teardown). Its
+ * instance-local `eventManager` (and the bridge subscriptions bound on it
+ * above) die with it — GC-eligible together, no leak on the global `EV` bus.
+ * The new Database gets a fresh `bindEventBridge` so sync/vault/session events
+ * keep reaching the stores. The previous context's SQLite file handle stays
+ * open in Main's `databases` map and is reused when you switch back to it.
+ */
+export async function switchContext(contextId: ContextId): Promise<Database> {
+  const serverHosts = resolveHosts(readServerConfig());
+  const platform = await createDesktopPlatform(contextId);
+  const db = await initDatabase(platform, serverHosts);
+  database = db;
+  currentContext = contextId;
+  // Re-bind the event bridge to the new Database's instance-local eventManager
+  // (the old Database's bridge died with it — see the doc comment above).
+  bindEventBridge(db);
+  // Local context (e.g. on logout back to local) needs the synthesised local
+  // user + master key for `db.attachments`; account contexts get a real user.
+  if (isLocal(contextId)) await ensureLocalUser(db);
+  return db;
+}
+
+/**
+ * Seed a couple of welcome notes on a fresh *local* database so the list isn't
+ * empty in local mode. Account DBs are never seeded — they start empty and fill
+ * from the server via sync (the user's "keep separate" choice: local data lives
+ * only in local mode, account data comes from the server).
+ */
+async function seedIfEmpty(db: Database, contextId: ContextId): Promise<void> {
+  if (!isLocal(contextId)) return; // accounts start empty — sync fills them
   if ((await db.notes.all.count()) > 0) return;
   await db.notes.add({
     title: "Welcome to Notesnook Vue",

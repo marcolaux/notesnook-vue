@@ -31,6 +31,12 @@ import { NNStorage } from "./storage";
 import { createFileStorage } from "./fs";
 import { getDatabaseKey, databaseKeyToPassword, SafeStorageKeyStore } from "./key-store";
 import type { Hosts } from "./server-config";
+import {
+  dbFileName,
+  indexedDBName,
+  LOCAL_CONTEXT,
+  type ContextId
+} from "./account-context";
 
 export interface DatabasePlatform {
   sqliteOptions: SQLiteOptions;
@@ -44,7 +50,8 @@ export interface DatabasePlatform {
  * the resolved server hosts (default Notesnook servers, or a self-hosted bag
  * chosen at the login screen) so sync/auth have somewhere to reach; offline use
  * is unaffected. `db.host()` must run before `db.init()`. Returns the
- * initialised singleton-grade instance.
+ * initialised instance (the caller — `bootstrap.ts` — holds it as the
+ * context-scoped singleton).
  */
 export async function initDatabase(
   platform: DatabasePlatform,
@@ -69,16 +76,25 @@ export async function initDatabase(
 }
 
 /**
- * Production platform: bridge dialect + real compressor + real `NNStorage`
- * (IndexedDB KV + sodium crypto + safeStorage key store) + real `FileStorage`
+ * Production platform for a context: bridge dialect (pointed at the context's
+ * SQLite file) + real compressor + real `NNStorage` (per-context IndexedDB KV
+ * + sodium crypto + per-context safeStorage key store) + real `FileStorage`
  * (streamable-fs over Main node-fs, sodium streaming encryption). Derives (or
- * retrieves) the `databaseKey` and sets `sqliteOptions.password` so the on-disk
- * DB is encrypted.
+ * retrieves) the context's `databaseKey` and sets `sqliteOptions.password` so
+ * the on-disk DB is encrypted with the context's own key.
+ *
+ * The dialect factory ignores core's hardcoded `"notesnook"` name argument and
+ * opens the context's file (`notesnook-<contextId>.sql`) instead — the only way
+ * to target a per-account file, since core's `Database.init()` passes a fixed
+ * `"notesnook"` to the dialect.
  */
-export async function createDesktopPlatform(): Promise<DatabasePlatform> {
-  const key = await getDatabaseKey();
+export async function createDesktopPlatform(
+  contextId: ContextId = LOCAL_CONTEXT
+): Promise<DatabasePlatform> {
+  const key = await getDatabaseKey(contextId);
   const sqliteOptions: SQLiteOptions = {
-    dialect: (name) => createDialect({ name }),
+    // Override core's hardcoded `"notesnook"` with the context's filename.
+    dialect: () => createDialect({ name: dbFileName(contextId) }),
     password: databaseKeyToPassword(key),
     journalMode: "WAL",
     synchronous: "normal",
@@ -87,10 +103,10 @@ export async function createDesktopPlatform(): Promise<DatabasePlatform> {
     cacheSize: -32000,
     pageSize: 8192
   };
-  const keyStore = new SafeStorageKeyStore();
+  const keyStore = new SafeStorageKeyStore(contextId);
   return {
     sqliteOptions,
-    storage: new NNStorage("Notesnook", () => keyStore),
+    storage: new NNStorage(indexedDBName(contextId), () => keyStore),
     fs: createFileStorage(),
     compressor: new Compressor()
   };

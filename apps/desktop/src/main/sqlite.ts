@@ -254,7 +254,36 @@ export const sqliteServer: SQLiteServer = {
 };
 
 export function registerSQLite(): void {
+  migrateLegacyLocalDbFile();
   registerSQLiteServer(sqliteServer);
+}
+
+/**
+ * One-time legacy-DB → local migration (file side). Before per-context support
+ * there was a single `notesnook.sql`; the local context now uses
+ * `notesnook-local.sql`. If the local file is absent but the legacy file is
+ * present, rename it so the user's existing local data is preserved (the
+ * matching keychain key is copied renderer-side in `key-store.ts`). Idempotent
+ * — a no-op once the local file exists or the legacy file is gone. Best-effort:
+ * a failure is logged and swallowed (a fresh local DB is created instead).
+ */
+function migrateLegacyLocalDbFile(): void {
+  try {
+    const base = app.getPath("userData");
+    const { existsSync, renameSync } = require("node:fs") as typeof import("node:fs");
+    const legacy = path.join(base, "notesnook.sql");
+    const local = path.join(base, "notesnook-local.sql");
+    if (existsSync(local) || !existsSync(legacy)) return;
+    // Move the DB plus its WAL/SHM sidecars so no checkpointed data is lost.
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const from = `${legacy}${suffix}`;
+      const to = `${local}${suffix}`;
+      if (existsSync(from)) renameSync(from, to);
+    }
+    console.info("[sqlite] migrated legacy notesnook.sql → notesnook-local.sql");
+  } catch (e) {
+    console.error("[sqlite] legacy DB migration failed (will use a fresh local DB):", e);
+  }
 }
 
 app.on("before-quit", async () => {

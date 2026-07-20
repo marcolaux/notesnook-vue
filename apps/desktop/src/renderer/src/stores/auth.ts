@@ -2,7 +2,15 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { User } from "@notesnook-vue/contracts";
 import { EV, EVENTS } from "@notesnook-vue/contracts";
-import { getDatabase } from "@/platform/bootstrap";
+import { getDatabase, switchContext } from "@/platform/bootstrap";
+import { LOCAL_USER_EMAIL } from "@/platform/local-user";
+import {
+  hashEmail,
+  readCurrentContext,
+  writeCurrentContext,
+  LOCAL_CONTEXT,
+  type ContextId
+} from "@/platform/account-context";
 
 /**
  * Auth store — wraps `@notesnook/core`'s `UserManager` (`db.user.*`) and drives
@@ -46,6 +54,8 @@ export interface PendingMfa {
   password: string;
   method: string;
   secondaryMethod?: string;
+  /** The account context id being authenticated into (for completing login). */
+  ctx: ContextId;
 }
 
 const SKIP_KEY = "notesnook.skippedLogin";
@@ -83,6 +93,15 @@ export const useAuthStore = defineStore("auth", () => {
   const error = ref<string>("");
   const pendingMfa = ref<PendingMfa | null>(null);
   const skippedLogin = ref<boolean>(readSkipped());
+  /**
+   * Bumped whenever the active context changes (login into an account, logout
+   * to local mode). `App.vue` watches it to reload notes/collections from the
+   * now-current database and (when logged in) start a sync — without relying
+   * on a page reload (which proved unreliable mid-session). The live-swap in
+   * `switchContext` has already made `getDatabase()` return the new context's
+   * DB by the time this bumps.
+   */
+  const contextChangeSignal = ref(0);
 
   const isLoggedIn = computed(() => status.value === "logged-in");
   /** True when the shell should show (logged in, or local-only via skip). */
@@ -117,7 +136,13 @@ export const useAuthStore = defineStore("auth", () => {
     try {
       const db = getDatabase();
       const u = await db.user.getUser();
-      if (u) {
+      // A real (server-authenticated) user → logged in. The synthesised *local*
+      // user (sentinel email, created by `ensureLocalUser` so `db.attachments`
+      // has a master key in local mode) is NOT a login — treat it as logged-out
+      // so the login screen / "Sign in" affordance / no-auto-sync behaviour of
+      // local mode is unchanged. `skippedLogin` (read from localStorage) still
+      // gates `showShell` independently.
+      if (u && u.email !== LOCAL_USER_EMAIL) {
         user.value = u;
         status.value = "logged-in";
       } else {
@@ -142,15 +167,35 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   /**
-   * Sign-in step 1: verify the email. If the account has MFA, stash the
-   * pending credentials and move to the `mfa` status (the UI collects the
-   * code, then calls `submitMfa`). Otherwise finalise the password login.
+   * Persist the account context and signal the change so `App.vue` reloads
+   * notes/collections from the account DB and starts a sync. No page reload —
+   * the live-swap already made the account DB the current `Database`, and a
+   * reload proved unreliable mid-session. Called after a successful
+   * login/signup/MFA completion.
+   */
+  function completeLogin(accountCtx: ContextId): void {
+    writeCurrentContext(accountCtx);
+    contextChangeSignal.value += 1;
+  }
+
+  /**
+   * Sign-in step 1: switch to the account's own DB, then verify the email. The
+   * context switch happens *before* any auth call so the MFA-scope token (and
+   * final token) land in the account DB — the local DB is never authenticated,
+   * which keeps local and account data strictly separate. If the account has
+   * MFA, stash the pending credentials + context and move to the `mfa` status
+   * (the UI collects the code, then calls `submitMfa`). Otherwise finalise the
+   * password login and reload into the account.
    */
   async function login(email: string, password: string): Promise<void> {
     status.value = "logging-in";
     error.value = "";
     pendingMfa.value = null;
     try {
+      const accountCtx = await hashEmail(email);
+      if (readCurrentContext() !== accountCtx) {
+        await switchContext(accountCtx);
+      }
       const db = getDatabase();
       const additional = (await db.user.authenticateEmail(email)) as
         | { primaryMethod?: string; secondaryMethod?: string; phoneNumber?: string }
@@ -160,6 +205,7 @@ export const useAuthStore = defineStore("auth", () => {
           email,
           password,
           method: additional.primaryMethod,
+          ctx: accountCtx,
           ...(additional.secondaryMethod
             ? { secondaryMethod: additional.secondaryMethod }
             : {})
@@ -169,6 +215,7 @@ export const useAuthStore = defineStore("auth", () => {
       }
       await db.user.authenticatePassword(email, password);
       await finalize();
+      completeLogin(accountCtx);
     } catch (e) {
       status.value = "error";
       error.value = errorMessage(e);
@@ -188,8 +235,10 @@ export const useAuthStore = defineStore("auth", () => {
       const db = getDatabase();
       await db.user.authenticateMultiFactorCode(code, method ?? pending.method);
       await db.user.authenticatePassword(pending.email, pending.password);
+      const ctx = pending.ctx;
       pendingMfa.value = null;
       await finalize();
+      completeLogin(ctx);
     } catch (e) {
       // Stay on the MFA step so the user can re-enter the code.
       status.value = "mfa";
@@ -197,39 +246,58 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
-  /** Sign up (auto-logs-in via `_login`) and land in the shell. */
+  /** Sign up into the account's own DB (auto-logs-in) and reload into it. */
   async function signup(email: string, password: string): Promise<void> {
     status.value = "logging-in";
     error.value = "";
     try {
+      const accountCtx = await hashEmail(email);
+      if (readCurrentContext() !== accountCtx) {
+        await switchContext(accountCtx);
+      }
       const db = getDatabase();
       await db.user.signup(email, password);
       await finalize();
+      completeLogin(accountCtx);
     } catch (e) {
       status.value = "error";
       error.value = errorMessage(e);
     }
   }
 
-  /** Log out (revokes the session server-side) and return to the login screen. */
+  /**
+   * Log out to local mode. Does NOT call core's `db.user.logout()` (that wipes
+   * the DB via `db.reset()`) — instead it live-swaps the database back to the
+   * local context and signals the change so `App.vue` reloads the local notes.
+   * The account DB + its token stay intact for the account switcher (Phase 2),
+   * and the user returns to local mode with its previous data. `skippedLogin`
+   * is set so local mode shows without the login screen. A true "remove
+   * account" (revoke + delete the account DB) is Phase 2.
+   */
   async function logout(): Promise<void> {
-    try {
-      const db = getDatabase();
-      await db.user.logout();
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error("[auth] logout failed:", e);
-    } finally {
-      user.value = undefined;
-      status.value = "logged-out";
-      pendingMfa.value = null;
-      skippedLogin.value = false;
-      writeSkipped(false);
+    // If already on local, nothing to switch (e.g. session-expired reset).
+    if (readCurrentContext() !== LOCAL_CONTEXT) {
+      try {
+        await switchContext(LOCAL_CONTEXT);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[auth] logout switch to local failed:", e);
+      }
     }
+    writeCurrentContext(LOCAL_CONTEXT);
+    skippedLogin.value = true;
+    writeSkipped(true);
+    user.value = undefined;
+    status.value = "logged-out";
+    pendingMfa.value = null;
+    error.value = "";
+    contextChangeSignal.value += 1;
   }
 
-  /** Local-only mode: skip the login screen, keep using the app offline. */
+  /** Local-only mode: switch to the local context, skip the login screen, keep
+   * using the app offline with the local DB's data. */
   function skipLogin(): void {
+    writeCurrentContext(LOCAL_CONTEXT);
     skippedLogin.value = true;
     writeSkipped(true);
     status.value = "logged-out";
@@ -248,6 +316,7 @@ export const useAuthStore = defineStore("auth", () => {
     error,
     pendingMfa,
     skippedLogin,
+    contextChangeSignal,
     isLoggedIn,
     showShell,
     init,

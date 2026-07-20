@@ -28,6 +28,14 @@ import {
   defaultHosts,
   type Hosts
 } from "@/platform/server-config";
+import { hosts as coreHosts } from "@notesnook-vue/contracts";
+import { PRODUCTION_HOSTS } from "@/platform/production-hosts.generated";
+import { switchContext } from "@/platform/bootstrap";
+import {
+  readCurrentContext,
+  writeCurrentContext,
+  LOCAL_CONTEXT
+} from "@/platform/account-context";
 
 // `vi.hoisted` so the mock factory (hoisted above imports) can reach the
 // mutable db ref without a TDZ violation. Also installs a global `localStorage`
@@ -48,7 +56,10 @@ const { mockDbRef, MemLocalStorage } = vi.hoisted(() => {
 });
 
 vi.mock("@/platform/bootstrap", () => ({
-  getDatabase: () => mockDbRef.db
+  getDatabase: () => mockDbRef.db,
+  // `auth.login` live-swaps to the account DB before authenticating. In tests
+  // the mock db is already installed, so a no-op swap keeps the same db.
+  switchContext: vi.fn(async () => undefined)
 }));
 
 import { useAuthStore } from "@/stores/auth";
@@ -84,6 +95,7 @@ const sampleUser = {
 let savedLocalStorage: any;
 
 beforeEach(() => {
+  vi.clearAllMocks();
   savedLocalStorage = (globalThis as any).localStorage;
   (globalThis as any).localStorage = new MemLocalStorage();
   setActivePinia(createPinia());
@@ -107,6 +119,17 @@ describe("server-config", () => {
     // The host set is whatever the pinned core exports (derived dynamically in
     // server-config); just assert it round-trips the full default bag intact.
     expect(Object.keys(h).sort()).toEqual(Object.keys(defaultHosts()).sort());
+  });
+
+  // Safety net: the generated `PRODUCTION_HOSTS` (codegenned from the upstream
+  // `hosts` production branch) MUST match core's runtime `hosts`. Under vitest
+  // `NODE_ENV=test`, core's `isProduction()` is true so `hosts` resolves to the
+  // production branch — i.e. the same values the generator extracted. If a
+  // submodule bump regenerates vendor-dist's `hosts` but the generated file is
+  // forgotten (or vice-versa), this fails CI loudly instead of silently pointing
+  // the default profile at stale/wrong URLs.
+  it("PRODUCTION_HOSTS stays in sync with core's runtime hosts", () => {
+    expect(PRODUCTION_HOSTS).toEqual(coreHosts);
   });
 
   it("merges a custom profile over the defaults", () => {
@@ -171,16 +194,22 @@ describe("auth store", () => {
     expect(mockDbRef.db.user.getUser).toHaveBeenCalledTimes(1);
   });
 
-  it("login (non-MFA) → authenticateEmail then authenticatePassword → logged-in", async () => {
+  it("login (non-MFA) → switches to account DB, authenticates, signals context change", async () => {
     // authenticateEmail returns no primaryMethod ⇒ non-MFA.
     mockDbRef.db = makeMockDb({ mfaAdditional: {} });
     const auth = useAuthStore();
     await auth.init();
+    const before = auth.contextChangeSignal;
     await auth.login("a@b.com", "password1");
+    // Login switches to the account's own DB before authenticating.
+    expect(switchContext).toHaveBeenCalledTimes(1);
     expect(mockDbRef.db.user.authenticateEmail).toHaveBeenCalledWith("a@b.com");
     expect(mockDbRef.db.user.authenticatePassword).toHaveBeenCalledWith("a@b.com", "password1");
     expect(auth.status).toBe("logged-in");
     expect(auth.pendingMfa).toBeNull();
+    // Success persists the account context + bumps the signal (no page reload).
+    expect(readCurrentContext()).not.toBe(LOCAL_CONTEXT);
+    expect(auth.contextChangeSignal).toBe(before + 1);
   });
 
   it("login (MFA) → enters mfa status with pending method, then submitMfa completes", async () => {
@@ -189,22 +218,28 @@ describe("auth store", () => {
     });
     const auth = useAuthStore();
     await auth.init();
+    const before = auth.contextChangeSignal;
     await auth.login("a@b.com", "password1");
     expect(auth.status).toBe("mfa");
-    expect(auth.pendingMfa).toEqual({
-      email: "a@b.com",
-      password: "password1",
-      method: "app",
-      secondaryMethod: "email"
-    });
-    // Password must NOT have been sent yet — waiting for the code.
+    expect(auth.pendingMfa).toEqual(
+      expect.objectContaining({
+        email: "a@b.com",
+        password: "password1",
+        method: "app",
+        secondaryMethod: "email"
+      })
+    );
+    // Password must NOT have been sent yet — waiting for the code. No context
+    // change yet either (the MFA step hasn't completed).
     expect(mockDbRef.db.user.authenticatePassword).not.toHaveBeenCalled();
+    expect(auth.contextChangeSignal).toBe(before);
 
     await auth.submitMfa("123456");
     expect(mockDbRef.db.user.authenticateMultiFactorCode).toHaveBeenCalledWith("123456", "app");
     expect(mockDbRef.db.user.authenticatePassword).toHaveBeenCalledWith("a@b.com", "password1");
     expect(auth.status).toBe("logged-in");
     expect(auth.pendingMfa).toBeNull();
+    expect(auth.contextChangeSignal).toBe(before + 1);
   });
 
   it("submitMfa without a pending session surfaces an error and stays reachable", async () => {
@@ -215,24 +250,37 @@ describe("auth store", () => {
     expect(auth.error).toMatch(/MFA session expired/i);
   });
 
-  it("signup → db.user.signup called → logged-in", async () => {
+  it("signup → switches to account DB, signs up, signals context change", async () => {
     mockDbRef.db = makeMockDb({ user: sampleUser });
     const auth = useAuthStore();
     await auth.init();
+    const before = auth.contextChangeSignal;
     await auth.signup("a@b.com", "password1");
+    expect(switchContext).toHaveBeenCalledTimes(1);
     expect(mockDbRef.db.user.signup).toHaveBeenCalledWith("a@b.com", "password1");
     expect(auth.status).toBe("logged-in");
+    expect(readCurrentContext()).not.toBe(LOCAL_CONTEXT);
+    expect(auth.contextChangeSignal).toBe(before + 1);
   });
 
-  it("logout → db.user.logout called → logged-out", async () => {
+  it("logout → live-swaps to local context + signals (does NOT wipe via db.user.logout)", async () => {
     mockDbRef.db = makeMockDb({ user: sampleUser });
+    // Simulate being logged into an account (current context = an account).
+    writeCurrentContext("abcd1234abcd1234");
     const auth = useAuthStore();
     await auth.init();
     expect(auth.isLoggedIn).toBe(true);
+    const before = auth.contextChangeSignal;
     await auth.logout();
-    expect(mockDbRef.db.user.logout).toHaveBeenCalledTimes(1);
+    // Logout is non-destructive: it live-swaps to the local DB + signals so
+    // App.vue reloads local notes. Core's db.user.logout (which wipes the DB)
+    // is deliberately NOT called; the account DB + token stay intact.
+    expect(switchContext).toHaveBeenCalledWith(LOCAL_CONTEXT);
+    expect(mockDbRef.db.user.logout).not.toHaveBeenCalled();
     expect(auth.status).toBe("logged-out");
     expect(auth.user).toBeUndefined();
+    expect(readCurrentContext()).toBe(LOCAL_CONTEXT);
+    expect(auth.contextChangeSignal).toBe(before + 1);
   });
 
   it("login failure → error status with message", async () => {
