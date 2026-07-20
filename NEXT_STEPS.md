@@ -1001,11 +1001,49 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     React/theme-ui/zustand-Leck.
     **Aufgeschoben (on-site + Folge):** Properties-Panel-UI (Tag-/Notebook-
     Picker in der rechten Sidebar — available-Liste aus `useCollectionsStore`,
-    Sidebar-Refresh via `collections.load()` nach `createTag` = View-Orchestrierung),
-    Publish (`db.monographs`), Linked Notes, History, Live-Stats-Wiring vom Editor.
+    Sidebar-Refresh via `collections.load()` nach `createTag` = View-Orchestrierung).
+    **Publish, Linked Notes, History + Live-Stats-Wiring sind als headless
+    Backends gelandet** (s. Status-Block unten) — nur die Panel-UI fehlt (on-site).
     **On-Site-Gate:** (nach UI) Panel zeigt Tags+Notebooks der aktiven Note;
     Tag hinzufügen/entfernen + neues Tag erstellen + Notebook zuweisen/absetzen →
     Panel + Sidebar aktualisieren.
+  - **Status 2026-07-20 (Publish + Linked Notes + History + Live-Stats Backends
+    headless, on-site visual gate pending):** die aufgeschobenen Properties-Backends
+    stehen. **Publish** — neues `utils/publish.ts` (pure `buildPublishOptions`
+    exactOptional-safe + `formatPublishUrl` liest das autoritative
+    `Monograph.publishUrl`, niemals hand-gebaut) + `stores/publish.ts`
+    (`usePublishStore`: `published`/`publishUrl`/`datePublished` + `loading`/
+    `publishing`/`lastError`; `refresh`=`db.monographs.refresh`+`isPublished`+
+    `get`→URL, `publish`=`db.monographs.publish(id,title,opts)`→reload+`notes.load`,
+    `unpublish`=`db.monographs.unpublish`; never-throws — Auth/Vault/Empty-Title-
+    Gates in core kommen als `lastError`; `activeNoteId`-watch). **History** —
+    neues `utils/note-history.ts` (pure `toHistoryEntry` + `sortHistoryByDateDesc`)
+    + `stores/note-history.ts` (`useNoteHistoryStore`: `sessions`/`loading`/`busy`/
+    `lastError`/`preview`/`previewSessionId`; `refresh`=`db.noteHistory.get(id).items(
+    undefined,{sortBy:"dateModified",sortDirection:"desc"})`, `loadPreview`=
+    `db.noteHistory.content(id)` (locked Cipher → leer + `lastError`, Vault-Unlock
+    = Folge), `restore`=`db.noteHistory.restore(id)`→reload+`notes.load`;
+    `activeNoteId`-watch). **Live-Stats** — neues pure `textStats(text)` in
+    `utils/properties.ts` (`noteStats` delegiert jetzt daran → shared counting
+    rules); `Editor.vue` `refreshStatus()` pusht `properties.setStats(textStats(
+    inst.getText({blockSeparator:"\n"})))` auf jedem `update`/`selectionUpdate`
+    für den fokussierten Pane (reused focused-pane guard, kein neuer Listener).
+    **Linked Notes** — bereits durch `stores/links.ts` gedeckt (landete im WIP:
+    `outgoing`+`incoming` via `db.relations`, `activeNoteId`-watch, `link`/
+    `unlink`) → kein neues Backend, nur Panel-UI (on-site). Contracts: `Monograph`
+    + `HistorySession` + `SessionContentItem` re-exportiert (der Kommentar
+    "Monograph singular existiert nicht" war stale). 33 neue Contract-Tests
+    (`publish.spec.ts` 17, `note-history.spec.ts` 12, `properties.spec.ts` +4
+    `textStats`). **850 Contract-Tests grün** (817 + 33) über 61 Spec-Dateien,
+    typecheck (node+web+contracts) + build clean. Commits `40e1f77`/`9c4aa50`/
+    `7e4d4ef`.
+    **Aufgeschoben (on-site):** Properties-Panel-UI für Publish (Button +
+    URL-Feld), History (Liste + Preview + Restore), Linked Notes (Chips +
+    add/remove via `useLinksStore`), Live-Stats-Anzeige (bereits via
+    `properties.stats` getrieben). Vault-gated History-Preview-Decrypt.
+    **On-Site-Gate:** Publish → URL erscheint → im Browser öffnen; Unpublish →
+    verschwindet; History-Liste + Restore → Note kehrt zum Stand zurück; Linked-
+    Notes-Chips; Word/Char/Line zählen live beim Tippen.
 - [~] **5.2 ToC als MiniMap rechts** — `getTableOfContents` aus
   `@notesnook/editor` nutzen, live aktualisieren, Klick → Cursor-Sprung
   - **Status 2026-07-19 (Extraktion headless, MiniMap-UI on-site):** die
