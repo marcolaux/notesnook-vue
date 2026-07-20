@@ -14,7 +14,7 @@ const hint = computed(() => route.meta.hint ?? "");
 
 <template>
   <div class="flex flex-1 min-w-0 flex-col items-center justify-center gap-2 px-6 text-center">
-    <div class="text-sm font-medium text-white/70">{{ title }}</div>
-    <div class="max-w-sm text-xs text-white/40">{{ hint }}</div>
+    <div class="text-sm font-medium text-text-muted">{{ title }}</div>
+    <div class="max-w-sm text-xs text-text-muted">{{ hint }}</div>
   </div>
 </template>

@@ -888,8 +888,58 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     Titel-Fallback, Shared-State über zwei Store-Instanzen). **342 Contract-
     Tests grün (334 + 8)** über 26 Spec-Dateien, typecheck (node+web) + build
     clean, 0 React/theme-ui/zustand-Leck.
-- [ ] **4.2 SplitPane** — `vue-splitpanes` oder Eigenbau mit Sash + Persistenz
-- [ ] **4.3 Tabs** — Radix Vue Tabs + `vue-draggable-plus` für Sortierung
+- [~] **4.2 SplitPane** — `vue-splitpanes` oder Eigenbau mit Sash + Persistenz
+  - **Status 2026-07-20 (headless + UI wiring, on-site visual gate pending):**
+    Eigenbau-Sash (keine neue Dep — `ui-vue` hat keinen Splitter) + rekursiver
+    `SplitLayout.vue` (wandelt den `LayoutNode`-Baum: `group`→`EditorPane`,
+    `split`→flex row/col + Sash zwischen adjazenten Children; Flex-Grow aus
+    `child.size ?? 1/n`). `EditorPane.vue` (prop `groupId`) = `NoteTabs` oben
+    + `<KeepAlive :max="12">`-gewrappter per-Tab-`Editor` (keyed by `tabId`)
+    + Draft-`Editor` (keyed `"draft:"+groupId`, außerhalb KeepAlive) für eine
+    leere Pane. Pane-`@mousedown`→`layout.setActiveGroup` (Side-Panels/Status/
+    Palette folgen der fokussierten Pane). `utils/editor-layout.ts` neue pure
+    `setSplitChildSizes` (immutable, clamps `[0.05,0.95]`, referenz-erhaltend
+    bei Noop) + Store-Action `resizeSplitChildren(splitId, childIndex,
+    fraction)`. `size`-Persistenz nur in-memory (localStorage = Folge).
+- [~] **4.3 Tabs** — Radix Vue Tabs + `vue-draggable-plus` für Sortierung
+  - **Status 2026-07-20 (headless + UI wiring, on-site visual gate pending):**
+    Per-Pane-Tab-Strips (VS-Code-Modell, keine Titlebar-Strip mehr — aus
+    `TitleBar.vue` entfernt, App-Label stattdessen). `NoteTabs.vue`
+    parametrisiert durch `groupId` (liest `layout.tabsOf`/`activeTabId`;
+    Click→`activateTab`, Close→`notes.closeTab`, Reorder→`layout.reorderTab
+    (groupId,…)` direkt; Tear-off unverändert). `Editor.vue` parametrisiert
+    durch `tabId?`/`groupId?` (tab- vs draft-Modus): liest seinen eigenen
+    Tab/Note aus dem Layout-Store (NICHT mehr global `notes.activeNote`),
+    Content aus per-Note-Cache (`notes.getContent(noteId)`), Save/Draft-
+    Debouncer von MODULE- auf SETUP-Scope verschoben (Multi-Instance-Bug-Fix),
+    `ensureDraft`→`createDraft({...}, myGroupId)`. Focused-Editor-Registry in
+    `useEditorStore` (`shallowRef<Record<key,Editor>>` + `focusedKey` von
+    `NotesView` aus dem Layout-Store gesetzt; `editor`-Computed = Registry
+    [focusedKey] — race-frei, kein per-Editor-`isFocused`-Watcher). Status-
+    Push nur vom fokussierten Editor (`editorStore.editor===editor.value`-
+    Guard). `onDeactivated`→flushSave+flushTitle, `onActivated`→reload-if-
+    stale (cursor-erhaltend wenn unverändert). Notes-Store: per-Note
+    `contentCache` ersetzt globales `activeContent`/`contentState` (letztere
+    jetzt Computeds über Cache[focused note] — properties/toc/links unverändert
+    funktionierend); per-Note `noteChangedSignals` ersetzt globales Signal
+    (background Panes reloaden auch); per-Note Title-Debounce
+    (`titleTimers`/`titlePendingIds`) ersetzt Single-Slot; `draftPromotedId`/
+    `skipDraftLoad`/`editorSessionKey` entfernt (per-Tab-Modell lädt aus DB /
+    vorgeseedetem Cache). 8 neue Palette-Commands: `app:split-vertical`/
+    `split-horizontal`/`close-pane`/`focus-next-pane`/`go-back`/`go-forward`/
+    `next-tab`/`prev-tab` (+ `CommandContext.layout` viral). Store-Helper
+    `focusNextGroup`/`cycleTab`. **768 Contract-Tests grün** (editor-layout
+    +setSplitChildSizes/resize/focusNext/cycleTab, editor-store-Registry,
+    notes-draft per-Tab, notes-tabs-facade per-Note-Signal, command-palette
+    Registry-ctx), typecheck (node+web+contracts) + build clean.
+    **Aufgeschoben (on-site):** visueller Gate (Split erzeugt 2. Pane, Sash-
+    Drag resized, Pane-Click fokussiert + Side-Panels/Status folgen, per-Pane
+    Tab-Strips, KeepAlive cursor/scroll bei Tab-Wechsel, Close kollabiert,
+    Back/Forward/Next-Tab/Prev-Tab, Palette-Commands, Torn-off-Note-Window
+    rendert 1 Pane + Close-on-Last-Tab). **Aufgeschoben (Folge):** Cross-Pane
+    Tab-Drag-Move (`moveTab` zwischen Groups — KeepAlive-Stale-Edge, im Store
+    getestet aber nicht verdrahtet); `size`-Ratio localStorage-Persistenz;
+    KeepAlive per-Key-Eviction bei Tab-Close (aktuell `:max=12` LRU).
 - [ ] **4.4 Tab-Tear-out → neues Fenster**:
   - `WindowManager` im Main-Prozess: `createWindow({ kind: "focus" })`
   - Drag-Session: transparentes Overlay-Window (`startDragSession`/`endDragSession`)
@@ -996,6 +1046,76 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     `propertiesVisible`/`tocVisible` folgen), `…`-Menü = 5.4.
     **On-Site-Gate:** (nach UI) Toolbar-Buttons + Palette-Commands toggeln
     Sidebar/List/ToC/Properties; Panels erscheinen/verschwinden.
+  - **Status 2026-07-20 (Toolbar-UI landed, headless typecheck, on-site
+    visual gate):** die Toolbar-Leiste steht. Neues
+    `components/EditorToolbar.vue` — Button-Strip unter der Tab-Bar im
+    `Editor.vue` (ersetzt die zwei Platzhalter-Emoji-Buttons 🔍/📋).
+    **Data-driven aus `EDITOR_ACTIONS`** (derselbe Action-Satz wie Palette +
+    Slash-Menu) → jeder geladene Styling-Option = ein Button; eine neue
+    Extension + ihr `EditorAction` erscheint hier automatisch. Gruppen mit
+    Separatoren: History (Undo/Redo) · Inline-Marks (Bold/Italic/Strike/Code) ·
+    Headings+Paragraph (H1/H2/H3/¶) · Lists (Bullet/Numbered/Task) · Blocks
+    (Blockquote/CodeBlock/HR) · Inserts (Image/Table/Embed) · Utility
+    (Search/ToC/Properties/⋯). Aktive State per `editor.isActive(...)` (Achtung:
+    das custom `CodeBlock`-Node heißt `"codeblock"` lowercase; `TaskList` =
+    `"taskList"`), re-evaluated auf jedem `transaction`/`update` via
+    `editorVersion`-Tick; Undo/Redo disabled via `editor.can()`. Utility-Buttons
+    nicht aus Actions: Search via `notes.focusSearch()`, ToC-/Properties-Toggle
+    via `useShellStore.toggleToc/toggleProperties` (Active-State via
+    `shell.tocVisible`/`propertiesVisible`), "⋯" öffnet die Command-Palette
+    (`useCommandPaletteStore.openPalette`) = "Rest über Command Palette". Theme-
+    Tokens (`bg-glass-*`/`text-text*`/`border-glass-border`), kein scoped CSS,
+    kompakte Unicode/Emoji-Glyphen (kein Icon-Lib-Deps; lucide-vue-next wäre ein
+    sauberer Folge-Swap, da data-driven). typecheck (node+web+contracts) clean,
+    **612 Contract-Tests grün** (unverändert — UI-only; Toggle-Commands bereits
+    in `toggle-commands.spec.ts` abgedeckt). Parallel-safe zur Settings-Agentin
+    (main-window vs. separates Settings-Fenster, keine Shared-Files).
+    **Aufgeschoben (on-site + Folge):** Properties-/ToC-Panel-Rendering (rechte
+    Sidebar, die `propertiesVisible`/`tocVisible` folgen = 5.1/5.2 UI),
+    `…`-Menü = 5.4, echte SVG-Icons (lucide-vue-next). **Styling-Optionen, die
+    Upstream hat, hier aber noch NICHT geladen sind** (Extension fehlt → kein
+    Button): Underline / Link / Highlight / Text-Color / Font-Family / Math.
+    Underline+Highlight = pure Toggles (nur Dep-Load + `EditorAction`-Eintrag
+    nötig); Link+Text-Color brauchen Picker-UIs; Math braucht KaTeX. Folge-
+    Inkrement.
+    **On-Site-Gate:** Toolbar-Buttons: Undo/Redo grey-out an den History-Edges +
+    funktionieren; Bold/Italic/Strike/Code + Headings + Lists + Blockquote/
+    CodeBlock toggeln mit Active-Highlight (Auswahlabhängig); Image/Table/Embed
+    fügen ein; Search fokussiert die NotesList-Suche; ToC/Properties-Buttons
+    toggeln (Panels erscheinen erst mit 5.1/5.2-UI); ⋯ öffnet die Palette.
+  - **Status 2026-07-20 (Editor-Typografie: alle Formate gestylt, responsive,
+    theme-aware):** die Toolbar konnte Formate anwenden, aber der gerenderte
+    HTML-Inhalt war ungestylt — `@tailwindcss/typography` ist bewusst NICHT
+    installiert (also ist die `prose`-Klasse auf `<EditorContent>` ein No-Op),
+    und Tailwind-v4-Preflight strippt Listen-/Heading-Styles → Headings hatten
+    keine Größe, Listen keine Bullets, Blockquote/HR/Task-List ungestylt.
+    **Fix:** vollständige, handgeschriebene Editor-Typografie in
+    `style.css` unter `.ProseMirror` (kein neues Dep → kein Lockfile-Churn →
+    kein Overlap mit der Settings-Agentin). Alle Farben aus den Runtime-Theme-
+    Vars (`--paragraph`/`--heading`/`--accent`/`--border`, flippen mit
+    `<html data-theme>`) → dieselben Rules auf Light- UND Dark-Acrylic korrekt.
+    **Responsive:** Heading-Größen via `clamp()` (skalieren mit dem Viewport),
+    Lese-Maß max 46rem + zentriert (reflowt wenn das Pane schmaler wird).
+    **Abgedeckte Nodes/Marks** (volle geladene Menge): Marks Bold/Italic/Strike/
+    Inline-Code/Link; Blocks Paragraph + h1–h6 + Blockquote + HR + Hard-Break;
+    Listen Bullet/Ordered (verschachtelt: disc→circle, decimal→lower-alpha) +
+    Task-List (`.tasklist-wrapper`-Node-View, Bullets unterdrückt, Komponenten-
+    Padding `px-3 py-2` gegen die generische `ul`-Rule explizit gerettet —
+    Specificity-Falle); Media Image/Embed (Block-Margin, Surface bleibt
+    component-scoped); Tables (eigener Block unten); Code custom `codeblock`-
+    Node-View + Inline-`<pre>`-Fallback. **Stubbs für nicht-geladene Marks**
+    (`u`/`mark`) damit eingefügter HTML-Content trotzdem rendert. Selection-
+    Farbe = Accent. Erste/letzte Block-Margin kollabiert. **Specificity-Falle
+    (behoben):** `.ProseMirror ul { padding-left:1.5rem }` (0,1,1) outrankt die
+    Komponenten-Klasse `px-3` (0,1,0) → würde Task-List-Padding verfälschen;
+    die `.tasklist-wrapper ul`-Rule (0,2,1) setzt `padding:0.5rem 0.75rem`
+    explizit. `612→618 Contract-Tests grün` (CSS-only, kein neuer Test).
+    typecheck-Fehler bleiben **nur** in `settings-sections/{Backup,Sync}.vue`
+    (Settings-Agentin-Dateien, `exactOptionalPropertyTypes` — nicht meine).
+    **On-Site-Gate:** `npm run dev` + Note öffnen → Headings skalieren, Listen
+    zeigen Bullets/Nummern, Blockquote mit Akzent-Border, HR als Linie, Task-
+    List-Checkboxen + Completed-Dim, Inline-Code-Tint, Tabellen-Borders in
+    BEIDEN Themes; Spalte zentriert/ maxWidth auf schmalem Fenster.
 - [ ] **5.4 `…`-Menü** — alle Features außerhalb der Toolbar
 
 ### Phase 6 — Sync, Vault, Native Features (Woche 12–16)

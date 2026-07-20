@@ -16,9 +16,11 @@ import {
 } from "./deep-link";
 import { registerTray } from "./tray";
 import { registerUpdater } from "./updater";
+import { registerUpstreamChecker } from "./upstream-checker";
 import { registerSpellChecker } from "./spell-checker";
 import { registerAppMenu } from "./menu";
-import { registerWindow } from "./window";
+import { registerWindow, setMainWindow } from "./window";
+import { registerDialog } from "./dialog";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -91,9 +93,10 @@ void app.whenReady().then(() => {
 
   // Application menu: binds `Cmd/Ctrl+W` to "Close Tab" (renderer closes the
   // active editor tab via `app:close-tab`) instead of the default "Close
-  // Window", plus `Cmd/Ctrl+N` → "New Note". Standard edit/view/window menus
-  // are preserved via roles (clipboard etc.).
-  registerAppMenu();
+  // Window", plus `Cmd/Ctrl+N` → "New Note" and `Cmd/Ctrl+,` → "Settings…"
+  // (opens the shared singleton Settings window). Standard edit/view/window
+  // menus are preserved via roles (clipboard etc.).
+  registerAppMenu(resolve(__dirname, "../preload/index.mjs"));
 
   // Register main-process capability impls before the window/bridge is
   // created so procedures are ready when the renderer first calls them.
@@ -117,9 +120,13 @@ void app.whenReady().then(() => {
   const window = createMainWindow();
   // Bind the window + flush any queued deep links (cold-start open-url / argv).
   setDeepLinkWindow(window);
+  // Track the main window so the Settings window can signal cross-window DB
+  // mutations (backup import / vault actions) → main window reloads its stores.
+  setMainWindow(window);
   // Auto-updater (electron-updater). No-op in dev; the window is used to
   // forward `updater:status` state changes to the renderer (on-site UI).
   registerUpdater(window);
+  registerUpstreamChecker();
   // System tray (New Note / New Notebook / Show / Quit). The tray forwards
   // new-note/new-notebook to the renderer over `app:tray-action`.
   registerTray(window);
@@ -127,6 +134,9 @@ void app.whenReady().then(() => {
   // session; the persisted enabled flag is applied here. The renderer toggles
   // languages + enabled over the bridge (on-site UI).
   registerSpellChecker(window);
+  // File dialogs (save/open a user-chosen file) for Backup & Export. Parented
+  // to the focused window at call time (app-modal when none is focused).
+  registerDialog(() => BrowserWindow.getFocusedWindow() ?? undefined);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

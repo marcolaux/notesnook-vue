@@ -25,4 +25,19 @@ describe("contract: AppRouter (main↔renderer bridge)", () => {
     expect(procedures).toHaveProperty("sqlite.run");
     expect(procedures).toHaveProperty("sqlite.close");
   });
+
+  it("window router exposes notifyNoteChanged (cross-window note sync)", () => {
+    // Shape only — the broadcast impl lives in `src/main/window.ts` and is
+    // Electron-only (not exercised here). Pins the procedure the renderer's
+    // notes store calls after a save.
+    const procedures = appRouter._def.procedures as Record<string, unknown>;
+    expect(procedures).toHaveProperty("window.notifyNoteChanged");
+  });
+
+  it("upstreamChecker router exposes check (in-app upstream-release notifier)", () => {
+    // Shape only — the fetch impl lives in `src/main/upstream-checker.ts` and
+    // is exercised (with a stubbed fetch) in `upstream-checker.spec.ts`.
+    const procedures = appRouter._def.procedures as Record<string, unknown>;
+    expect(procedures).toHaveProperty("upstreamChecker.check");
+  });
 });

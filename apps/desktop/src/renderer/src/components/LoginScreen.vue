@@ -123,7 +123,7 @@ function skip(): void {
 
 <template>
   <div class="grid min-h-0 flex-1 place-items-center overflow-auto p-6">
-    <Surface class="w-full max-w-md rounded-xl border border-white/10 p-6" :opacity="true" :blur="true">
+    <Surface class="w-full max-w-md rounded-xl border border-glass-border p-6" :opacity="true" :blur="true">
       <Flex direction="column" :gap="4">
         <Text as="h1" variant="heading" size="xl" weight="bold">Notesnook</Text>
         <Text variant="muted" size="sm">

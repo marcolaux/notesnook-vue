@@ -29,6 +29,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -162,6 +163,29 @@ for (const p of TYPES_ONLY) vendor(p, { typesOnly: true });
   }
   walkHtml(path.join(DEST, "core", "dist"));
   console.log(`compat: html tokenizer dropped in ${n} core dist file(s)`);
+}
+
+// Regenerate the production-hosts constant from the upstream `hosts` source so
+// the "Notesnook (default)" login profile stays in sync with upstream after a
+// bump (see scripts/gen-production-hosts.mjs for why). Reads the committed
+// submodule source, not UPSTREAM, so it runs even without a built checkout.
+{
+  const r = spawnSync(process.execPath, [path.join(__dirname, "gen-production-hosts.mjs")], { stdio: "inherit" });
+  if (r.status !== 0) throw new Error("gen-production-hosts.mjs failed — see output above");
+}
+
+// Regenerate the upstream-release baseline (the newest desktop-stable release
+// tag that is an ancestor of our pinned submodule commit) so the in-app
+// "newer upstream release" notifier stays in sync after a bump. Fetches from
+// the GitHub API, so it needs network — unlike gen-production-hosts it is
+// NON-fatal here: if offline (or rate-limited) we warn and keep the committed
+// generated file, which stays valid until the next bump. Re-run
+// `npm run gen:upstream-baseline` when online to refresh it.
+{
+  const r = spawnSync(process.execPath, [path.join(__dirname, "gen-upstream-baseline.mjs")], { stdio: "inherit" });
+  if (r.status !== 0) {
+    console.warn("gen-upstream-baseline.mjs failed (offline / rate-limited?) — keeping the committed baseline. Re-run `npm run gen:upstream-baseline` when online.");
+  }
 }
 
 console.log("\nDone. vendored cluster ready in vendor-dist/@notesnook/.");

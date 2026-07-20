@@ -35,6 +35,27 @@
   --color-separator: var(--separator);
   --color-icon: var(--icon);
   --color-backdrop: var(--backdrop);
+
+  /* Theme-aware glassmorphism tints for the shell (sidebar / list / titlebar /
+     status bar / editor tabs). Derived from `--paragraph` (the text color,
+     which flips with the theme) via `color-mix` at low alpha over transparent,
+     so a surface separates from the acrylic/vibrancy in BOTH themes:
+       dark theme  → paragraph is light → a light tint (separates from dark acrylic)
+       light theme → paragraph is dark  → a dark tint  (separates from light acrylic)
+     Replaces the old hardcoded `bg-white/5` / `border-white/10` which were
+     invisible on light acrylic. Keep translucency (transparent base) so the
+     acrylic still shows through. */
+  --color-glass-surface: color-mix(in oklab, var(--paragraph) 5%, transparent);
+  --color-glass-hover: color-mix(in oklab, var(--paragraph) 9%, transparent);
+  --color-glass-active: color-mix(in oklab, var(--paragraph) 14%, transparent);
+  --color-glass-border: color-mix(in oklab, var(--paragraph) 12%, transparent);
+
+  /* Code-block surface — a near-`--background` tint that flips with the theme
+     (dark in dark theme, light in light theme) so the block reads as a code
+     "card" on the acrylic editor body in BOTH themes. Replaces the component's
+     hardcoded `bg-[#0d1117]` (always-dark) which left a dark island in light
+     mode. The syntax token palette below is branched by `<html data-theme>`. */
+  --color-code-bg: color-mix(in oklab, var(--background) 88%, var(--paragraph) 12%);
 }
 
 html,
@@ -48,6 +69,47 @@ body,
   -webkit-font-smoothing: antialiased;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Thin, theme-aware scrollbars. Electron renders via Chromium, so
+   `::-webkit-scrollbar` is the only engine we target. The track is left
+   transparent so the acrylic/vibrancy still shows through (matching the
+   glass surfaces above), and the thumb is a `--paragraph`-derived tint via
+   `color-mix(in oklab, …)` — light in the dark theme, dark in the light
+   theme — so it reads on both acrylics without a hardcoded colour. The thumb
+   widens its tint on hover/active for a subtle affordance. Firefox users get
+   `scrollbar-width: thin` + an accent thumb as a graceful fallback.
+   ───────────────────────────────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--paragraph) 30%, transparent)
+    transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--paragraph) 22%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--paragraph) 38%, transparent);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: color-mix(in oklab, var(--paragraph) 50%, transparent);
+  background-clip: padding-box;
+}
+/* Hide the corner box where two scrollbars meet (keeps the look clean). */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Electron frameless window drag region helpers */
 .titlebar-drag {
   -webkit-app-region: drag;
@@ -56,44 +118,279 @@ body,
   -webkit-app-region: no-drag;
 }
 
-/* TipTap / ProseMirror base — Phase-2.1 spike.
-   Minimal, glassmorphism-friendly. Real theme wiring lands with the
-   Tailwind-Token-Adapter (Phase 2.2). */
+/* ─────────────────────────────────────────────────────────────────────────
+   TipTap / ProseMirror editor typography (Phase 5.3 — full format styles).
+
+   `@tailwindcss/typography` is intentionally NOT installed, so the `prose`
+   class on <EditorContent> is a no-op — and Tailwind v4's preflight strips
+   list/heading styles. So every node/mark the editor can emit is styled here,
+   by hand, under `.ProseMirror`. All colours derive from the runtime theme
+   vars (`--paragraph`/`--heading`/`--accent`/`--border`, which flip with
+   `<html data-theme>`), so the same rules read correctly on light AND dark
+   acrylic. Heading sizes use `clamp()` so they scale fluidly with the viewport
+   (responsive). Reading measure is capped + centred (standard notes-app
+   layout; reflows as the pane narrows).
+
+   Node/marks covered (the full loaded set — see Editor.vue extensions):
+     marks:  bold / italic / strike / inline code / link
+     blocks: paragraph, h1–h6, blockquote, horizontal rule, hard break
+     lists:  bullet / ordered / (nested) + task list (node-view: .tasklist-wrapper)
+     media:  image / embed / attachment (node-views ship their own scoped CSS;
+             only block margins + selection are added here)
+     tables: see the dedicated block below
+     code:   custom `codeblock` node-view (surface + syntax palette below) +
+             inline `<pre>` fallback
+   Not yet loaded (no button until the extension is): underline / highlight /
+   text-color / font-family / math — their rules are stubbed so pasted content
+   still renders if they appear.
+   ───────────────────────────────────────────────────────────────────────── */
 .ProseMirror {
+  /* Reading measure: cap + centre so long lines stay comfortable and the
+     column reflows as the editor pane narrows. `min()` guards against the
+     cap exceeding the pane on narrow windows. */
+  max-width: min(100%, 46rem);
+  margin-left: auto;
+  margin-right: auto;
   min-height: 60vh;
+  color: var(--color-text);
+  font-size: 1rem;
+  line-height: 1.7;
   outline: none;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .ProseMirror:focus {
   outline: none;
 }
-/* Empty-document placeholder hint (no placeholder extension yet). */
-.ProseMirror p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  color: color-mix(in oklab, white 30%, transparent);
-  pointer-events: none;
-  float: left;
-  height: 0;
+/* Text selection follows the accent in both themes. */
+.ProseMirror ::selection {
+  background: color-mix(in oklab, var(--color-accent) 30%, transparent);
 }
-/* Headings / code inherit the surface text colour rather than prose defaults. */
+
+/* Collapse the top/bottom margin of the first/last block so content sits flush
+   inside the p-6 scroll container. */
+.ProseMirror > *:first-child {
+  margin-top: 0;
+}
+.ProseMirror > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Paragraphs + hard breaks. */
+.ProseMirror p {
+  margin: 0.75rem 0;
+}
+
+/* Headings — fluid sizes via clamp(); weight + colour from the theme. */
 .ProseMirror h1,
 .ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4,
+.ProseMirror h5,
+.ProseMirror h6 {
+  color: var(--color-heading);
+  line-height: 1.25;
+  font-weight: 650;
+  margin: 1.4rem 0 0.6rem;
+}
+.ProseMirror h1 {
+  font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.2rem);
+  font-weight: 700;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--paragraph) 12%, transparent);
+}
+.ProseMirror h2 {
+  font-size: clamp(1.35rem, 1.1rem + 1.1vw, 1.75rem);
+}
 .ProseMirror h3 {
-  color: color-mix(in oklab, white 90%, transparent);
+  font-size: clamp(1.2rem, 1.05rem + 0.7vw, 1.4rem);
 }
-.ProseMirror pre {
-  background: color-mix(in oklab, black 35%, transparent);
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+.ProseMirror h4 {
+  font-size: 1.1rem;
 }
+.ProseMirror h5 {
+  font-size: 1rem;
+}
+.ProseMirror h6 {
+  font-size: 0.9rem;
+  color: color-mix(in oklab, var(--paragraph) 70%, transparent);
+}
+
+/* Inline marks. Tailwind preflight neutralises <strong>/<em>, so set them
+   explicitly. */
+.ProseMirror strong,
+.ProseMirror b {
+  font-weight: 700;
+}
+.ProseMirror em,
+.ProseMirror i {
+  font-style: italic;
+}
+.ProseMirror s,
+.ProseMirror strike,
+.ProseMirror del {
+  text-decoration: line-through;
+}
+/* Underline + highlight marks aren't loaded as extensions yet, but style them
+   so pasted HTML containing them still renders. */
+.ProseMirror u {
+  text-decoration: underline;
+}
+.ProseMirror mark {
+  background: color-mix(in oklab, var(--color-accent) 35%, transparent);
+  border-radius: 2px;
+  padding: 0.05rem 0.15rem;
+  color: inherit;
+}
+
+/* Inline code — theme-aware tint (was a hardcoded slab). */
 .ProseMirror code {
-  background: color-mix(in oklab, white 10%, transparent);
+  background: color-mix(in oklab, var(--paragraph) 12%, transparent);
   border-radius: 4px;
   padding: 0.1rem 0.3rem;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+  font-size: 0.875em;
+}
+/* Links (Link extension not loaded; styled for pasted content + future load). */
+.ProseMirror a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* Blockquote — accent-tinted left rule, muted text. */
+.ProseMirror blockquote {
+  margin: 0.9rem 0;
+  padding: 0.1rem 0 0.1rem 1rem;
+  border-left: 3px solid color-mix(in oklab, var(--color-accent) 55%, transparent);
+  color: color-mix(in oklab, var(--paragraph) 80%, transparent);
+  font-style: italic;
+}
+.ProseMirror blockquote p {
+  margin: 0.4rem 0;
+}
+
+/* Horizontal rule — theme-aware, generous vertical space. ProseMirror selects
+   the hr node on click, so keep the pointer target tall without a visible
+   thick line. */
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid color-mix(in oklab, var(--paragraph) 22%, transparent);
+  margin: 1.5rem 0;
+  cursor: default;
+}
+
+/* Lists — Tailwind preflight removes list-style, so bullets/numbers are
+   re-added here. `padding-left` gives the marker room; nested lists indent
+   further and tighten their spacing. */
+.ProseMirror ul,
+.ProseMirror ol {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+}
+.ProseMirror ul {
+  list-style: disc;
+}
+.ProseMirror ol {
+  list-style: decimal;
+}
+.ProseMirror ul ul {
+  list-style: circle;
+}
+.ProseMirror ol ol {
+  list-style: lower-alpha;
+}
+.ProseMirror li {
+  margin: 0.2rem 0;
+  padding-left: 0.25rem;
+}
+.ProseMirror li > p {
+  margin: 0.25rem 0;
+}
+/* Tight lists (no blank line between items) collapse inter-item spacing. */
+.ProseMirror ul[data-tight="true"] li,
+.ProseMirror ol[data-tight="true"] li {
+  margin: 0;
+}
+
+/* Task list — rendered by the TaskListComponent node-view as
+   `.tasklist-wrapper > ul > li.checklist--item`. Each item ships its own
+   checkbox (TaskItemComponent), so suppress the default disc marker and the
+   left indent the marker gutter would add. */
+.ProseMirror .tasklist-wrapper {
+  margin: 0.75rem 0;
+}
+.ProseMirror .tasklist-wrapper ul,
+.ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  /* The component applies `px-3 py-2` via Tailwind classes, but the generic
+     `.ProseMirror ul { padding-left: 1.5rem }` rule above outranks that class
+     (higher specificity), so restate the component's padding here at equal
+     or higher specificity to keep the checklist card's padding intact. */
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+}
+.ProseMirror .checklist--item {
+  list-style: none;
+  margin: 0;
+  /* The editor's prose `line-height: 1.7` (~27px line-box) makes every
+     checklist row tall and airy, leaving a lot of air between items. Lists
+     read better compact — tighten to 1.4 here so the row height tracks the
+     text instead of the prose leading. Inherited by the grip + paragraph. */
+  line-height: 1.4;
+}
+/* The editor's `.ProseMirror p { margin: 0.75rem 0 }` would push each item's
+   text down ~12px so the checkbox floats above the first line. Checklist rows
+   are compact — zero the inner paragraph margins so the text aligns with the
+   checkbox (TaskItemComponent positions the checkbox with a small top margin
+   matched to the first line-box). */
+.ProseMirror .checklist--item p {
+  margin: 0;
+}
+/* Checked task items read as struck-through (the checkbox already flips to the
+   accent fill; this de-emphasises the body text). */
+.ProseMirror .checklist--item.checked > div {
+  color: color-mix(in oklab, var(--paragraph) 55%, transparent);
+}
+
+/* Media node-views (image / embed) ship their own scoped surface styles; here
+   we only give them block breathing room and a focus/selection ring. */
+.ProseMirror .image-node,
+.ProseMirror .embed-node {
+  margin: 0.9rem 0;
+}
+/* Attachments are inline chips (AttachmentComponent); no extra spacing. */
+
+/* Inline `<pre>` fallback (StarterKit's plain codeBlock, when used instead of
+   the custom `codeblock` node-view). Theme-aware tint, not a hardcoded dark
+   slab. The custom CodeBlock node-view has its own surface (see below). */
+.ProseMirror pre {
+  background: color-mix(in oklab, var(--paragraph) 8%, transparent);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 0.9rem 0;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+  font-size: 0.875em;
+  line-height: 1.5;
+  overflow-x: auto;
 }
 .ProseMirror pre code {
   background: none;
   padding: 0;
+  font-size: inherit;
+}
+
+/* Empty-document placeholder hint (no placeholder extension yet). Theme-aware
+   so it stays visible on light acrylic (was hardcoded `white 30%`). */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: color-mix(in oklab, var(--paragraph) 35%, transparent);
+  pointer-events: none;
+  float: left;
+  height: 0;
 }
 
 /* Table node-view (Phase 2.4h). The `.selectedCell` / `.column-resize-handle`
@@ -116,14 +413,17 @@ body,
 }
 .ProseMirror td,
 .ProseMirror th {
-  border: 1px solid var(--color-border);
+  /* `--color-border` is `#E8E8E8` in the light theme — near-invisible on light
+     acrylic, so the table read as "borders still white". A paragraph-derived
+     tint is dark in light / light in dark → visible in both themes. */
+  border: 1px solid color-mix(in oklab, var(--paragraph) 25%, transparent);
   padding: 0.35rem 0.5rem;
   vertical-align: top;
   position: relative;
   min-width: var(--default-cell-min-width, 25px);
 }
 .ProseMirror th {
-  background: color-mix(in oklab, white 8%, transparent);
+  background: color-mix(in oklab, var(--paragraph) 6%, transparent);
   font-weight: 600;
   text-align: left;
 }
@@ -155,7 +455,7 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in oklab, black 40%, transparent);
+  background: color-mix(in oklab, var(--paragraph) 12%, transparent);
   color: var(--color-text);
   border: 1px solid var(--color-border);
   border-radius: 4px;
@@ -187,7 +487,7 @@ body,
   display: flex;
   flex-direction: column;
   gap: 1px;
-  background: color-mix(in oklab, black 70%, transparent);
+  background: var(--color-surface-solid);
   backdrop-filter: blur(var(--backdrop-blur-base));
   border: 1px solid var(--color-border);
   border-radius: 6px;
@@ -209,7 +509,7 @@ body,
   font-size: 12px;
 }
 .pop-item:hover {
-  background: color-mix(in oklab, white 10%, transparent);
+  background: var(--color-hover);
 }
 .pop-item input,
 .pop-item select {
@@ -217,7 +517,7 @@ body,
   height: 22px;
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  background: color-mix(in oklab, black 40%, transparent);
+  background: color-mix(in oklab, var(--paragraph) 10%, transparent);
   color: var(--color-text);
   font-size: 12px;
 }
@@ -232,4 +532,104 @@ body,
   height: 1px;
   margin: 3px 4px;
   background: var(--color-border);
+}
+
+/* Code-block node-view syntax palettes (Phase 2.4c → light-mode fix).
+   `CodeBlockComponent` hardcoded a GitHub-dark Prism token palette in a scoped
+   `<style>`; with the code surface now theme-aware (`--color-code-bg`), that
+   light-on-dark palette rendered invisible in light mode. The palette lives here
+   (global, so no Vue scoped-specificity games) and branches by `<html
+   data-theme>`: GitHub-dark by default, GitHub-light under
+   `[data-theme="default-light"]` (the prefix raises specificity so it wins). */
+.codeblock-node pre.node-content-wrapper {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.codeblock-node .token.comment,
+.codeblock-node .token.prolog,
+.codeblock-node .token.doctype,
+.codeblock-node .token.cdata {
+  color: #8b949e;
+}
+.codeblock-node .token.punctuation {
+  color: #c9d1d9;
+}
+.codeblock-node .token.keyword,
+.codeblock-node .token.boolean,
+.codeblock-node .token.tag {
+  color: #ff7b72;
+}
+.codeblock-node .token.string,
+.codeblock-node .token.attr-value,
+.codeblock-node .token.char {
+  color: #a5d6ff;
+}
+.codeblock-node .token.function,
+.codeblock-node .token.class-name {
+  color: #d2a8ff;
+}
+.codeblock-node .token.number,
+.codeblock-node .token.constant,
+.codeblock-node .token.symbol {
+  color: #79c0ff;
+}
+.codeblock-node .token.property,
+.codeblock-node .token.attr-name {
+  color: #79c0ff;
+}
+.codeblock-node .token.operator,
+.codeblock-node .token.entity,
+.codeblock-node .token.url {
+  color: #ffa657;
+}
+
+/* GitHub-light Prism palette — applied only in the light theme. */
+[data-theme="default-light"] .codeblock-node .token.comment,
+[data-theme="default-light"] .codeblock-node .token.prolog,
+[data-theme="default-light"] .codeblock-node .token.doctype,
+[data-theme="default-light"] .codeblock-node .token.cdata {
+  color: #6e7781;
+}
+[data-theme="default-light"] .codeblock-node .token.punctuation {
+  color: #24292f;
+}
+[data-theme="default-light"] .codeblock-node .token.keyword,
+[data-theme="default-light"] .codeblock-node .token.boolean,
+[data-theme="default-light"] .codeblock-node .token.tag {
+  color: #cf222e;
+}
+[data-theme="default-light"] .codeblock-node .token.string,
+[data-theme="default-light"] .codeblock-node .token.attr-value,
+[data-theme="default-light"] .codeblock-node .token.char {
+  color: #0a3069;
+}
+[data-theme="default-light"] .codeblock-node .token.function,
+[data-theme="default-light"] .codeblock-node .token.class-name {
+  color: #8250df;
+}
+[data-theme="default-light"] .codeblock-node .token.number,
+[data-theme="default-light"] .codeblock-node .token.constant,
+[data-theme="default-light"] .codeblock-node .token.symbol {
+  color: #0550ae;
+}
+[data-theme="default-light"] .codeblock-node .token.property,
+[data-theme="default-light"] .codeblock-node .token.attr-name {
+  color: #0550ae;
+}
+[data-theme="default-light"] .codeblock-node .token.operator,
+[data-theme="default-light"] .codeblock-node .token.entity,
+[data-theme="default-light"] .codeblock-node .token.url {
+  color: #0550ae;
+}
+/* Per-tab Find & Replace match highlights (FindReplace extension decorations).
+   Reuses --color-accent so it tracks the active theme, like ::selection above. */
+.ProseMirror .find-match {
+  background: color-mix(in oklab, var(--color-accent) 35%, transparent);
+  border-radius: 2px;
+  /* Avoid the inline decoration affecting line height. */
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.ProseMirror .find-match-current {
+  background: color-mix(in oklab, var(--color-accent) 65%, transparent);
+  outline: 1px solid color-mix(in oklab, var(--color-accent) 80%, transparent);
 }
