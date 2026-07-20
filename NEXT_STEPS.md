@@ -1074,15 +1074,37 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     Sidebar, die `propertiesVisible`/`tocVisible` folgen = 5.1/5.2 UI),
     `…`-Menü = 5.4, echte SVG-Icons (lucide-vue-next). **Styling-Optionen, die
     Upstream hat, hier aber noch NICHT geladen sind** (Extension fehlt → kein
-    Button): Underline / Link / Highlight / Text-Color / Font-Family / Math.
-    Underline+Highlight = pure Toggles (nur Dep-Load + `EditorAction`-Eintrag
-    nötig); Link+Text-Color brauchen Picker-UIs; Math braucht KaTeX. Folge-
-    Inkrement.
+    Button): Link / Text-Color / Font-Family / Math (Underline + Highlight
+    sind seit dem 5.3-Folge-Inkrement 2026-07-20 geladen — s. Status-Block
+    unten). Underline+Highlight waren pure Toggles (Dep-Load +
+    `EditorAction`-Eintrag); Link+Text-Color brauchen Picker-UIs; Math braucht
+    KaTeX. Folge-Inkrement.
     **On-Site-Gate:** Toolbar-Buttons: Undo/Redo grey-out an den History-Edges +
-    funktionieren; Bold/Italic/Strike/Code + Headings + Lists + Blockquote/
-    CodeBlock toggeln mit Active-Highlight (Auswahlabhängig); Image/Table/Embed
-    fügen ein; Search fokussiert die NotesList-Suche; ToC/Properties-Buttons
-    toggeln (Panels erscheinen erst mit 5.1/5.2-UI); ⋯ öffnet die Palette.
+    funktionieren; Bold/Italic/Underline/Strike/Code/Highlight + Headings + Lists +
+    Blockquote/CodeBlock toggeln mit Active-Highlight (Auswahlabhängig);
+    Image/Table/Embed fügen ein; Search fokussiert die NotesList-Suche;
+    ToC/Properties-Buttons toggeln (Panels erscheinen erst mit 5.1/5.2-UI);
+    ⋯ öffnet die Palette.
+  - **Status 2026-07-20 (Underline + Highlight geladen, headless, on-site visual
+    gate pending):** die zwei fehlenden reinen Toggle-Marks sind gelandet. Neue
+    `packages/editor-vue/src/extensions/{underline,highlight}/` — dünne Re-Exports
+    der Standard-TipTap `@tiptap/extension-underline`/`-highlight` (via Root-
+    `overrides` auf 2.6.6 gepinnt, derselbe ProseMirror-Core; `@tiptap/extension-
+    highlight` neu in den Overrides, Underline war schon gepinnt). Underline
+    round-tript als `<u>`, Highlight als `<mark>` (plain Toggle, kein Color-Arg —
+    der Multicolor-Picker des Upstream-Highlight = Folge). `index.ts` exportiert
+    beide; `tool-definitions.ts` bekommt `underline`/`highlight` `EditorAction`-
+    Einträge (palette + toolbar, `slash:false` wie die anderen Marks) + `PARITY`-
+    Einträge (beide echte Upstream-`ToolId`s). `Editor.vue` lädt beide im
+    `useEditor`-Extensions-Array; `EditorToolbar.vue` bekommt Glyphs (`U`/`🖍`) +
+    `isActive`-Cases (`editor.isActive("underline")`/`("highlight")`). 4 neue
+    Contract-Tests (editor-html `<u>`/`<mark>` Round-Trip + tool-definitions
+    `toggleUnderline`/`toggleHighlight` Run-Invocation). **817 Contract-Tests
+    grün** (813 + 4), typecheck (node+web+contracts) + build clean. Commit
+    `7419753`. Link + Text-Color (Picker-UIs) + Math (KaTeX) bleiben Folge.
+    **On-Site-Gate:** Toolbar: Underline (`U`) + Highlight (`🖍`) toggeln mit
+    Active-Highlight; gespeicherte Note mit `<u>`/`<mark>` rendert + round-tript
+    in BEIDEN Themes.
   - **Status 2026-07-20 (Editor-Typografie: alle Formate gestylt, responsive,
     theme-aware):** die Toolbar konnte Formate anwenden, aber der gerenderte
     HTML-Inhalt war ungestylt — `@tailwindcss/typography` ist bewusst NICHT
