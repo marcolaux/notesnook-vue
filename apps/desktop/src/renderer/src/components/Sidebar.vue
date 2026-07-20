@@ -6,6 +6,7 @@ import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
 import { useCollectionsStore } from "@/stores/collections";
 import { topViews, bottomViews } from "@/router/routes";
+import { desktop } from "@/platform/desktop-bridge";
 import type { CollectionType } from "@/stores/collections";
 
 const notes = useNotesStore();
@@ -20,7 +21,17 @@ const { t } = useI18n();
 const linkTopViews = topViews.filter(
   (v) => v.name !== "notebooks" && v.name !== "tags"
 );
-const linkBottomViews = bottomViews;
+// Settings opens its own window (singleton) via IPC, so it is NOT a router
+// link here — render it as a button below the Trash link.
+const linkBottomViews = bottomViews.filter((v) => v.name !== "settings");
+
+/** Open the shared Settings window (focused singleton). Best-effort. */
+function openSettings(): void {
+  void desktop.window.openSettings.mutate().catch((e) => {
+    // eslint-disable-next-line no-console
+    console.error("[sidebar] openSettings failed:", e);
+  });
+}
 
 /** Active-state is driven by the exact current path (no nested routes here). */
 function isActive(path: string): boolean {
@@ -158,7 +169,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
 
     <div class="flex-1" />
 
-    <!-- Plain bottom links (Trash / Settings) -->
+    <!-- Plain bottom links (Trash) -->
     <RouterLink
       v-for="v in linkBottomViews"
       :key="v.name"
@@ -177,6 +188,14 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
         </span>
       </span>
     </RouterLink>
+
+    <!-- Settings opens its own window (singleton) via IPC, not a route. -->
+    <button
+      class="titlebar-no-drag rounded-md px-2 py-1.5 text-left text-white/60 transition-colors hover:bg-white/10"
+      @click="openSettings"
+    >
+      Settings
+    </button>
 
     <!-- Account area -->
     <div v-if="auth.isLoggedIn" class="mt-1 rounded-md bg-white/5 px-2 py-1.5">

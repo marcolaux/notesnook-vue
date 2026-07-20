@@ -239,6 +239,11 @@ function requireSpellChecker(): SpellCheckerServer {
 export interface WindowServer {
   /** Set the OS-native theme source (drives vibrancy/acrylic material). */
   setNativeTheme(mode: "light" | "dark" | "system"): void;
+  /**
+   * Open the shared Settings window (singleton). Focuses the existing window
+   * if one is already open; otherwise creates it. Called from any app window.
+   */
+  openSettings(): void;
 }
 let windowServer: WindowServer | undefined;
 export function registerWindowServer(server: WindowServer): void {
@@ -290,7 +295,10 @@ export const appRouter = t.router({
     // theme. Implemented in `src/main/window.ts` via `nativeTheme.themeSource`.
     setNativeTheme: t.procedure
       .input(z.enum(["light", "dark", "system"]))
-      .mutation(({ input }) => requireWindowServer().setNativeTheme(input))
+      .mutation(({ input }) => requireWindowServer().setNativeTheme(input)),
+    // Open the shared Settings window (singleton). Any app window calls this
+    // to surface Settings in its own window (see `src/main/settings-window.ts`).
+    openSettings: t.procedure.mutation(() => requireWindowServer().openSettings())
   }),
 
   // SQLite — matches upstream apps/desktop/src/api/sqlite-kysely.ts

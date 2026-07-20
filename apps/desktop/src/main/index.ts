@@ -84,9 +84,10 @@ void app.whenReady().then(() => {
 
   // Window server: lets the renderer sync `nativeTheme.themeSource` to its
   // `themeMode` (light/dark/system) so the acrylic/vibrancy follows the app
-  // theme. The `dark` default above is the pre-window fallback; the renderer
-  // corrects it to the stored choice on boot.
-  registerWindow();
+  // theme, and open the shared Settings window. The `dark` default above is
+  // the pre-window fallback; the renderer corrects it to the stored choice on
+  // boot. The preload path is the same one the main BrowserWindow uses.
+  registerWindow(resolve(__dirname, "../preload/index.mjs"));
 
   // Application menu: binds `Cmd/Ctrl+W` to "Close Tab" (renderer closes the
   // active editor tab via `app:close-tab`) instead of the default "Close

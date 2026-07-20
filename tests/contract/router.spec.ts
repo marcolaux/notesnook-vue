@@ -117,12 +117,23 @@ describe("goto palette commands", () => {
     setActivePinia(createPinia());
   });
 
-  it("registers one goto command per VIEWS entry", () => {
+  it("registers one goto command per navigable VIEWS entry (Settings excluded)", () => {
+    // Settings opens its own window via `app:open-settings`, not a goto route.
     const ids = getCommands()
       .filter((c) => c.id.startsWith("app:goto-"))
       .map((c) => c.id)
       .sort();
-    expect(ids).toEqual(VIEWS.map((v) => `app:goto-${v.name}`).sort());
+    const expected = VIEWS.filter((v) => v.name !== "settings")
+      .map((v) => `app:goto-${v.name}`)
+      .sort();
+    expect(ids).toEqual(expected);
+  });
+
+  it("registers an app:open-settings command that opens the settings window", () => {
+    const cmd = getCommands().find((c) => c.id === "app:open-settings");
+    expect(cmd).toBeDefined();
+    expect(cmd?.when?.(stubCtx({ showShell: false }))).toBe(false);
+    expect(cmd?.when?.(stubCtx({ showShell: true }))).toBe(true);
   });
 
   it("goto-trash is hidden when logged-out and navigates when logged-in", async () => {

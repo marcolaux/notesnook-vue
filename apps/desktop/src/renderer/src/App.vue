@@ -21,6 +21,15 @@ const router = useRouter();
 const bootState = ref<"loading" | "ready" | "error">("loading");
 const bootError = ref<string>("");
 
+// The separate Settings window loads the renderer with `?window=settings`.
+// It runs a *minimal* boot (DB + settings + spell-check + i18n only) and
+// routes to the top-level `/settings` — no auth/sync/vault/notes, and none of
+// the shell-only watches below (those would redirect to /login since auth is
+// never initialised in this window).
+const isSettingsWindow =
+  typeof URLSearchParams !== "undefined" &&
+  new URLSearchParams(location.search).get("window") === "settings";
+
 const auth = useAuthStore();
 const status = useStatusStore();
 const vault = useVaultStore();
@@ -84,6 +93,32 @@ function openNoteFromDeepLink(noteId: string): void {
 }
 
 onMounted(async () => {
+  // --- Settings window: minimal boot -------------------------------------
+  // No deep-link/tray/close-tab subscriptions (those are main-window only),
+  // no auth.init (auth.status stays "unknown" → the guard allows /settings),
+  // no sync/vault/editor-layout/notes/collections. Just the DB (for
+  // db.settings), the settings store, the spell-checker snapshot, i18n, and
+  // the theme. Then route to /settings and surface the UI.
+  if (isSettingsWindow) {
+    applyTheme(settings.themeMode);
+    bindSystemThemeListener();
+    try {
+      await bootstrap();
+      await settings.load();
+      void spellChecker.refresh();
+      bootState.value = "ready";
+      void router.replace("/settings");
+      // eslint-disable-next-line no-console
+      console.info("[boot] settings window ready");
+    } catch (e) {
+      bootState.value = "error";
+      bootError.value = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error("[boot:settings]", e);
+    }
+    return;
+  }
+
   // Subscribe to deep-link note events as early as possible so a cold-start
   // `nn://note/<id>` (queued in main until the page loads) is not missed.
   window.appEvents?.onOpenNote((noteId) => openNoteFromDeepLink(noteId));
@@ -173,39 +208,42 @@ onUnmounted(() => {
 
 // Load notes the first time the shell becomes visible (logged in, or the user
 // chose local-only via "Continue without account"). Also re-seed the sync
-// status — after a login `lastSynced` may have changed.
+// status — after a login `lastSynced` may have changed. Skipped in the
+// Settings window (no shell/notes there).
 const notesLoaded = ref(false);
-watch(
-  () => auth.showShell,
-  async (show) => {
-    if (show && !notesLoaded.value) {
-      notesLoaded.value = true;
-      await useNotesStore().load();
-      void useCollectionsStore().load();
-      void status.refreshSync();
-      void vault.refresh();
-      void backups.refresh();
-      void spellChecker.refresh();
+if (!isSettingsWindow) {
+  watch(
+    () => auth.showShell,
+    async (show) => {
+      if (show && !notesLoaded.value) {
+        notesLoaded.value = true;
+        await useNotesStore().load();
+        void useCollectionsStore().load();
+        void status.refreshSync();
+        void vault.refresh();
+        void backups.refresh();
+        void spellChecker.refresh();
+      }
+      // Flush a deep link that arrived while the user was logged out.
+      if (show && pendingDeepLinkNote.value) {
+        const noteId = pendingDeepLinkNote.value;
+        pendingDeepLinkNote.value = null;
+        void router.push("/all").then(() => useNotesStore().selectNote(noteId));
+      }
     }
-    // Flush a deep link that arrived while the user was logged out.
-    if (show && pendingDeepLinkNote.value) {
-      const noteId = pendingDeepLinkNote.value;
-      pendingDeepLinkNote.value = null;
-      void router.push("/all").then(() => useNotesStore().selectNote(noteId));
-    }
-  }
-);
+  );
 
-// Follow auth state with the route so screen transitions are automatic:
-// login / local-only → shell, logout / re-arm sign-in → login screen. The
-// initial settle happens in `onMounted` once `auth.init()` resolves; this
-// watch handles every subsequent transition (logout, login, skip, request).
-watch(
-  () => auth.showShell,
-  (show) => {
-    void router.replace(show ? "/all" : "/login");
-  }
-);
+  // Follow auth state with the route so screen transitions are automatic:
+  // login / local-only → shell, logout / re-arm sign-in → login screen. The
+  // initial settle happens in `onMounted` once `auth.init()` resolves; this
+  // watch handles every subsequent transition (logout, login, skip, request).
+  watch(
+    () => auth.showShell,
+    (show) => {
+      void router.replace(show ? "/all" : "/login");
+    }
+  );
+}
 </script>
 
 <template>

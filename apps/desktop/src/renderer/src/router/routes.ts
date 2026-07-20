@@ -138,12 +138,17 @@ export const routes: RouteRecordRaw[] = [
         name: RouteName.trash,
         component: () => import("@/components/PlaceholderView.vue"),
         meta: { title: "Trash", hint: "Deleted notes + restore — coming in Phase 3.3." }
-      },
-      {
-        path: "settings",
-        name: RouteName.settings,
-        component: () => import("@/components/SettingsView.vue")
       }
     ]
+  },
+  // Settings is a top-level route (not under ShellLayout) so the separate
+  // Settings window — which loads the renderer with `?window=settings` and
+  // routes here — renders just the settings form + its own drag titlebar, with
+  // no sidebar. The main window never navigates here; it opens the Settings
+  // window via `desktop.window.openSettings` instead.
+  {
+    path: "/settings",
+    name: RouteName.settings,
+    component: () => import("@/components/SettingsLayout.vue")
   }
 ];

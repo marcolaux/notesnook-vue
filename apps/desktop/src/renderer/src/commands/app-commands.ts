@@ -7,6 +7,7 @@
 import { registerCommands } from "./registry";
 import type { Command } from "./registry";
 import { VIEWS } from "@/router/routes";
+import { desktop } from "@/platform/desktop-bridge";
 
 const appCommands: Command[] = [
   {
@@ -164,9 +165,12 @@ const appCommands: Command[] = [
 
 /**
  * "Go to <view>" navigation commands (Phase 3.5) — one per sidebar entry in
- * `VIEWS`. Visible only when the shell is showing and a router is available.
+ * `VIEWS` except Settings, which opens its own window (singleton) via IPC
+ * rather than navigating. Visible only when the shell is showing and a router
+ * is available.
  */
-const gotoCommands: Command[] = VIEWS.map((v) => ({
+const navViews = VIEWS.filter((v) => v.name !== "settings");
+const gotoCommands: Command[] = navViews.map((v) => ({
   id: `app:goto-${v.name}`,
   title: `Go to ${v.label}`,
   keywords: ["go", "goto", "navigate", "open", "view", v.label.toLowerCase()],
@@ -177,4 +181,17 @@ const gotoCommands: Command[] = VIEWS.map((v) => ({
   }
 }));
 
-registerCommands([...appCommands, ...gotoCommands]);
+// Settings opens its own window (singleton) via IPC — never navigates the main
+// window (the `/settings` route is top-level and would replace the shell).
+const settingsCommand: Command = {
+  id: "app:open-settings",
+  title: "Open Settings",
+  keywords: ["settings", "preferences", "open", "go", "goto"],
+  group: "app",
+  when: (ctx) => ctx.auth.showShell,
+  run: () => {
+    void desktop.window.openSettings.mutate().catch(() => undefined);
+  }
+};
+
+registerCommands([...appCommands, ...gotoCommands, settingsCommand]);
