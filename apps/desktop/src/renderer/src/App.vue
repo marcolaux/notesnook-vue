@@ -14,6 +14,7 @@ import { useShellStore } from "@/stores/shell";
 import { useSettingsStore, THEME_MODE_KEY } from "@/stores/settings";
 import { useConfigStore } from "@/stores/config";
 import { useUpstreamNotifierStore } from "@/stores/upstream-notifier";
+import { useShortcutsStore } from "@/stores/shortcuts";
 import { bootstrap } from "@/platform/bootstrap";
 import { desktop } from "@/platform/desktop-bridge";
 import { dropZoneFromPoint } from "@/utils/tab-dnd";
@@ -334,6 +335,7 @@ onMounted(async () => {
     if (auth.showShell) {
       await notes.load();
       void collections.load();
+      void useShortcutsStore().refresh();
     }
     bootState.value = "ready";
     // Settle the initial route now that auth is resolved. During boot the
@@ -382,6 +384,7 @@ if (!isSettingsWindow) {
         notesLoaded.value = true;
         await useNotesStore().load();
         void useCollectionsStore().load();
+        void useShortcutsStore().refresh();
         void status.refreshSync();
         void vault.refresh();
         void backups.refresh();
@@ -417,6 +420,7 @@ if (!isSettingsWindow) {
       if (!auth.showShell) return;
       void useNotesStore().load();
       void useCollectionsStore().load();
+      void useShortcutsStore().refresh();
     }
   );
 

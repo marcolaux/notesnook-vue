@@ -154,6 +154,11 @@ async function seedIfEmpty(db: Database, contextId: ContextId): Promise<void> {
       await db.relations.add({ type: "note", id: noteId }, { type: "tag", id: tagId });
     }
   }
+  // Pin the seeded notebook + tag as sidebar shortcuts (db.shortcuts) so the
+  // Shortcuts section + the ★ pin toggles have data on `npm run dev`. A
+  // shortcut's id = its itemId; upstream allows notebook/topic/tag (not notes).
+  if (nbId) await db.shortcuts.add({ itemId: nbId, itemType: "notebook" });
+  if (tagId) await db.shortcuts.add({ itemId: tagId, itemType: "tag" });
   // Phase 2.4 demo — a checklist (task-list + task-item node-views) and an
   // attachment chip (attachment node-view), so `npm run dev` shows the
   // ported node-views immediately. The attachment uses a fake hash (the real

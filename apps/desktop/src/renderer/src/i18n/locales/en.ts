@@ -20,6 +20,10 @@ export default {
     notebooks: "Notebooks",
     noNotebooks: "No notebooks",
     tags: "Tags",
-    noTags: "No tags"
+    noTags: "No tags",
+    shortcuts: "Shortcuts",
+    noShortcuts: "No shortcuts",
+    addToShortcuts: "Add to shortcuts",
+    removeFromShortcuts: "Remove from shortcuts"
   }
 } as const;

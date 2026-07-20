@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
 import { useCollectionsStore } from "@/stores/collections";
+import { useShortcutsStore } from "@/stores/shortcuts";
 import { topViews, bottomViews } from "@/router/routes";
 import { desktop } from "@/platform/desktop-bridge";
 import type { CollectionType } from "@/stores/collections";
@@ -12,9 +13,14 @@ import type { CollectionType } from "@/stores/collections";
 const notes = useNotesStore();
 const auth = useAuthStore();
 const collections = useCollectionsStore();
+const shortcuts = useShortcutsStore();
 const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
+
+/** Local collapse for the Shortcuts section (the collections store only owns
+ *  notebooks/tags collapse). Expanded by default. */
+const shortcutsCollapsed = ref(false);
 
 /** Plain-link top views (All Notes / Monographs / Archive) — Notebooks &
  * Tags render as expandable collection sections below. */
@@ -56,6 +62,12 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
   await notes.filterByCollection(type, id);
   void router.push("/all");
 }
+
+/** Pin/unpin a notebook or tag as a sidebar shortcut (db.shortcuts). The
+ *  `type` matches both `CollectionType` and the shortcut's `itemType`. */
+function toggleShortcut(type: CollectionType, id: string): void {
+  void shortcuts.toggle(id, type);
+}
 </script>
 
 <template>
@@ -75,6 +87,57 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
     >
       {{ v.label }}
     </RouterLink>
+
+    <!-- Shortcuts section (expandable; pinned notebooks/tags) -->
+    <div v-if="shortcuts.resolved.length > 0" class="mt-1">
+      <button
+        class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
+        @click="shortcutsCollapsed = !shortcutsCollapsed"
+      >
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          class="transition-transform"
+          :class="shortcutsCollapsed ? '' : 'rotate-90'"
+        >
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+        <span>{{ t("sidebar.shortcuts") }}</span>
+        <span class="ml-auto text-[10px] text-text-muted">{{ shortcuts.resolved.length }}</span>
+      </button>
+      <div v-if="!shortcutsCollapsed" class="mt-0.5 flex flex-col gap-0.5 pl-3">
+        <div
+          v-for="sc in shortcuts.resolved"
+          :key="sc.id"
+          class="group flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
+          :class="
+            isSelected(sc.type, sc.id)
+              ? 'bg-glass-active text-text'
+              : 'text-text hover:bg-glass-hover'
+          "
+        >
+          <button
+            class="flex flex-1 items-center gap-1 truncate text-left"
+            :title="sc.title"
+            @click="selectCollection(sc.type, sc.id)"
+          >
+            <span class="text-text-muted">{{ sc.type === "notebook" ? "📓" : "#" }}</span>
+            <span class="truncate">{{ sc.title }}</span>
+          </button>
+          <button
+            class="titlebar-no-drag shrink-0 text-[10px] text-text-muted opacity-0 transition-opacity hover:text-text group-hover:opacity-100"
+            :title="t('sidebar.removeFromShortcuts')"
+            @click="toggleShortcut(sc.type, sc.id)"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Notebooks section (expandable; pinned-first) -->
     <div class="mt-1">
@@ -101,7 +164,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
         <button
           v-for="nb in collections.sortedNotebooks"
           :key="nb.id"
-          class="titlebar-no-drag flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
+          class="titlebar-no-drag group flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
           :class="
             isSelected('notebook', nb.id)
               ? 'bg-glass-active text-text'
@@ -112,6 +175,12 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
         >
           <span v-if="nb.pinned" class="text-[10px] text-amber-300/80" title="Pinned">📌</span>
           <span class="truncate">{{ nb.title }}</span>
+          <span
+            class="ml-auto shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
+            :class="shortcuts.isShortcut(nb.id) ? 'text-amber-300/80 opacity-100' : 'text-text-muted'"
+            :title="shortcuts.isShortcut(nb.id) ? t('sidebar.removeFromShortcuts') : t('sidebar.addToShortcuts')"
+            @click.stop="toggleShortcut('notebook', nb.id)"
+          >{{ shortcuts.isShortcut(nb.id) ? "★" : "☆" }}</span>
         </button>
         <div
           v-if="collections.notebooks.length === 0"
@@ -147,7 +216,7 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
         <button
           v-for="tag in collections.sortedTags"
           :key="tag.id"
-          class="titlebar-no-drag flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
+          class="titlebar-no-drag group flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
           :class="
             isSelected('tag', tag.id)
               ? 'bg-glass-active text-text'
@@ -157,6 +226,12 @@ async function selectCollection(type: CollectionType, id: string): Promise<void>
         >
           <span class="text-text-muted">#</span>
           <span class="truncate">{{ tag.title }}</span>
+          <span
+            class="ml-auto shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
+            :class="shortcuts.isShortcut(tag.id) ? 'text-amber-300/80 opacity-100' : 'text-text-muted'"
+            :title="shortcuts.isShortcut(tag.id) ? t('sidebar.removeFromShortcuts') : t('sidebar.addToShortcuts')"
+            @click.stop="toggleShortcut('tag', tag.id)"
+          >{{ shortcuts.isShortcut(tag.id) ? "★" : "☆" }}</span>
         </button>
         <div
           v-if="collections.tags.length === 0"
