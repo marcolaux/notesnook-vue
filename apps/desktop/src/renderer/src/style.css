@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Tailwind v4 auto-detects sources within the renderer's Vite root
+ * (`apps/desktop`), but the workspace packages `editor-vue` (all editor
+ * node-views: task-list, table, code-block, image, embed, attachment) and
+ * `ui-vue` (primitives) live outside it under `packages/`, so their Tailwind
+ * classes were never generated — leaving every editor node-view unstyled.
+ * `@source` adds them to the scan explicitly. `theme-vue` has no .vue files
+ * (TS-only theme injection) so it needs no entry here. */
+@source "../../../../../packages/editor-vue/src";
+@source "../../../../../packages/ui-vue/src";
+
 /* Tailwind v4 token bridge. `inline` makes Tailwind inline the value into
    utilities (e.g. `bg-surface` → `background-color: var(--background)`)
    instead of emitting `--color-*` on :root. The `--<upstream>` vars
