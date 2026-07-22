@@ -131,6 +131,6 @@ snap:
 # owner/repo/channel via env or edits this. `--publish never` skips uploading.
 publish:
   provider: github
-  owner: marco
+  owner: marcolaux
   repo: notesnook-vue
   channel: latest

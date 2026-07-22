@@ -13,16 +13,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: ${{ matrix.os }} (Node ${{ matrix.node }})
-    runs-on: ${{ matrix.os }}
+  # Fast gate: typecheck + contract tests on Linux across the supported Node
+  # range. Catches ABI regressions (better-sqlite3-multiple-ciphers compiles
+  # from source per Node ABI) without spending macOS/Windows minutes.
+  test:
+    name: Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # Cross-platform matrix catches OS-specific native-module builds
-        # (better-sqlite3-multiple-ciphers compiles from source per OS/ABI)
-        # and path-handling regressions.
-        os: [ubuntu-latest, macos-latest, windows-latest]
         node: [20, 22]
 
     steps:
@@ -30,6 +29,8 @@ jobs:
         uses: actions/checkout@v4
         # vendor-dist/@notesnook/* are committed build artifacts, so the
         # vendor/notesnook source submodule is NOT needed for install/test/build.
+        with:
+          submodules: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -49,5 +50,63 @@ jobs:
       - name: Contract tests
         run: npm run test:contract
 
+  # Cross-OS packaging: build the renderer/main/preload, then electron-builder
+  # produces distributable installers per OS. electron-builder rebuilds the
+  # native modules for the Electron ABI automatically. macOS is split across
+  # arm64 (Apple Silicon) and x64 (Intel) hosts so each arch gets its native
+  # FTS5 extension prebuilds — no cross-arch prebuild gap. Snap is deferred
+  # (flaky in CI / confinement; see electron-builder.yml DEFERRED notes).
+  package:
+    name: Package ${{ matrix.os-name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os-name: macos-arm64
+            os: macos-latest
+            targets: "--mac --arch arm64"
+          - os-name: macos-x64
+            os: macos-13
+            targets: "--mac --arch x64"
+          - os-name: windows
+            os: windows-latest
+            targets: "--win"
+          - os-name: linux
+            os: ubuntu-latest
+            targets: "--linux AppImage"
+
+    env:
+      # No code-signing certs in CI; disable auto-discovery so electron-builder
+      # skips the identity lookup and produces unsigned artifacts without hanging.
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Build (main + preload + renderer)
         run: npm run build
+
+      - name: Package installer(s)
+        working-directory: apps/desktop
+        run: npx electron-builder --config electron-builder.yml ${{ matrix.targets }} --publish never
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: notesnook-vue-${{ matrix.os-name }}
+          path: apps/desktop/release/*
+          if-no-files-found: error
+          retention-days: 14
