@@ -43,6 +43,19 @@ productName: Notesnook Vue
 # editing this file (mirrors upstream's NN_PRODUCT_NAME / NN_APP_ID).
 artifactName: notesnook-vue_${os}_${arch}.${ext}
 asar: true
+# electron-builder v25 (pinned below) hits the npm-workspaces bug
+# electron-builder#7103: its "installing production dependencies" step runs
+# `npm install --production`, which in this monorepo prunes the *root*
+# node_modules (where the app's deps are hoisted) of dev deps — including
+# `app-builder-bin`, the native helper electron-builder then tries to spawn
+# next, so packaging dies with "spawn app-builder ENOENT". `npmRebuild: false`
+# skips that reinstall/prune step so the helper survives and packaging
+# completes. Fixed properly upstream in electron-builder v26 (PR #8715, which
+# installs all deps instead of pruning) — upgrade to ^26 and drop this flag
+# when native-module rebuilding for the Electron ABI is needed for real
+# releases. Until then CI artifacts ship with native modules at the host-Node
+# ABI (runtime native correctness is an on-site/release gate, not a CI gate).
+npmRebuild: false
 # Native binaries must be unpacked from asar so they load from disk (Electron
 # cannot `require`/`loadExtension` binaries inside asar): the SQLite `.node`
 # and the M4 FTS5 tokenizer `.dylib`/`.so`/`.dll` (per-platform `*-<os>-<arch>`

@@ -104,10 +104,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # Node 24 ships npm 11, matching the npm that generated the
-          # committed (npm-11-style) lockfile. npm 11 is verified to fully
-          # extract the large binary helper packages (app-builder-bin,
-          # 7zip-bin, dmg-builder, dmg-license, iconv-corefoundation).
+          # Node 24 ships npm 11, matching the npm that generated the committed
+          # (npm-11-style) lockfile. Verified on CI to fully extract the large
+          # binary helper packages (app-builder-bin, 7zip-bin, dmg-builder, …).
           # `cache: npm` is intentionally OFF here — see the next step.
           node-version: 24
 
@@ -116,37 +115,19 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Install dependencies
-        # No setup-node npm cache on this job (by design). The committed
-        # lockfile is npm-11-style: the binary helper packages
-        # (app-builder-bin, 7zip-bin, dmg-builder, dmg-license,
-        # iconv-corefoundation) have entries WITHOUT `resolved`/`integrity`.
-        # setup-node's `cache: npm` is keyed by the lockfile hash, so a bad
-        # app-builder-bin tarball cached by an earlier run is restored on
-        # every subsequent run and served by `npm ci` without rejection (there
-        # is no lockfile integrity to verify against) — the package dir is
-        # extracted but the multi-MB native binaries are not, so
-        # electron-builder dies with "spawn app-builder ENOENT". This fails
-        # identically under npm 10 and npm 11 because the cache is unchanged.
-        # Skipping the cache forces a fresh, registry-integrity-verified
-        # download, which extracts the binaries correctly. (Verified locally:
-        # npm ci with a clean cache leaves app-builder-bin's 18-20MB binaries
-        # present.) The extra ~1-2GB download per run is acceptable for a
-        # packaging job and avoids the poisoned shared cache.
+        # `cache: npm` is deliberately OFF on this job. Earlier runs WITH the
+        # setup-node npm cache failed to extract app-builder-bin's native
+        # binaries (the package dir landed in node_modules but the multi-MB
+        # `app-builder` executable did not), and the cache is keyed only by the
+        # lockfile hash so a bad entry persists across runs. Disabling it forces
+        # a fresh registry download, which a debug run confirmed extracts the
+        # binaries correctly. The primary packaging blocker is separate —
+        # electron-builder's production-dep prune (see electron-builder.yml
+        # `npmRebuild: false`) — but both fixes are needed: this step ensures
+        # the helper is present, npmRebuild ensures electron-builder doesn't
+        # then delete it. The extra ~1-2GB download per run is acceptable for a
+        # packaging job. (The test job keeps its cache — it never packages.)
         run: npm ci
-
-      - name: DEBUG dump app-builder-bin state
-        # Temporary diagnostic: list what actually landed in
-        # node_modules/app-builder-bin so we can see why the native helper
-        # binary is missing on CI (present locally). Non-fatal.
-        shell: bash
-        continue-on-error: true
-        run: |
-          echo "=== app-builder-bin recursive listing ==="
-          ls -laR node_modules/app-builder-bin 2>&1 | head -80
-          echo "=== 7zip-bin recursive listing ==="
-          ls -laR node_modules/7zip-bin 2>&1 | head -40
-          echo "=== app-builder-bin package.json ==="
-          cat node_modules/app-builder-bin/package.json 2>&1 | head -20
 
       - name: Install Tailwind oxide native binding (${{ matrix.os-name }})
         # Fetch the platform-correct @tailwindcss/oxide native binding at the
@@ -163,24 +144,8 @@ jobs:
           echo "Installing ${{ matrix.oxide-pkg }}@${OXIDE_VER}"
           npm install --no-save --no-fund --no-audit "${{ matrix.oxide-pkg }}@${OXIDE_VER}"
 
-      - name: DEBUG app-builder-bin after oxide step
-        shell: bash
-        continue-on-error: true
-        run: |
-          echo "=== AFTER OXIDE: app-builder-bin/linux/x64 ==="
-          ls -la node_modules/app-builder-bin/linux/x64/ 2>&1
-          echo "=== AFTER OXIDE: @tailwindcss/oxide present? ==="
-          ls node_modules/@tailwindcss/ 2>&1
-
       - name: Build (main + preload + renderer)
         run: npm run build
-
-      - name: DEBUG app-builder-bin after build step
-        shell: bash
-        continue-on-error: true
-        run: |
-          echo "=== AFTER BUILD: app-builder-bin/linux/x64 ==="
-          ls -la node_modules/app-builder-bin/linux/x64/ 2>&1
 
       - name: Package installer(s)
         working-directory: apps/desktop
