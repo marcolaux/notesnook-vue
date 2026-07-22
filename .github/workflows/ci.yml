@@ -72,10 +72,10 @@ jobs:
         include:
           - os-name: macos-arm64
             os: macos-latest
-            targets: "--mac --arch arm64"
+            targets: "--mac --arm64"
           - os-name: macos-x64
             os: macos-13
-            targets: "--mac --arch x64"
+            targets: "--mac --x64"
           - os-name: windows
             os: windows-latest
             targets: "--win"
@@ -101,7 +101,14 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # `npm install` (not `npm ci`): the committed package-lock.json was
+        # generated on macOS arm64 and only locks that platform's
+        # @tailwindcss/oxide native optional dep. `npm ci` won't fetch the
+        # linux/win/darwin-x64 oxide bindings the renderer build needs, so the
+        # Tailwind vite plugin crashes with "Cannot find native binding" on
+        # every other host. `npm install` resolves the current platform's
+        # optional native deps. (Harmless lockfile drift in CI is not committed.)
+        run: npm install --no-fund --no-audit
 
       - name: Build (main + preload + renderer)
         run: npm run build
