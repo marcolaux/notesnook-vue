@@ -73,15 +73,22 @@ jobs:
           - os-name: macos-arm64
             os: macos-latest
             targets: "--mac --arm64"
+            # The platform-specific @tailwindcss/oxide native binding each host
+            # needs for the Tailwind vite plugin during the renderer build.
+            # See the "Install Tailwind oxide native binding" step below.
+            oxide-pkg: "@tailwindcss/oxide-darwin-arm64"
           - os-name: macos-x64
             os: macos-13
             targets: "--mac --x64"
+            oxide-pkg: "@tailwindcss/oxide-darwin-x64"
           - os-name: windows
             os: windows-latest
             targets: "--win"
+            oxide-pkg: "@tailwindcss/oxide-win32-x64-msvc"
           - os-name: linux
             os: ubuntu-latest
             targets: "--linux AppImage"
+            oxide-pkg: "@tailwindcss/oxide-linux-x64-gnu"
 
     env:
       # No code-signing certs in CI; disable auto-discovery so electron-builder
@@ -101,14 +108,27 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        # `npm install` (not `npm ci`): the committed package-lock.json was
-        # generated on macOS arm64 and only locks that platform's
-        # @tailwindcss/oxide native optional dep. `npm ci` won't fetch the
-        # linux/win/darwin-x64 oxide bindings the renderer build needs, so the
-        # Tailwind vite plugin crashes with "Cannot find native binding" on
-        # every other host. `npm install` resolves the current platform's
-        # optional native deps. (Harmless lockfile drift in CI is not committed.)
-        run: npm install --no-fund --no-audit
+        # `npm ci` for a locked, reproducible install — same as the test job.
+        # It does NOT, however, fetch the platform-specific @tailwindcss/oxide
+        # native optional dep on non-darwin-arm64 hosts: the committed lockfile
+        # only resolves that one platform variant (a known npm optional-deps
+        # bug, npm/cli#4828). The next step installs the missing binding.
+        run: npm ci
+
+      - name: Install Tailwind oxide native binding (${{ matrix.os-name }})
+        # Fetch the platform-correct @tailwindcss/oxide native binding at the
+        # version matching the installed main oxide package, so the Tailwind
+        # vite plugin can load it during the renderer build. Without this the
+        # build fails with "Cannot find native binding" on every host except
+        # macOS arm64 (whose binding is already in the committed lockfile).
+        # `--no-save` keeps package.json/package-lock.json untouched (CI never
+        # commits install drift anyway). Pinned to the main oxide version to
+        # guarantee an ABI-matched binding.
+        shell: bash
+        run: |
+          OXIDE_VER=$(node -p "require('./node_modules/@tailwindcss/oxide/package.json').version")
+          echo "Installing ${{ matrix.oxide-pkg }}@${OXIDE_VER}"
+          npm install --no-save --no-fund --no-audit "${{ matrix.oxide-pkg }}@${OXIDE_VER}"
 
       - name: Build (main + preload + renderer)
         run: npm run build
