@@ -134,15 +134,19 @@ jobs:
         # packaging job and avoids the poisoned shared cache.
         run: npm ci
 
-      - name: Install dependencies
-        # `npm ci` for a locked, reproducible install. On npm 11 it fully
-        # extracts the binary helper packages that npm 10 left incomplete
-        # (see Setup Node note). It does NOT, however, fetch the
-        # platform-specific @tailwindcss/oxide
-        # native optional dep on non-darwin-arm64 hosts: the committed lockfile
-        # only resolves that one platform variant (a known npm optional-deps
-        # bug, npm/cli#4828). The next step installs the missing binding.
-        run: npm ci
+      - name: DEBUG dump app-builder-bin state
+        # Temporary diagnostic: list what actually landed in
+        # node_modules/app-builder-bin so we can see why the native helper
+        # binary is missing on CI (present locally). Non-fatal.
+        shell: bash
+        continue-on-error: true
+        run: |
+          echo "=== app-builder-bin recursive listing ==="
+          ls -laR node_modules/app-builder-bin 2>&1 | head -80
+          echo "=== 7zip-bin recursive listing ==="
+          ls -laR node_modules/7zip-bin 2>&1 | head -40
+          echo "=== app-builder-bin package.json ==="
+          cat node_modules/app-builder-bin/package.json 2>&1 | head -20
 
       - name: Install Tailwind oxide native binding (${{ matrix.os-name }})
         # Fetch the platform-correct @tailwindcss/oxide native binding at the
