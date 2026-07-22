@@ -56,6 +56,9 @@ coverage/
 
 # Patch artifacts
 patches/*.orig
+
+# Local working notes (personal scratch/planning doc — not part of the repo)
+NEXT_STEPS.md
 # Vendored upstream @notesnook/* dist cluster (built by scripts/build-vendor.mjs
 # from the vendor/notesnook submodule). The broad `dist/` + `node_modules/`
 # rules above would exclude these, so re-include the vendored dist (the actual

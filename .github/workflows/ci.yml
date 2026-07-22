@@ -44,6 +44,13 @@ jobs:
         # idempotently). No Electron-ABI rebuild here — that's only for `dev`.
         run: npm ci
 
+      - name: Vendor drift guard
+        # Verify the committed vendor-dist was built from the pinned submodule
+        # commit. Needs no network and no submodule checkout (reads the
+        # superproject gitlink), so it works under `submodules: false`.
+        # Fails if someone moved the submodule without rebuilding vendor-dist.
+        run: npm run vendor:check
+
       - name: Typecheck (node + web + contracts)
         run: npm run typecheck
 

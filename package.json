@@ -70,6 +70,8 @@
     "gen:hosts": "node scripts/gen-production-hosts.mjs",
     "gen:upstream-baseline": "node scripts/gen-upstream-baseline.mjs",
     "build:vendor:src": "node scripts/build-vendor-from-source.mjs",
+    "vendor:bump": "node scripts/vendor-bump.mjs",
+    "vendor:check": "node scripts/vendor-check.mjs",
     "typecheck": "npm run typecheck --workspace=apps/desktop --if-present && npm run typecheck --workspace=packages/contracts --if-present",
     "test:contract": "vitest run --dir tests/contract",
     "pretest:contract": "npm rebuild better-sqlite3-multiple-ciphers",

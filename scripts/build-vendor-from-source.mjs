@@ -233,6 +233,22 @@ function cleanCoreGenerated() {
   if (exists(gen)) fs.rmSync(gen, { recursive: true, force: true });
 }
 
+/** Record the submodule commit this `vendor-dist` was built from, so
+ *  `scripts/vendor-check.mjs` can detect drift between the committed
+ *  `vendor/notesnook` gitlink and the dist actually committed in `vendor-dist`
+ *  (the "submodule bumped but dist not rebuilt" hazard). Written from the
+ *  submodule's HEAD at build time — the exact source that produced this dist. */
+function writeSourceSha() {
+  const r = spawnSync("git", ["-C", SUB, "rev-parse", "HEAD"], { encoding: "utf8" });
+  if (r.status !== 0 || !r.stdout) {
+    console.warn("  warn: could not read submodule HEAD — vendor-dist/.source-sha not written; vendor-check will skip.");
+    return;
+  }
+  const sha = r.stdout.trim();
+  fs.writeFileSync(path.join(DEST, ".source-sha"), `${sha}\n`, "utf8");
+  console.log(`✓ recorded source SHA → vendor-dist/@notesnook/.source-sha (${sha.slice(0, 12)})`);
+}
+
 /** Run the codegen generators `build-vendor.mjs` also runs. */
 function runGenerators() {
   run("node", [path.join(ROOT, "scripts", "gen-production-hosts.mjs")], {
@@ -285,6 +301,7 @@ for (const pkg of ORDER) {
 cleanCoreGenerated();
 console.log("\n=== refreshing vendor-dist ===");
 for (const pkg of ORDER) refreshVendor(pkg);
+writeSourceSha();
 
 console.log("\n=== running codegen ===");
 runGenerators();
