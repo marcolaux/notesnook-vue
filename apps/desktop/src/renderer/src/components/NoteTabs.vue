@@ -62,7 +62,9 @@ const tabs = computed(() =>
     title:
       t.kind === "attachment"
         ? (t.attachment?.filename ?? "Attachment")
-        : (notes.items.find((n) => n.id === t.noteId)?.title ?? "Untitled")
+        : t.kind === "search"
+          ? "Search: " + (t.searchQuery ?? "")
+          : (notes.items.find((n) => n.id === t.noteId)?.title ?? "Untitled")
   }))
 );
 const activeTabId = computed<string | null>(

@@ -19,6 +19,7 @@ import type { useUpdaterStore } from "@/stores/updater";
 import type { useSpellCheckerStore } from "@/stores/spell-checker";
 import type { useEditorLayoutStore } from "@/stores/editor-layout";
 import type { useEditorStore } from "@/stores/editor";
+import type { useSearchStore } from "@/stores/search";
 
 export type CommandGroup = "app" | "editor";
 
@@ -39,6 +40,8 @@ export interface CommandContext {
   layout: ReturnType<typeof useEditorLayoutStore>;
   /** Focused-editor registry — `requestFind()` opens the focused tab's find bar. */
   editorStore: ReturnType<typeof useEditorStore>;
+  /** Global-search store — `focus()` focuses the title-bar search input. */
+  search: ReturnType<typeof useSearchStore>;
   /** The Vue Router instance (set from `main.ts`; undefined outside the app). */
   router: Router | undefined;
   /** Close the palette overlay (called by the store after execute). */

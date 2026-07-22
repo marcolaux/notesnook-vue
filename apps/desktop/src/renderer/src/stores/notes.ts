@@ -56,8 +56,9 @@ export interface NoteListItem {
  */
 export interface EditorTab {
   id: string;
-  /** `kind === "attachment"` tabs carry a filename (in `title`) and no noteId. */
-  kind: "note" | "attachment";
+  /** `kind === "attachment"` tabs carry a filename (in `title`) and no noteId;
+   *  `kind === "search"` tabs carry a "Search: <query>" title and no noteId. */
+  kind: "note" | "attachment" | "search";
   noteId?: string;
   title: string;
 }
@@ -267,7 +268,9 @@ export const useNotesStore = defineStore("notes", () => {
       title:
         t.kind === "attachment"
           ? (t.attachment?.filename ?? "Attachment")
-          : titleOf(t.noteId ?? "")
+          : t.kind === "search"
+            ? "Search: " + (t.searchQuery ?? "")
+            : titleOf(t.noteId ?? "")
     }))
   );
 
@@ -283,7 +286,9 @@ export const useNotesStore = defineStore("notes", () => {
       title:
         t.kind === "attachment"
           ? (t.attachment?.filename ?? "Attachment")
-          : titleOf(t.noteId ?? "")
+          : t.kind === "search"
+            ? "Search: " + (t.searchQuery ?? "")
+            : titleOf(t.noteId ?? "")
     };
   });
 
@@ -611,10 +616,21 @@ export const useNotesStore = defineStore("notes", () => {
     }
   }
 
-  /** Create a new note, reload, and open it in a tab in the active group. */
+  /** Create a new note, reload, and open it in a tab in the active group.
+   *
+   * The title is intentionally left empty so core applies the user's
+   * `titleFormat` setting (e.g. "Note $date$ $time$") via `formatTitle` and
+   * marks it as generated (`isGeneratedTitle`) — the same path the draft
+   * flow takes when a note is created from an empty editor, so an explicit
+   * New Note and a typed-in draft produce the same kind of title. Core's
+   * `db.notes.add` requires a title OR content, so pass an empty body to
+   * satisfy that guard without seeding a real content row (the editor
+   * creates one on the first keystroke, as before). Passing a literal like
+   * "New note" would bypass `formatTitle` and pin a static, non-generated
+   * title instead. */
   async function create(): Promise<void> {
     const db = getDatabase();
-    const id = await db.notes.add({ title: "New note" });
+    const id = await db.notes.add({ content: { type: "tiptap", data: "" } });
     await load();
     pendingTitleFocus.value = "select";
     layout.openNote(id);

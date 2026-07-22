@@ -155,11 +155,11 @@ const appCommands: Command[] = [
   {
     id: "app:search-notes",
     title: "Search notes",
-    keywords: ["find", "filter", "list"],
+    keywords: ["find", "search", "global", "filter", "list"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
     run: (ctx) => {
-      ctx.notes.focusSearch();
+      ctx.search.focus();
     }
   },
   // In-content find & replace (per tab) — opens the focused tab's find bar via

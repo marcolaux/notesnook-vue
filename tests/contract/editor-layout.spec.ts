@@ -541,6 +541,37 @@ describe("useEditorLayoutStore — tabs", () => {
     expect(s.tabs[id].noteId).toBe("a");
     expect(s.tabs[id].sessionId).toBe(first);
   });
+
+  it("openSearchTab creates a kind:search tab carrying the query (dedup-by-query)", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const root = s.activeGroupId;
+    const id = s.openSearchTab("foo bar");
+    expect(id).toBeTruthy();
+    const tab = s.tabs[id];
+    expect(tab.kind).toBe("search");
+    expect(tab.searchQuery).toBe("foo bar");
+    expect(tab.noteId).toBeUndefined();
+    expect(tab.history).toEqual([]);
+    expect(s.groups[root].activeTabId).toBe(id);
+    // Reopening the same query reuses the tab (no duplicate).
+    expect(s.openSearchTab("foo bar")).toBe(id);
+    expect(Object.values(s.tabs).filter((t) => t.kind === "search")).toHaveLength(1);
+    // A different query makes a new search tab.
+    const id2 = s.openSearchTab("baz");
+    expect(id2).not.toBe(id);
+    expect(s.tabForSearch("baz")?.id).toBe(id2);
+  });
+
+  it("closeTab on a search tab drops its session", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const id = s.openSearchTab("q");
+    const session = s.tabs[id].sessionId;
+    s.closeTab(id);
+    expect(s.tabs[id]).toBeUndefined();
+    expect(s.sessions[session]).toBeUndefined();
+  });
 });
 
 describe("useEditorLayoutStore — drag-to-split + empty-pane collapse", () => {

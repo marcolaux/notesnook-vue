@@ -42,6 +42,7 @@ import {
 import NoteTabs from "./NoteTabs.vue";
 import Editor from "./Editor.vue";
 import AttachmentPreview from "./AttachmentPreview.vue";
+import SearchResultsPane from "./SearchResultsPane.vue";
 import HistorySidebar from "./HistorySidebar.vue";
 
 const props = defineProps<{ groupId: string }>();
@@ -120,13 +121,22 @@ function onEditorDrop(e: DragEvent): void {
       @drop.capture="onEditorDrop($event)"
     >
       <div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <KeepAlive v-if="activeTabId" :max="12">
+        <!-- Note + attachment tabs: cached under KeepAlive (cursor/scroll/undo
+             + attachment scroll preserved across tab switches). Search tabs
+             are excluded (they re-read from the search cache on mount; caching
+             would pin a stale result set). -->
+        <KeepAlive v-if="activeTabId && activeTab?.kind !== 'search'" :max="12">
           <component
             :is="activeTab?.kind === 'attachment' ? AttachmentPreview : Editor"
             :key="activeTab?.kind === 'attachment' ? 'att:' + activeTabId : activeTabId"
             :tab-id="activeTabId"
           />
         </KeepAlive>
+        <SearchResultsPane
+          v-else-if="activeTabId && activeTab?.kind === 'search'"
+          :key="'search:' + activeTabId"
+          :tab-id="activeTabId"
+        />
         <Editor v-else :key="'draft:' + props.groupId" :group-id="props.groupId" />
       </div>
 

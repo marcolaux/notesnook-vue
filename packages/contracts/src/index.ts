@@ -56,6 +56,10 @@ export type {
   Monograph,
   HistorySession,
   SessionContentItem,
+  /** Search-result item from `db.lookup.notesWithHighlighting` (global search). */
+  HighlightedResult,
+  /** A single prefix/match/suffix fragment of a {@link HighlightedResult}. */
+  Match,
   ToolbarConfig,
   ToolbarConfigPlatforms,
   /** A settings row. `key` is constrained to `keyof SettingItemMap`; custom

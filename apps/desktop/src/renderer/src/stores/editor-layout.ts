@@ -75,16 +75,20 @@ export interface EditorSession {
 export interface EditorTab {
   id: string;
   groupId: string;
-  /** Discriminates note tabs (the default, pre-existing kind) from attachment
-   *  preview tabs. Note tabs carry `noteId`; attachment tabs carry
-   *  `attachment`. */
-  kind: "note" | "attachment";
-  /** Present on note tabs; undefined on attachment tabs. */
+  /** Discriminates note tabs (the default, pre-existing kind), attachment preview
+   *  tabs, and global-search results tabs. Note tabs carry `noteId`; attachment
+   *  tabs carry `attachment`; search tabs carry `searchQuery`. */
+  kind: "note" | "attachment" | "search";
+  /** Present on note tabs; undefined on attachment/search tabs. */
   noteId?: string;
-  /** Present on attachment tabs; undefined on note tabs. */
+  /** Present on attachment tabs; undefined on note/search tabs. */
   attachment?: AttachmentTabAttrs;
+  /** Present on search tabs; undefined on note/attachment tabs. The query that
+   *  produced this results tab (used by `SearchResultsPane` to read the cached
+   *  result set). */
+  searchQuery?: string;
   sessionId: string;
-  /** Visited note ids (back/forward stack). Empty for attachment tabs. */
+  /** Visited note ids (back/forward stack). Empty for attachment/search tabs. */
   history: string[];
   historyIndex: number;
   pinned?: boolean;
@@ -432,6 +436,49 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     return tabId;
   }
 
+  /** Existing search-results tab (in any group) for `query`, or undefined. */
+  function tabForSearch(query: string): EditorTab | undefined {
+    return Object.values(tabs.value).find(
+      (t) => t.kind === "search" && t.searchQuery === query
+    );
+  }
+
+  /**
+   * Open a global-search results tab for `query` in the active group: reuse an
+   * existing results tab for the same query (activating its group) if one
+   * exists; otherwise create a new `kind: "search"` tab. Mirrors {@link openTab}
+   * / {@link openAttachmentTab} but for the results-tab surface. The tab carries
+   * `searchQuery` (no `noteId`); `SearchResultsPane` reads the cached result set
+   * for it from the search store. Returns the tab id.
+   */
+  function openSearchTab(query: string): string {
+    if (layout.value === null) init();
+    const groupId = activeGroupId.value;
+    if (!groups.value[groupId]) return "";
+    const existing = tabForSearch(query);
+    if (existing) {
+      activateTab(existing.id);
+      return existing.id;
+    }
+    const tabId = genId();
+    const sessionId = registerSession({ tabId, type: "default" });
+    tabs.value = {
+      ...tabs.value,
+      [tabId]: {
+        id: tabId,
+        groupId,
+        kind: "search",
+        searchQuery: query,
+        sessionId,
+        history: [],
+        historyIndex: 0
+      }
+    };
+    groups.value = { ...groups.value, [groupId]: { ...groups.value[groupId], activeTabId: tabId } };
+    activeGroupId.value = groupId;
+    return tabId;
+  }
+
   /**
    * Open an attachment preview split off from `targetGroupId` in `zone`'s
    * direction — the attachment-preview counterpart to {@link openNoteSplit}:
@@ -732,10 +779,12 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     openNoteSplit,
     tabForNote,
     tabForAttachment,
+    tabForSearch,
     closeGroup,
     resizeSplitChildren,
     openNote,
     openTab,
+    openSearchTab,
     openAttachmentTab,
     openAttachmentSplit,
     navigateTab,

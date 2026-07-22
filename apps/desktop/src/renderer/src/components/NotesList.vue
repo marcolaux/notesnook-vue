@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from "vue";
+import { ref, computed } from "vue";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
@@ -51,8 +51,6 @@ const presetColors = Object.entries(DefaultColors).map(([name, code]) => ({
   colorCode: code
 }));
 
-const searchInput = ref<HTMLInputElement | null>(null);
-
 /** In-flight note drag: the OS screen point where it started + the grabbed
  *  note id. The grabbed note is what a cross-window release opens (one note →
  *  one window, matching tab tear-off); the rest of the selection only travels
@@ -95,6 +93,16 @@ function segmentsOf(text: string): { text: string; match: boolean }[] {
 function clearCollectionFilter(): void {
   notes.clearCollectionFilter();
   collections.clearSelection();
+}
+
+/** Whether a row should render the multi-selection treatment (accent bg +
+ *  ring + checkmark). A selected row gets it whenever it is NOT the lone
+ *  active note: a non-active selected row always does, and the active note
+ *  joins it when it is part of a multi-selection (count > 1) so the whole
+ *  selected set reads as one consistent selection. The active note only
+ *  keeps its `bg-glass-active` "open" highlight when it is the sole selection. */
+function noteRowSelected(id: string): boolean {
+  return notes.isSelected(id) && (notes.activeNote?.id !== id || notes.selectedCount > 1);
 }
 
 /** Plain / cmd / shift click on a note row (file-manager semantics):
@@ -446,57 +454,22 @@ function formatDate(ts: number): string {
     year: sameYear ? undefined : "numeric"
   });
 }
-
-// "Search notes" palette command bumps `focusSearchSignal`; focus the input.
-// DOM focus is a no-op in headless tests, so this is gated for on-site review.
-watch(
-  () => notes.focusSearchSignal,
-  () => {
-    if (notes.focusSearchSignal > 0) searchInput.value?.focus();
-  }
-);
 </script>
 
 <template>
   <div class="flex h-full flex-col bg-glass-surface">
-    <div
-      class="flex h-10 shrink-0 items-center gap-2 border-b border-glass-border px-3"
-    >
-      <input
-        ref="searchInput"
-        type="text"
-        :value="notes.query"
-        placeholder="Search…"
-        class="titlebar-no-drag min-w-0 flex-1 rounded-md border border-glass-border bg-glass-surface px-2 py-1 text-xs text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
-        :title="notes.regexSearch ? 'Regex search' : 'Search title / headline / tags'"
-        @input="notes.setQuery(($event.target as HTMLInputElement).value)"
-      />
+    <!-- The search input moved to the title bar (global search); this header
+         row now only holds the New Note button + the count/sort/selection
+         readouts. -->
+    <div class="flex h-7 shrink-0 items-center gap-2 border-b border-glass-border px-3 text-[10px] text-text-muted">
       <button
-        class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-xs"
-        :class="notes.regexSearch ? 'bg-glass-active text-text' : 'text-text-muted hover:bg-glass-hover'"
-        :title="notes.regexSearch ? 'Regex search on' : 'Regex search off'"
-        @click="notes.toggleRegex()"
-      >
-        .*
-      </button>
-      <button
-        v-if="notes.query"
-        class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-text-muted hover:bg-glass-hover"
-        title="Clear search"
-        @click="notes.clearSearch()"
-      >
-        <Icon name="x" :size="12" />
-      </button>
-      <button
-        class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-text-muted hover:bg-glass-hover"
+        class="titlebar-no-drag grid h-5 w-5 place-items-center rounded-sm text-text-muted hover:bg-glass-hover"
         title="New Note"
         @click="notes.create()"
       >
         <Icon name="plus" :size="14" />
       </button>
-    </div>
-    <div class="flex h-7 shrink-0 items-center gap-2 border-b border-glass-border px-3 text-[10px] text-text-muted">
-      <span class="shrink-0">{{ notes.visibleItems.length }}{{ notes.query ? ` / ${notes.count}` : "" }}</span>
+      <span class="shrink-0">{{ notes.visibleItems.length }}</span>
       <!-- Multi-selection readout: "N selected" with a Clear button. Shown only
            while more than one note is selected. -->
       <span
@@ -570,8 +543,8 @@ watch(
           :key="note.id"
           class="note-row block w-full rounded-md px-2 py-1.5 text-left hover:bg-glass-hover"
           :class="{
-            'bg-glass-active': notes.activeNote?.id === note.id,
-            'note-row-selected': notes.isSelected(note.id) && notes.activeNote?.id !== note.id,
+            'bg-glass-active': notes.activeNote?.id === note.id && !noteRowSelected(note.id),
+            'note-row-selected': noteRowSelected(note.id),
             'has-tint': !!note.color
           }"
           :style="note.color ? { '--note-tint': note.color.colorCode } : undefined"
@@ -586,7 +559,7 @@ watch(
                  multi-selection but is not the open/active note — the active
                  note already shows bg-glass-active). -->
             <Icon
-              v-if="notes.isSelected(note.id) && notes.activeNote?.id !== note.id"
+              v-if="noteRowSelected(note.id)"
               name="check"
               :size="10"
               class="text-blue-400"

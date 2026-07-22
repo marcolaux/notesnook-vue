@@ -1,6 +1,23 @@
 import { defineStore } from "pinia";
 import { shallowRef, ref, computed } from "vue";
 import type { Editor } from "@tiptap/vue-3";
+import type { SearchOptions } from "@notesnook-vue/editor-vue";
+
+/**
+ * A staged scroll-to-match target set by the global search before opening a
+ * result note (`layout.openTab` — reuse-or-create). The tab's `Editor.vue`
+ * consumes it (after `setContent` in `loadCurrentNote` for a fresh tab, or in
+ * `onActivated` for a reactivated KeepAlive-cached tab, or directly from the
+ * search store when the editor is already live) and scrolls the editor to the
+ * match. Clear-on-read prevents a stale re-application.
+ */
+export interface PendingScrollTarget {
+  query: string;
+  /** Which match to scroll to (0 = first); clamped to the match list in the
+   *  editor. The results tab passes the snippet index; the dropdown passes 0. */
+  matchIndex: number;
+  options?: SearchOptions;
+}
 
 /**
  * Cross-component channel for the *focused* pane's TipTap `Editor` instance
@@ -76,6 +93,43 @@ export const useEditorStore = defineStore("editor", () => {
     findToggleSignal.value++;
   }
 
+  // --- global-search scroll-to-match ----------------------------------------
+  // When a global-search result is opened (`layout.openTab` — reuse-or-create),
+  // the search store stages a "pending scroll target" here keyed by the tab's id
+  // (`myKey` in `Editor.vue`), so only that tab consumes it. Consumption has
+  // three paths (see `search.openNoteAt`): the search store scrolls directly
+  // when the tab's editor is already live + DOM-attached; `Editor.vue`'s
+  // `onActivated` consumes it for a reactivated KeepAlive-cached tab; and
+  // `loadCurrentNote` consumes it after `setContent` for a fresh tab. Keying by
+  // tabId (not noteId) ensures only the right tab acts on it. `shallowRef` —
+  // the record is small and replaced immutably. Clear-on-read prevents a stale
+  // re-application.
+  const pendingScrollTargets = shallowRef<Record<string, PendingScrollTarget>>({});
+
+  function setPendingScrollTarget(key: string, target: PendingScrollTarget): void {
+    pendingScrollTargets.value = { ...pendingScrollTargets.value, [key]: target };
+  }
+
+  function pendingScrollTargetFor(key: string): PendingScrollTarget | undefined {
+    return pendingScrollTargets.value[key];
+  }
+
+  /** The live editor registered under `key`, or `undefined` (no editor mounted
+   *  for that pane/tab, or it was unregistered on unmount). Used by the global
+   *  search store to decide whether a search result whose note is ALREADY open
+   *  can be scrolled directly (editor live + DOM attached) vs. staged for a
+   *  lifecycle hook to consume (cached/deactivated tab, or brand-new tab). */
+  function getEditor(key: string): Editor | undefined {
+    return registry.value[key];
+  }
+
+  function clearPendingScrollTarget(key: string): void {
+    if (!(key in pendingScrollTargets.value)) return;
+    const next = { ...pendingScrollTargets.value };
+    delete next[key];
+    pendingScrollTargets.value = next;
+  }
+
   /** The focused pane's editor, or `undefined` when none is live. */
   const editor = computed<Editor | undefined>(
     () => (focusedKey.value ? registry.value[focusedKey.value] : undefined)
@@ -88,12 +142,17 @@ export const useEditorStore = defineStore("editor", () => {
     focusedKey,
     findSignal,
     findToggleSignal,
+    pendingScrollTargets,
     editor,
     isEditable,
     register,
     unregister,
     setFocusedKey,
     requestFind,
-    requestFindToggle
+    requestFindToggle,
+    setPendingScrollTarget,
+    pendingScrollTargetFor,
+    clearPendingScrollTarget,
+    getEditor
   };
 });

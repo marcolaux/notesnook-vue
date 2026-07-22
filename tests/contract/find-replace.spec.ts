@@ -169,3 +169,59 @@ describe("FindReplace extension commands", () => {
     expect(state(editor).matches).toHaveLength(3);
   });
 });
+
+describe("scrollEditorToMatch (global-search scroll hook)", () => {
+  // Validates the renderer-side helper that consumes a pending scroll target
+  // staged by the search store: it installs find-match decorations via setFind,
+  // resolves the Nth match via findMatches, and sets a TextSelection + scrolls
+  // (scrollIntoView is a no-op in happy-dom but the selection dispatch is real).
+  // The selection dispatch is deferred to a requestAnimationFrame (the search
+  // result opens a fresh editor; scrolling synchronously lands at zero before
+  // layout), so these tests await one raf before asserting the selection.
+  const nextRaf = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+  let editor: Editor;
+  beforeEach(() => {
+    editor = makeEditor();
+    editor.commands.setContent("<p>Hello world</p><p>foo bar foo</p>");
+  });
+  afterEach(() => editor.destroy());
+
+  it("selects the first match by default", async () => {
+    const { scrollEditorToMatch } = await import("@/utils/search-scroll");
+    scrollEditorToMatch(editor, "foo", 0);
+    await nextRaf();
+    const sel = editor.state.selection;
+    expect(editor.state.doc.textBetween(sel.from, sel.to, "\n")).toBe("foo");
+    // find-match decorations are installed by setFind (synchronous).
+    expect(state(editor).matches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("selects the Nth match when matchIndex is given", async () => {
+    const { scrollEditorToMatch } = await import("@/utils/search-scroll");
+    const matches = findMatches(editor.state.doc, "foo", {});
+    expect(matches).toHaveLength(2);
+    scrollEditorToMatch(editor, "foo", 1);
+    await nextRaf();
+    const sel = editor.state.selection;
+    expect(sel.from).toBe(matches[1]!.from);
+    expect(sel.to).toBe(matches[1]!.to);
+  });
+
+  it("clamps an out-of-range matchIndex to the last match", async () => {
+    const { scrollEditorToMatch } = await import("@/utils/search-scroll");
+    const matches = findMatches(editor.state.doc, "foo", {});
+    scrollEditorToMatch(editor, "foo", 99);
+    await nextRaf();
+    const sel = editor.state.selection;
+    expect(sel.from).toBe(matches[matches.length - 1]!.from);
+  });
+
+  it("is a no-op (no selection change) when the query is not found", async () => {
+    const { scrollEditorToMatch } = await import("@/utils/search-scroll");
+    const before = editor.state.selection.from;
+    scrollEditorToMatch(editor, "zzz-not-present", 0);
+    // No match → no raf scheduled + no TextSelection dispatched; selection
+    // unchanged. (setFind still runs but does not move the selection.)
+    expect(editor.state.selection.from).toBe(before);
+  });
+});

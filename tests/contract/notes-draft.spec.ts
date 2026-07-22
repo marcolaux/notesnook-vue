@@ -157,7 +157,10 @@ describe("notes draft — lazy create on first keystroke (per-tab model)", () =>
     await notes.create();
     expect(notes.activeNote?.id).toBe("n-1");
     expect(layout.activeTab?.noteId).toBe("n-1");
-    // "select" mode: focus + select-all over the "New note" placeholder.
+    // "select" mode: focus + select-all over the title so the user can
+    // quickly rename it. (Core generates the title from the user's
+    // `titleFormat` setting; the in-memory stub here leaves it empty, which
+    // the test doesn't assert on.)
     expect(notes.pendingTitleFocus).toBe("select");
   });
 

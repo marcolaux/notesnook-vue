@@ -72,14 +72,19 @@ export interface EditorSession {
 export interface EditorTab {
   id: string;
   groupId: string;
-  /** `"note"` tabs carry `noteId`; `"attachment"` tabs carry `attachment`. */
-  kind: "note" | "attachment";
-  /** Present on note tabs; undefined on attachment tabs. */
+  /** `"note"` tabs carry `noteId`; `"attachment"` tabs carry `attachment`;
+   *  `"search"` tabs (global-search results) carry `searchQuery`. */
+  kind: "note" | "attachment" | "search";
+  /** Present on note tabs; undefined on attachment/search tabs. */
   noteId?: string;
-  /** Present on attachment tabs; undefined on note tabs. */
+  /** Present on attachment tabs; undefined on note/search tabs. */
   attachment?: AttachmentTabAttrs;
+  /** Present on search tabs; undefined on note/attachment tabs. The query that
+   *  produced this results tab (the pane re-fetches via the search store on
+   *  restore since the results cache is per-session). */
+  searchQuery?: string;
   sessionId: string;
-  /** Visited note ids (back/forward stack). Empty for attachment tabs. */
+  /** Visited note ids (back/forward stack). Empty for attachment/search tabs. */
   history: string[];
   historyIndex: number;
   pinned?: boolean;
@@ -176,9 +181,10 @@ export const EditorSessionSchema = z.object({
 export const EditorTabSchema = z.object({
   id: z.string(),
   groupId: z.string(),
-  kind: z.enum(["note", "attachment"]),
+  kind: z.enum(["note", "attachment", "search"]),
   noteId: z.string().optional(),
   attachment: AttachmentTabAttrsSchema.optional(),
+  searchQuery: z.string().optional(),
   sessionId: z.string(),
   history: z.array(z.string()),
   historyIndex: z.number(),

@@ -65,6 +65,7 @@ import { useCollectionsStore } from "@/stores/collections";
 import { textStats } from "@/utils/properties";
 import { useLinksStore } from "@/stores/links";
 import { readEditorStats } from "@/utils/status";
+import { scrollEditorToMatch } from "@/utils/search-scroll";
 import {
   createImageDropPasteProps,
   wireAttachmentStorage
@@ -576,6 +577,24 @@ async function loadCurrentNote(): Promise<void> {
       const end = inst.state.doc.content.size - 1;
       inst.chain().focus().setTextSelection(end).run();
     }
+    // Global-search scroll-to-match — consume HERE, right after `setContent`
+    // has populated the editor doc. A decoupled reactive watcher on
+    // `myContentState` (the DB content-load flag) races: that flag flips to
+    // "loaded" when `notes.loadContent` resolves, which is BEFORE the
+    // `setContent` chain runs, so the watcher would consume the target against
+    // an empty doc (size 2 → zero matches). Running it here guarantees the
+    // doc is seeded. The target is keyed by `myKey` (tabId) so only this tab
+    // consumes it; clear-on-read prevents stale re-application. `scrollEditorToMatch`
+    // then defers the actual scroll to a raf + re-scrolls over the image-load
+    // window (async images expand the layout after `setContent`).
+    const scrollKey = myKey.value;
+    const target = editorStore.pendingScrollTargetFor(scrollKey);
+    if (target) {
+      editorStore.clearPendingScrollTarget(scrollKey);
+      // eslint-disable-next-line no-console
+      console.log("[search-scroll] consume target", scrollKey, target.query, target.matchIndex);
+      scrollEditorToMatch(inst, target.query, target.matchIndex, target.options);
+    }
   }
 }
 
@@ -702,8 +721,16 @@ watch(
       disposeTagMention = wireTagMention(e, () => myNoteId.value);
       refreshStatus();
       // If the id watch fired before the editor existed, the load was
-      // skipped — do it now that the editor is ready.
-      if (loadedNoteId !== (myNoteId.value ?? null)) {
+      // skipped — do it now that the editor is ready. Also force a load when a
+      // global-search scroll target is pending for THIS tab: picking a search
+      // result whose note is already the active note (or whose content is
+      // cached) would otherwise skip the load here (loadedNoteId already
+      // matches), so the content would never display in the new tab. The target
+      // is keyed by `myKey` (tabId) so only this tab consumes it.
+      if (
+        loadedNoteId !== (myNoteId.value ?? null) ||
+        editorStore.pendingScrollTargetFor(myKey.value) !== undefined
+      ) {
         void loadCurrentNote();
       }
     }
@@ -729,8 +756,25 @@ onDeactivated(() => {
   void notes.flushTitle(myNoteId.value ?? undefined);
 });
 
-onActivated(() => {
-  void reloadIfStale();
+onActivated(async () => {
+  await reloadIfStale();
+  // Global-search reuse of an already-open note: the search store stages a
+  // pending scroll target keyed by this tab's id and reactivates the tab via
+  // `openTab`. A fresh tab consumes its target in `loadCurrentNote`, but a
+  // reactivated KeepAlive-cached tab doesn't re-run `loadCurrentNote` (noteId
+  // + editor instance unchanged) — so consume it here, after `reloadIfStale`
+  // has settled so a stale-refresh `setContent` can't reset the doc after we
+  // scroll. The editor is already populated (cached), so `scrollEditorToMatch`
+  // runs against the live doc.
+  const inst = editor.value;
+  const key = myKey.value;
+  const target = editorStore.pendingScrollTargetFor(key);
+  if (target && inst && !inst.isDestroyed) {
+    editorStore.clearPendingScrollTarget(key);
+    // eslint-disable-next-line no-console
+    console.log("[search-scroll] consume target (reactivated)", key, target.query, target.matchIndex);
+    scrollEditorToMatch(inst, target.query, target.matchIndex, target.options);
+  }
 });
 
 // Register the Cmd/Ctrl+F listener for this pane (see `onFindHotkey`). Added on
