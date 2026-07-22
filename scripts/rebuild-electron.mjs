@@ -21,7 +21,9 @@
 //
 // The FTS5 tokenizer extensions (sqlite-better-trigram / sqlite3-fts5-html)
 // are SQLite *loadable* extensions (.dylib/.so/.dll prebuilds), NOT Node
-// addons, so they need no ABI rebuild — only better-sqlite3 does.
+// addons, so they need no ABI rebuild — only better-sqlite3 does. They're
+// skipped automatically (no binding.gyp); `extraModules` just ensures
+// better-sqlite3 itself is in the rebuild set.
 //
 // Run from anywhere (the script resolves the repo root from its own path):
 //   node scripts/rebuild-electron.mjs
@@ -41,14 +43,24 @@ console.log(
 );
 
 await rebuild({
-  // The app project dir (matches `--module-dir apps/desktop`).
+  // The app project dir (matches `--module-dir apps/desktop`). This is the
+  // node_modules tree @electron/rebuild scans for native addons.
   buildPath: path.resolve(root, 'apps/desktop'),
+  // The monorepo root (where the top-level package.json lives).
+  projectRootPath: root,
   electronVersion,
   arch: process.arch,
-  // Only this one module is a Node addon; the FTS5 extensions are SQLite
-  // loadable libs and don't take an ABI.
-  onlyModules: ['better-sqlite3-multiple-ciphers'],
+  // `extraModules` (the CLI `-w` flag) ensures better-sqlite3 is in the rebuild
+  // set. Do NOT use `onlyModules` (CLI `-o`) for this — it filters the
+  // auto-detected set by name and silently matched nothing here, making the
+  // whole rebuild a 6 ms no-op (the Node-ABI .node from `npm ci` then shipped
+  // and the packaged app died with "Could not locate the bindings file").
+  extraModules: ['better-sqlite3-multiple-ciphers'],
   force: true,
+  // Disable the rebuild cache so this always actually rebuilds (the cache can
+  // short-circuit even with `force`, masking a no-op). A few seconds slower;
+  // deterministic is what matters for a release artifact.
+  useCache: false,
   types: ['prod', 'optional'],
 });
 
