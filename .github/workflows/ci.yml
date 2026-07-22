@@ -150,6 +150,20 @@ jobs:
       - name: Build (main + preload + renderer)
         run: npm run build
 
+      - name: Rebuild native SQLite module for the Electron ABI
+        # `npm ci` installs a prebuild of better-sqlite3-multiple-ciphers for the
+        # *host Node* ABI, but the app runs in Electron (a different module ABI).
+        # Without this rebuild the packaged app dies on startup with "Could not
+        # locate the bindings file" (it looks for node-v136-…/better_sqlite3.node
+        # which was never produced). The script pins the Electron version from the
+        # installed `electron` package so the target ABI is deterministic
+        # (@electron/rebuild's auto-detection falls back to the Node ABI when the
+        # Electron binary isn't downloaded, silently shipping a broken .node).
+        # `npmRebuild: false` (electron-builder.yml) means electron-builder won't
+        # redo this — it packages our pre-rebuilt .node as-is. The FTS5 tokenizer
+        # extensions are SQLite loadable libs, not Node addons, so they're skipped.
+        run: npm run rebuild:electron
+
       - name: Disable Spotlight indexing (macOS DMG detach workaround)
         # GitHub-hosted macOS runners intermittently fail electron-builder's
         # DMG step at `hdiutil detach` with "resource busy": Spotlight (mds)

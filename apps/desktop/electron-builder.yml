@@ -52,9 +52,15 @@ asar: true
 # skips that reinstall/prune step so the helper survives and packaging
 # completes. Fixed properly upstream in electron-builder v26 (PR #8715, which
 # installs all deps instead of pruning) — upgrade to ^26 and drop this flag
-# when native-module rebuilding for the Electron ABI is needed for real
-# releases. Until then CI artifacts ship with native modules at the host-Node
-# ABI (runtime native correctness is an on-site/release gate, not a CI gate).
+# (its own rebuild then replaces the explicit step below).
+#
+# Because `npmRebuild: false` also skips electron-builder's native-module
+# rebuild for the Electron ABI, the better-sqlite3-multiple-ciphers `.node` is
+# pre-rebuilt explicitly BEFORE packaging — see `scripts/rebuild-electron.mjs`
+# (run via `npm run rebuild:electron`, wired into every `apps/desktop` package*
+# script and the CI package job). electron-builder then ships that pre-rebuilt
+# Electron-ABI .node as-is (asarUnpack keeps it on disk). Without it the app
+# dies on startup with "Could not locate the bindings file".
 npmRebuild: false
 # Native binaries must be unpacked from asar so they load from disk (Electron
 # cannot `require`/`loadExtension` binaries inside asar): the SQLite `.node`

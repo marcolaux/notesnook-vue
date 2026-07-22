@@ -65,8 +65,9 @@
   },
   "scripts": {
     "dev": "npm run dev --workspace=apps/desktop",
-    "predev": "electron-rebuild -f -w better-sqlite3-multiple-ciphers --module-dir apps/desktop",
+    "predev": "npm run rebuild:electron",
     "build": "npm run build --workspace=apps/desktop",
+    "rebuild:electron": "node scripts/rebuild-electron.mjs",
     "gen:hosts": "node scripts/gen-production-hosts.mjs",
     "gen:upstream-baseline": "node scripts/gen-upstream-baseline.mjs",
     "build:vendor:src": "node scripts/build-vendor-from-source.mjs",
