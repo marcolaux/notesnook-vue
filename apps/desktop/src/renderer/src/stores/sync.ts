@@ -1,7 +1,9 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import { EV, EVENTS } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
 import { buildSyncOptions, type SyncControlInput } from "@/utils/sync";
+import { shouldRunAutoSync } from "@contracts/auto-sync-gating";
 import { useAuthStore } from "@/stores/auth";
 import { useConfigStore } from "@/stores/config";
 
@@ -209,6 +211,52 @@ export const useSyncStore = defineStore("syncControl", () => {
     }
   }
 
+  /** Read the `?window=` query param (`null` on the main window). Shared by the
+   *  save-driven {@link autoSyncGated} and the SSE-driven auto-pull below. */
+  function currentWindowType(): string | null {
+    try {
+      return typeof URLSearchParams !== "undefined"
+        ? new URLSearchParams(location.search).get("window")
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // --- Auto-pull on server-pushed sync requests (SSE triggerSync) -----------
+  // Core publishes `EVENTS.databaseSyncRequested` when the server's SSE channel
+  // delivers a `triggerSync` (another device synced → pull the changes) and on
+  // `onPushCompleted` (more pending). It also publishes it on every local edit
+  // via `AutoSync` — we ignore those (the save-driven `scheduleAutoSync` already
+  // pushes local edits; reacting here would double-sync per keystroke). The
+  // bridge in `event-bridge.ts` re-publishes the db-instance event to the global
+  // `EV`, so we subscribe once here (process-lifetime, idempotent — mirrors
+  // `status.bindSyncEvents` / `vault.bindVaultEvents`). This is what makes an
+  // edit in another app instance appear here without a manual refresh.
+  let autoSyncBound = false;
+  function bindAutoSyncEvents(): void {
+    if (autoSyncBound) return;
+    autoSyncBound = true;
+    EV.subscribe(EVENTS.databaseSyncRequested, (...args: unknown[]) => {
+      // Skip while a sync is already in flight — the running pull will fetch
+      // the new server state, so a concurrent trigger is redundant (and avoids
+      // a second concurrent `db.sync()` call).
+      if (busy.value) return;
+      let gated = false;
+      try {
+        gated = shouldRunAutoSync(args, {
+          isLoggedIn: useAuthStore().isLoggedIn,
+          syncEnabled: useConfigStore().syncEnabled,
+          windowType: currentWindowType()
+        });
+      } catch {
+        gated = false;
+      }
+      if (!gated) return;
+      void startSync({ type: "full" });
+    });
+  }
+
   /** Schedule a debounced sync. Call after any save that should reach the
    *  server (note content, attachment ingest). Re-schedules on each call so a
    *  burst of edits collapses to one sync. Never throws. */
@@ -228,5 +276,14 @@ export const useSyncStore = defineStore("syncControl", () => {
     }, AUTO_SYNC_DEBOUNCE_MS);
   }
 
-  return { busy, lastError, lastResult, startSync, stopSync, cancelSync, scheduleAutoSync };
+  return {
+    busy,
+    lastError,
+    lastResult,
+    startSync,
+    stopSync,
+    cancelSync,
+    scheduleAutoSync,
+    bindAutoSyncEvents
+  };
 });

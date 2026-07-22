@@ -868,6 +868,20 @@ export const useNotesStore = defineStore("notes", () => {
   }
 
   /**
+   * Bump the per-note change signal so any editor pane showing `noteId` reloads
+   * from DB (skip-if-dirty in `Editor.vue`). Used by the sync-completion watcher
+   * to live-reload an open note whose content a cross-device sync just pulled,
+   * mirroring the cross-window `app:note-changed` path but for remote changes.
+   * No-op (and safe) when the note isn't open anywhere.
+   */
+  function bumpNoteChanged(noteId: string): void {
+    noteChangedSignals.value = {
+      ...noteChangedSignals.value,
+      [noteId]: (noteChangedSignals.value[noteId] ?? 0) + 1
+    };
+  }
+
+  /**
    * Persist a note's HTML body. Uses `notes.add` with the existing id so the
    * collection upserts content + bumps `dateEdited`/`headline` atomically
    * (the same path the upstream editor uses). Takes an explicit `noteId` so
@@ -1171,6 +1185,7 @@ export const useNotesStore = defineStore("notes", () => {
     downloadMedia,
     saveContent,
     handleRemoteNoteChanged,
+    bumpNoteChanged,
     setTitle,
     flushTitle,
     moveToTrash,

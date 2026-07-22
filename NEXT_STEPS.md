@@ -760,6 +760,14 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     (highlightSegments). **272 Contract-Tests grün (261 + 11)**, typecheck +
     build clean.
 - [x] **3.4 StatusBar unten** — Sync-Status, Wortzahl, Cursor-Position
+  - **Status 2026-07-22 (StatusBar ENTFERNT, Concerns umverteilt):** die untere
+    Status-Leiste wurde auf User-Request ganz entfernt; ihre vier Concerns +
+    der Upstream-Badge wurden umverteilt (Sync→Sidebar-Account, Wortzahl/Ln·Col
+    →Editor-Tags-Footer, Autosave→Editor-Toolbar, Upstream-Badge→Titlebar).
+    `useStatusStore` + `utils/status.ts` bleiben als Single Source of Truth.
+    Details im eigenen Journal-Eintrag unten ("StatusBar entfernt"). Die
+    historischen Status-Snapshots 2026-07-19 unten beschreiben den damaligen
+    Stand (point-in-time) und bleiben als Referenz.
   - **Status 2026-07-19 (done, headless):** neue untere Status-Leiste in
     `NotesView`. `utils/status.ts` (pure: `countWords`, `cursorLineCol`,
     `readEditorStats` via TipTap-`getText({blockSeparator:"\n"})` +
@@ -1180,7 +1188,11 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
 
 ### Phase 6 — Sync, Vault, Native Features (Woche 12–16)
 
-- [~] **6.1 Sync-Status** — `database.sync`-Events abonnieren, StatusBar-Anzeige
+- [~] **6.1 Sync-Status** — `database.sync`-Events abonnieren, Sidebar-Account-Anzeige
+  - **Hinweis 2026-07-22:** die Sync-Status-*Anzeige* ist von der (inzwischen
+    entfernten) StatusBar in die Sidebar-Account-Area umgezogen; der Control-
+    Store + der hier aufgeschobene Sync-Button sind davon unberührt (Sync-Button
+    → Toolbar/Sidebar-Account, nicht mehr StatusBar).
   - **Status 2026-07-20 (Display-Done in 3.4, Control-Store headless):** die
     Sync-Status-*Anzeige* steht seit Phase 3.4 (`useStatusStore` subscribed
     `EVENTS.syncProgress`/`syncCompleted`/`syncAborted` + `lastSynced` +
@@ -1201,9 +1213,11 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     + Store start/stop/cancel/never-throws + `app:sync-now`-Registrierung/
     Visibility/Run). **465 Contract-Tests grün (447 + 18)** über 34 Spec-Dateien,
     typecheck (node+web+contracts) + build clean.
-    **Aufgeschoben (on-site):** Sync-Button in StatusBar/Toolbar der `busy`/
-    `lastResult` folgt + `app:sync-now` auslöst, Stop/Cancel-Buttons, Error-
-    Toast für `lastError`. **Auth-gated:** `db.sync()` braucht Server+Token →
+    **Aufgeschoben (on-site):** Sync-Button in Toolbar/Sidebar-Account der
+    `busy`/`lastResult` folgt + `app:sync-now` auslöst, Stop/Cancel-Buttons,
+    Error-Toast für `lastError`. (StatusBar wurde 2026-07-22 entfernt —
+    Sync-Anzeige lebt jetzt in der Sidebar-Account-Area, siehe eigenen
+    Journal-Eintrag.) **Auth-gated:** `db.sync()` braucht Server+Token →
     ohne Login `lastError` (live Sync = on-site nach Login).
     **On-Site-Gate:** (nach UI) "Sync now" aus Palette/Button → Status wechselt
     auf syncing → completed; ohne Login → Fehleranzeige.
@@ -4514,6 +4528,48 @@ Komplett neue ** globale Suche im Fenster-Titelbar** (Search zieht aus der Notes
 **Verifiziert:** typecheck:web clean, build clean, 106 affected contract-Tests grün (search.spec.ts 14 + editor-layout −3 openTabForce + find-replace scrollEditorToMatch 18). On-site visual gate **PASSED** (User bestätigt — "it works finally"): Pick eines Body-Match-Results → Editor scrollt zum Match. Reuse-existing-Tab + Search-Results-Tab + Hotkey + Locked-Note-Title-Only-Match + New-Note-`+` + Cmd+F/Cmd+Shift+P unaffected = pending/verifiziert. `[search-scroll]`-console.log-Diagnostiken noch in `search-scroll.ts`+`Editor.vue` — strippen sobald vollständig confirmed.
 
 _Zuletzt aktualisiert: 2026-07-22 (Global Title-Bar Search Lexical-Phase: `useSearchStore`+`GlobalSearchInput`+`SearchDropdown`+`SearchResultsPane`+`scrollEditorToMatch`+`@contracts/search` pure snippet helpers; 3 scroll bugs fixed [consume-nach-setContent, manual-scroller-ancestor, async-image-re-scroll-window]; openTabForce→openTab reuse-existing-tab; 106 tests grün; on-site scroll verifiziert) — siehe oben; davor 2026-07-22 Draft-Editor-Polish_
+
+## StatusBar entfernt — vier Concerns umverteilt (2026-07-22)
+
+User-Request: die **untere Status-Leiste komplett entfernen** und ihre vier Concerns + den Upstream-Release-Badge an natürlichere Orte umverteilen. `StatusBar.vue` **gelöscht**; `NotesView.vue` Mont-Punkt + `flex-col`-Wrapper gedroppt (List+Editor-Row ist jetzt direktes `flex-1`-Child). Backing bleibt: `useStatusStore` (`stores/status.ts`) + pure `utils/status.ts` sind weiterhin die Single Source of Truth — nur die Konsum-Oberflächen haben gewechselt.
+
+**Umverteilung:**
+- **Sync-Status** → Sidebar-Account-Area (`Sidebar.vue`), rechts neben dem Log-out-Button. Neuer `syncText`-Computed = `syncStatusText(auth.isLoggedIn, status.syncState, status.lastSynced, status.hasUnsyncedChanges, status.now)`; liest `status.now` (Wall-Clock, `startClock` in `App.vue` boot) → relative Zeit bleibt frisch. Account-Block umgebaut zu `flex justify-between`-Row: Log-out links, Sync-Text rechts (unter Email).
+- **Wortzahl + Ln/Col** → Editor-Tags-Footer (`Editor.vue` `editor-tags`-Row), rechts-aligniertes `ml-auto`-Span `N words · Ln X, Col Y`, liest `status.wordCount/cursorLine/cursorColumn` (die `Editor.vue` selbst via `setEditorStats` pusht). `v-if="!isDraft"` wie die Tags → Drafts zeigen nichts (kein Footer by design, konsistent mit Tags).
+- **Autosave-Indikator** ("Saving…/Saved") → Editor-Toolbar (`EditorToolbar.vue`), rechts-aligniertes `ml-auto`-Span liest `status.saving`/`status.savedAt`. **`ml-auto` vom Ellipsis/Command-Palette-Button auf das neue Span verschoben** → Span ist der rechte Anker, Ellipsis bleibt rightmost. `ToolbarDefinition`/`stores/toolbar.ts` **unangetastet** (Autosave ist hardcoded trailing sibling wie find/ToC/history/remind, außerhalb des synced 2D-Layout-Modells — der Store-Docstring warnte schon davor, das synced `toolbarConfig:desktop` nicht mit neuen Semantics zu belasten).
+- **Upstream-Release-Badge** → Window-Titlebar (`TitleBar.vue`), im rechten `flex items-center gap-1`-Wrapper **neben dem `v0.0.1`-Version-Tag**. Markup gespiegelt vom gelöschten StatusBar-Badge (`openUpstreamRelease` öffnet `upstream.status?.latestUrl`; `upstream.dismiss()`). `v0.0.1` bleibt hardcoded literal (dynamische Version out of scope).
+
+**Kein Duplication:** der Status-Store-Docstring notierte, dass Autosave *aus der Toolbar in den Store* verschoben wurde um die StatusBar zu backen — jetzt liest die Toolbar wieder aus derselben Single-Source-of-Truth, kein duplizierter State.
+
+**Kommentar-Cleanup:** stale "StatusBar"-Referenzen in `stores/status.ts` + `utils/status.ts` + `stores/upstream-notifier.ts` + `App.vue`-Kommentar auf die neuen Oberflächen (Sidebar/Editor-Footer/Toolbar/Titlebar) aktualisiert — keine Logik-Änderung.
+
+**Verifiziert:** `typecheck:web` clean; Contract-Suite **1270/1270 grün** (`status.spec.ts` 29/29 — pure Helpers unverändert; es gab nie einen Component-Test für StatusBar). **On-Site visual gate pending:** Sidebar-Sync-Text ("Local only" pre-login / "5m ago" / "Syncing…"), Editor-Footer-Counts beim Tippen/Caret-Bewegen, Toolbar-Autosave, Titlebar-Upstream-Badge nur wenn `hasNewer`; keine untere Leiste mehr.
+
+_Zuletzt aktualisiert: 2026-07-22 (StatusBar entfernt; Sync→Sidebar-Account, Wortzahl/Ln·Col→Editor-Tags-Footer, Autosave→Editor-Toolbar ml-auto, Upstream-Badge→Titlebar neben v0.0.1; `useStatusStore`+`utils/status.ts` bleiben; 1270 tests grün; typecheck:web clean; on-site pending) — siehe oben; davor 2026-07-22 Global Title-Bar Search_
+
+## Cross-Device Auto-Sync (SSE triggerSync → databaseSyncRequested → db.sync) (2026-07-22)
+
+User-Beobachtung: im Upstream-Web-App sieht eine Instanz Edits einer anderen Instanz ohne manuelles Refresh. Analyse: der Mechanismus lebt **bereits im vendored `@notesnook/core`** — er war im Vue-App nur **nicht verdrahtet**. Jeder eingeloggte Client öffnet eine persistente **SSE**-Channel zu `${SSE_HOST}/sse` (`api/index.ts:connectSSE` L382-453); wenn ein Device editiert+synced pusht der Server `triggerSync` zu den anderen → Core published `EVENTS.databaseSyncRequested` (`db:syncRequested`, `common.ts:83`) mit `(true, false)`. Daten-Transfer = SignalR-WebSocket-Hub (`api/sync/index.ts` `/hubs/sync/v2`, `SendItems`). Core subscribiert `databaseSyncRequested` **selbst nie** — der Host muss `db.sync()` rufen. Lokaler `AutoSync` (`api/sync/auto-sync.ts`) watcht jeden DB-Write + published nach ~1s-Debounce `(false, false)` (local-edit → ignoriert).
+
+**Zwei Lücken im Vue-App (beide gefixt):**
+1. **SSE öffnete nie.** Core `connectSSE` returnt früh wenn `db.setup({eventsource})` keinen Constructor kriegt — und native Browser-`EventSource` kann keinen `Authorization: Bearer`-Header senden. Fix: `@microsoft/fetch-event-source`-Dep + neuer `platform/event-source.ts` `HeaderEventSource`-Adapter (implementiert nur das Subset das Core nutzt: `onopen`/`onmessage`/`onerror`-Setter, `readyState`, `OPEN`, `close()`; injected via `as unknown as NonNullable<DatabaseOptions["eventsource"]>` in `database.ts` — volle DOM-`EventSource` bewusst nicht implementiert). `connectSSE` auto-runned auf `userLoggedIn`/`userFetched`/`tokenRefreshed` (Core subscribes die auf seinem instance-Bus — kein Bridge nötig); `disconnectSSE` auf `userLoggedOut`.
+2. **Niemand subscribierte `databaseSyncRequested`.** Fix: `EVENTS.databaseSyncRequested` zu `BRIDGED_EVENTS` in `platform/event-bridge.ts` → kommt auf den globalen `EV` (survived `switchContext` — `bindEventBridge` re-bindet pro neuem `Database`). `bindAutoSyncEvents()` in `stores/sync.ts` (idempotent `let autoSyncBound=false`, process-lifetime, kein teardown — mirrors `status.bindSyncEvents`/`vault.bindVaultEvents`); gerufen aus `App.vue` onMounted.
+
+**Gating (pure, contract-getestet):** `@contracts/auto-sync-gating.ts` `shouldRunAutoSync(args, {isLoggedIn, syncEnabled, windowType})` — reagiert NUR wenn first arg `=== true` (server-initiiert: SSE `triggerSync` + `onPushCompleted` publishen `(true,…)`) und ignoriert local-`AutoSync` `(false,false)` (die save-getriebene `scheduleAutoSync` pusht local edits bereits — hier zu reagieren hieße double-sync pro Tastendruck). Guards `busy.value` (skip wenn sync in-flight — der laufende Pull fetcht es). Note/Settings-Windows defer zum Main-Window. Ruft `startSync({type:"full"})`.
+
+**Open-Editor Live-Reload:** der `syncCompletedSignal`-Watcher (`App.vue`) ist jetzt `async`: capturt pro offenem Note-Tab das `dateEdited` (aus `editorLayout.tabs`) VOR `notes.load()`, bumpet nachher `notes.bumpNoteChanged(id)` (neue public-Methode in `stores/notes.ts`) nur für Notes deren `dateEdited` sich änderte — unveränderte offene Notes reloaden nicht (kein Cursor-Reset; `Editor.vue` skip-if-dirty schützt weiterhin mid-edit, der Receiver's next save gewinnt + re-broadcastet). Der Watcher reloadet weiterhin notes/collections/colors/shortcuts/reminders/notebook-icons (unverändert).
+
+**Gotchas:**
+- Renderer-Contracts-Alias = `@contracts/*` (NICHT `@/contracts`) — `@/*`→`src/renderer/src/*`, `@contracts/*`→`src/contracts/*`. (Sonst TS2307.)
+- `fetchEventSource`-Retry-Semantik (verifiziert in `node_modules/@microsoft/fetch-event-source/lib/cjs/fetch.js`): `onerror` throw=stop, return=retry (1000ms backoff); `onclose` (clean server close) resolved=stop, throw=retry. Adapter: retry bei network-error (return), stop bei fatal HTTP (throw in onopen), stop bei clean close (Core re-opened auf nächstem token/user-event). `close()` abortet via AbortController → Library's `signal.aborted`-Guard skippt onerror → clean stop.
+- `HeaderEventSource` wird nur auf `connectSSE` (Login) konstruiert — nie in Tests (kein Login) → `document`/`window`/`fetch`-Use ist renderer-only, safe. `db.setup` speichert nur den Constructor.
+- `SyncOptions.type` required + `exactOptionalPropertyTypes` — Handler nutzt `startSync({type:"full"})` via `buildSyncOptions`. Kein CommandContext involviert (Memory "CommandContext VIRAL" war anderes Concern).
+
+**Neue Dateien:** `platform/event-source.ts`, `@contracts/auto-sync-gating.ts`, `tests/contract/auto-sync-gating.spec.ts`. **Geänderte:** `apps/desktop/package.json` (+`@microsoft/fetch-event-source`), `platform/database.ts`, `platform/event-bridge.ts`, `stores/sync.ts`, `stores/notes.ts`, `App.vue`. `package-lock.json` updated.
+
+**Verifiziert:** `typecheck` (node+web) clean; Contract-Suite **1279/1279 grün** (9 neu in `auto-sync-gating.spec.ts`, keine Regression). **On-site gate pending:** zwei Instanzen selbes Account einloggen, Note in einer editieren, bestätigen dass other's Liste + offene Note ohne manuelles Sync updaten (Network/SSE-Roundtrip nur on-site verifizierbar — headless Gating/Event-Wiring/Types verifiziert).
+
+_Zuletzt aktualisiert: 2026-07-22 (Cross-Device Auto-Sync: HeaderEventSource polyfill + databaseSyncRequested bridge + bindAutoSyncEvents gating + open-note live-reload via bumpNoteChanged; 1279 tests grün; typecheck clean; on-site two-instance gate pending) — siehe oben; davor 2026-07-22 StatusBar entfernt_
 
 ## TODO: strip cross-app image-sync temp diagnostics (reminder)
 

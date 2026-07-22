@@ -29,6 +29,7 @@ import { createDialect } from "./sqlite-dialect";
 import { Compressor } from "./compressor";
 import { NNStorage } from "./storage";
 import { createFileStorage } from "./fs";
+import { HeaderEventSource } from "./event-source";
 import { getDatabaseKey, databaseKeyToPassword, SafeStorageKeyStore } from "./key-store";
 import type { Hosts } from "./server-config";
 import {
@@ -69,7 +70,17 @@ export async function initDatabase(
     // Note-history version cap (newer core requires it). `undefined` = no cap
     // until a settings-driven value is wired in.
     maxNoteVersions: () => Promise.resolve(undefined),
-    batchSize: 100
+    batchSize: 100,
+    // Header-capable EventSource constructor. Core's SSE client
+    // (`api/index.ts:connectSSE`) opens an EventSource to the SSE host with a
+    // custom `Authorization: Bearer` header, which the native browser
+    // EventSource can't send — without this, `connectSSE` returns early and
+    // the server can never push `triggerSync`, so cross-device auto-sync never
+    // fires. `HeaderEventSource` implements only the subset core uses; cast
+    // through `unknown` (see event-source.ts for why).
+    eventsource: HeaderEventSource as unknown as NonNullable<
+      DatabaseOptions["eventsource"]
+    >
   } satisfies DatabaseOptions);
   await db.init();
   return db;

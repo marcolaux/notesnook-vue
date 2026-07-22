@@ -21,6 +21,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web"
   },
   "dependencies": {
+    "@microsoft/fetch-event-source": "^2.0.1",
     "@streetwriters/kysely": "~0.27.4",
     "@trpc/server": "^10.45.2",
     "better-sqlite3-multiple-ciphers": "^12.4.1",

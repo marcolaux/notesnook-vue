@@ -14,6 +14,15 @@ const BRIDGED_EVENTS = [
   EVENTS.syncProgress,
   EVENTS.syncCompleted,
   EVENTS.syncAborted,
+  // Server-pushed "another device synced, pull the changes" signal. Core
+  // publishes this from the SSE `triggerSync` handler (`api/index.ts:434`),
+  // from `onPushCompleted` (`api/sync/index.ts`), and from local-edit
+  // `AutoSync` (`api/sync/auto-sync.ts`). Core never subscribes to it — the
+  // host is expected to call `db.sync(...)` on it. Bridging it to the global
+  // `EV` lets the sync-control store subscribe once (surviving `switchContext`,
+  // since `bindEventBridge` re-binds per new `Database`) and trigger a pull so
+  // edits made in another app instance appear here without a manual refresh.
+  EVENTS.databaseSyncRequested,
   EVENTS.vaultLocked,
   EVENTS.vaultAutoLocked,
   EVENTS.vaultUnlocked,

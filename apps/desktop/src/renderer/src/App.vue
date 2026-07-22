@@ -370,6 +370,13 @@ onMounted(async () => {
     status.bindSyncEvents();
     status.startClock();
     void status.refreshSync();
+    // Bind the SSE-driven auto-pull once (idempotent): when the server pushes
+    // `triggerSync` (another device synced), core publishes
+    // `databaseSyncRequested` and this triggers a `db.sync()` so the change
+    // appears here without a manual refresh. The handler self-gates (logged-in
+    // + sync-enabled + main window; note/settings windows defer). Safe
+    // pre-login — the handler is a no-op until logged in.
+    sync.bindAutoSyncEvents();
     // If booting into an already-logged-in account (cached user — e.g. a
     // return visit, or right after login's reload), pull the account's server
     // data. A fresh login also lands here after its reload. Local mode is
@@ -391,7 +398,7 @@ onMounted(async () => {
     // languages + custom dictionary) for the on-site settings UI. Safe
     // pre-login — the bridge is main-process, not auth-gated.
     void spellChecker.refresh();
-    // In-app upstream-release notifier (main window only — the StatusBar
+    // In-app upstream-release notifier (main window only — the title-bar
     // indicator lives here, and the shared localStorage throttle prevents a
     // note window from re-checking). Fire-and-forget: a GitHub outage never
     // blocks boot. Privacy-toggle-gated + once-per-24h inside the store.
@@ -537,17 +544,37 @@ if (!isSettingsWindow) {
   // status store bumps `syncCompletedSignal` on each `syncCompleted` event.
   watch(
     () => status.syncCompletedSignal,
-    () => {
+    async () => {
       // TEMP-DIAG sync-pull: is the reload-on-sync watch firing + gated?
       // eslint-disable-next-line no-console
       console.log("[sync] reload-on-sync firing; showShell:", auth.showShell);
       if (!auth.showShell) return;
-      void useNotesStore().load();
+      // Live-reload open notes the sync actually changed. Capture each open
+      // note's `dateEdited` BEFORE the reload so only notes the sync modified
+      // get their change signal bumped — bumping an unchanged open note would
+      // reload it (Editor.vue skip-if-dirty) and reset the cursor even though
+      // the content is identical. The skip-if-dirty guard still protects any
+      // pane mid-edit; the receiver's next save wins + re-broadcasts.
+      const openNoteIds = Object.values(editorLayout.tabs)
+        .filter((t) => t.kind === "note" && !!t.noteId)
+        .map((t) => t.noteId as string);
+      const before = new Map<string, number>();
+      for (const id of openNoteIds) {
+        const item = notes.items.find((n) => n.id === id);
+        if (item) before.set(id, item.dateEdited);
+      }
+      await notes.load();
       void useCollectionsStore().load();
       void useColorsStore().refresh();
       void useShortcutsStore().refresh();
       void useRemindersStore().refresh();
       void useNotebookIconsStore().load();
+      for (const id of openNoteIds) {
+        const after = notes.items.find((n) => n.id === id)?.dateEdited;
+        if (after !== undefined && after !== before.get(id)) {
+          notes.bumpNoteChanged(id);
+        }
+      }
     }
   );
 
