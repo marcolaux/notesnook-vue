@@ -104,24 +104,35 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # Node 24 ships npm 11. The committed lockfile is npm-11-style: most
-          # entries omit `resolved`/`integrity`. Node 22's bundled npm 10 fails
-          # to fully extract the large binary-bearing helper packages
-          # (app-builder-bin, 7zip-bin, dmg-builder, dmg-license,
-          # iconv-corefoundation) from such entries — it leaves the package
-          # dir in place but drops the native binaries, so electron-builder
-          # dies with "spawn app-builder ENOENT". npm 11 extracts them
-          # correctly. (Native modules are rebuilt for the Electron ABI by
-          # electron-builder regardless of the host Node, so the host Node
-          # version only affects the build/packaging tooling, not the output.)
+          # Node 24 ships npm 11, matching the npm that generated the
+          # committed (npm-11-style) lockfile. npm 11 is verified to fully
+          # extract the large binary helper packages (app-builder-bin,
+          # 7zip-bin, dmg-builder, dmg-license, iconv-corefoundation).
+          # `cache: npm` is intentionally OFF here — see the next step.
           node-version: 24
-          cache: npm
 
       - name: Use latest npm
-        # Node 24 bundles npm 11.x; pin to the latest 11 to match the npm that
-        # generated the committed lockfile (and that is verified to fully
-        # extract the binary helper packages — see Setup Node note).
+        # Pin to the latest npm 11 (matches the lockfile generator).
         run: npm install -g npm@latest
+
+      - name: Install dependencies
+        # No setup-node npm cache on this job (by design). The committed
+        # lockfile is npm-11-style: the binary helper packages
+        # (app-builder-bin, 7zip-bin, dmg-builder, dmg-license,
+        # iconv-corefoundation) have entries WITHOUT `resolved`/`integrity`.
+        # setup-node's `cache: npm` is keyed by the lockfile hash, so a bad
+        # app-builder-bin tarball cached by an earlier run is restored on
+        # every subsequent run and served by `npm ci` without rejection (there
+        # is no lockfile integrity to verify against) — the package dir is
+        # extracted but the multi-MB native binaries are not, so
+        # electron-builder dies with "spawn app-builder ENOENT". This fails
+        # identically under npm 10 and npm 11 because the cache is unchanged.
+        # Skipping the cache forces a fresh, registry-integrity-verified
+        # download, which extracts the binaries correctly. (Verified locally:
+        # npm ci with a clean cache leaves app-builder-bin's 18-20MB binaries
+        # present.) The extra ~1-2GB download per run is acceptable for a
+        # packaging job and avoids the poisoned shared cache.
+        run: npm ci
 
       - name: Install dependencies
         # `npm ci` for a locked, reproducible install. On npm 11 it fully
