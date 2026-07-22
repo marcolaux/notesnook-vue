@@ -163,8 +163,24 @@ jobs:
           echo "Installing ${{ matrix.oxide-pkg }}@${OXIDE_VER}"
           npm install --no-save --no-fund --no-audit "${{ matrix.oxide-pkg }}@${OXIDE_VER}"
 
+      - name: DEBUG app-builder-bin after oxide step
+        shell: bash
+        continue-on-error: true
+        run: |
+          echo "=== AFTER OXIDE: app-builder-bin/linux/x64 ==="
+          ls -la node_modules/app-builder-bin/linux/x64/ 2>&1
+          echo "=== AFTER OXIDE: @tailwindcss/oxide present? ==="
+          ls node_modules/@tailwindcss/ 2>&1
+
       - name: Build (main + preload + renderer)
         run: npm run build
+
+      - name: DEBUG app-builder-bin after build step
+        shell: bash
+        continue-on-error: true
+        run: |
+          echo "=== AFTER BUILD: app-builder-bin/linux/x64 ==="
+          ls -la node_modules/app-builder-bin/linux/x64/ 2>&1
 
       - name: Package installer(s)
         working-directory: apps/desktop
