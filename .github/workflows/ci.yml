@@ -147,9 +147,42 @@ jobs:
       - name: Build (main + preload + renderer)
         run: npm run build
 
+      - name: Disable Spotlight indexing (macOS DMG detach workaround)
+        # GitHub-hosted macOS runners intermittently fail electron-builder's
+        # DMG step at `hdiutil detach` with "resource busy": Spotlight (mds)
+        # opens file handles on the freshly-mounted DMG volume, keeping it busy
+        # so the detach never succeeds — electron-builder retries 5× then gives
+        # up and the job fails (even though the .app/.zip/.dmg files were all
+        # built fine; only the volume cleanup flaked). Disabling Spotlight
+        # indexing on the root volume stops mds from grabbing the DMG. This is
+        # the most-cited fix for that exact transient flake. No-op on Win/Linux.
+        if: runner.os == 'macOS'
+        run: sudo mdutil -i off /
+
       - name: Package installer(s)
         working-directory: apps/desktop
-        run: npx electron-builder --config electron-builder.yml ${{ matrix.targets }} --publish never
+        shell: bash
+        # macOS DMG creation can still flake transiently even with Spotlight off
+        # (hdiutil detach races with other runner processes), so retry the whole
+        # packaging pass a few times. `release/` is wiped before each attempt so
+        # electron-builder starts clean; its Electron download is cached, so
+        # retries are fast. Non-macOS hosts pass on attempt 1 almost always.
+        run: |
+          for i in 1 2 3; do
+            echo "::group::Packaging attempt $i"
+            rm -rf release
+            if npx electron-builder --config electron-builder.yml ${{ matrix.targets }} --publish never; then
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            if [ "$i" -eq 3 ]; then
+              echo "::error::Packaging failed after 3 attempts"
+              exit 1
+            fi
+            echo "Attempt $i failed; retrying in 10s…"
+            sleep 10
+          done
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
