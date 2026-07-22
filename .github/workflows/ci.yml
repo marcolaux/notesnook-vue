@@ -104,12 +104,30 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Node 24 ships npm 11. The committed lockfile is npm-11-style: most
+          # entries omit `resolved`/`integrity`. Node 22's bundled npm 10 fails
+          # to fully extract the large binary-bearing helper packages
+          # (app-builder-bin, 7zip-bin, dmg-builder, dmg-license,
+          # iconv-corefoundation) from such entries — it leaves the package
+          # dir in place but drops the native binaries, so electron-builder
+          # dies with "spawn app-builder ENOENT". npm 11 extracts them
+          # correctly. (Native modules are rebuilt for the Electron ABI by
+          # electron-builder regardless of the host Node, so the host Node
+          # version only affects the build/packaging tooling, not the output.)
+          node-version: 24
           cache: npm
 
+      - name: Use latest npm
+        # Node 24 bundles npm 11.x; pin to the latest 11 to match the npm that
+        # generated the committed lockfile (and that is verified to fully
+        # extract the binary helper packages — see Setup Node note).
+        run: npm install -g npm@latest
+
       - name: Install dependencies
-        # `npm ci` for a locked, reproducible install — same as the test job.
-        # It does NOT, however, fetch the platform-specific @tailwindcss/oxide
+        # `npm ci` for a locked, reproducible install. On npm 11 it fully
+        # extracts the binary helper packages that npm 10 left incomplete
+        # (see Setup Node note). It does NOT, however, fetch the
+        # platform-specific @tailwindcss/oxide
         # native optional dep on non-darwin-arm64 hosts: the committed lockfile
         # only resolves that one platform variant (a known npm optional-deps
         # bug, npm/cli#4828). The next step installs the missing binding.
