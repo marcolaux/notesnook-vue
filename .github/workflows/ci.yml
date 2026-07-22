@@ -58,11 +58,12 @@ jobs:
         run: npm run test:contract
 
   # Cross-OS packaging: build the renderer/main/preload, then electron-builder
-  # produces distributable installers per OS. electron-builder rebuilds the
-  # native modules for the Electron ABI automatically. macOS is split across
-  # arm64 (Apple Silicon) and x64 (Intel) hosts so each arch gets its native
-  # FTS5 extension prebuilds — no cross-arch prebuild gap. Snap is deferred
-  # (flaky in CI / confinement; see electron-builder.yml DEFERRED notes).
+  # produces distributable installers per OS. macOS is arm64-only (Apple
+  # Silicon) — x64/Intel builds are dropped (see electron-builder.yml `mac`).
+  # Snap is deferred (flaky in CI / confinement; see electron-builder.yml
+  # DEFERRED notes). Native modules ship at the host-Node ABI in CI
+  # (`npmRebuild: false`); runtime native correctness is an on-site/release
+  # gate, not a CI gate.
   package:
     name: Package ${{ matrix.os-name }}
     runs-on: ${{ matrix.os }}
@@ -72,15 +73,17 @@ jobs:
         include:
           - os-name: macos-arm64
             os: macos-latest
-            targets: "--mac --arm64"
+            # `--mac` only — the arm64 arch is pinned in electron-builder.yml
+            # (`mac.target[].arch: [arm64]`). Don't pass `--arm64` here: when
+            # the config target lists explicit arches, electron-builder IGNORES
+            # the CLI arch flag and builds every arch in the config (it built
+            # both arm64+x64 = 4 app copies ≈ 1.1 GB before the config was
+            # narrowed to arm64-only).
+            targets: "--mac"
             # The platform-specific @tailwindcss/oxide native binding each host
             # needs for the Tailwind vite plugin during the renderer build.
             # See the "Install Tailwind oxide native binding" step below.
             oxide-pkg: "@tailwindcss/oxide-darwin-arm64"
-          - os-name: macos-x64
-            os: macos-13
-            targets: "--mac --x64"
-            oxide-pkg: "@tailwindcss/oxide-darwin-x64"
           - os-name: windows
             os: windows-latest
             targets: "--win"

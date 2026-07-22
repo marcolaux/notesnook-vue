@@ -95,11 +95,14 @@ mac:
   category: public.app-category.productivity
   darkModeSupport: true
   # icon: build/icon.icns   # deferred — branded icon asset
+  # arm64-only: x64 (Intel) builds are intentionally not produced (low value,
+  # Apple Silicon is the overwhelming target). Re-add `x64` to the arch lists
+  # (and a macos-x64 CI matrix entry) to revive Intel builds.
   target:
     - target: dmg
-      arch: [arm64, x64]
+      arch: [arm64]
     - target: zip
-      arch: [arm64, x64]
+      arch: [arm64]
   # hardenedRuntime / notarize / entitlements = release gate (needs certs).
 
 dmg:
