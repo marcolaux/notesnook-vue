@@ -15,12 +15,22 @@ import { onMounted, onUnmounted } from "vue";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useShellStore } from "@/stores/shell";
 import { useTitleBarStore } from "@/stores/titlebar";
-import { useSearchStore } from "@/stores/search";
+import { useOmnibarStore } from "@/stores/omnibar";
+import { useUpstreamNotifierStore } from "@/stores/upstream-notifier";
 import GlobalSearchInput from "./GlobalSearchInput.vue";
 
 const shell = useShellStore();
 const titlebar = useTitleBarStore();
-const search = useSearchStore();
+const omnibar = useOmnibarStore();
+const upstream = useUpstreamNotifierStore();
+
+// Upstream-release indicator: shown when a newer `streetwriters/notesnook`
+// desktop release exists than the one we built against. Click opens the
+// release page; the dismiss button hides it until a newer tag appears.
+function openUpstreamRelease(): void {
+  const url = upstream.status?.latestUrl;
+  if (url) window.open(url, "_blank");
+}
 
 // Measure the real Window Controls Overlay width (Windows/Linux) so the right
 // padding exactly clears the OS caption buttons. `getTitlebarArea()` returns
@@ -43,28 +53,36 @@ function onGeometryChange(): void {
   measureControlsWidth();
 }
 
-// Global-search hotkey: Ctrl/Cmd+Alt+F focuses the title-bar search input (the
-// store bumps `focusSignal`, which the input watches). Plain Cmd/Ctrl+F is the
-// per-pane find-in-note binding (no Alt) — Alt+F is unclaimed and reads as "find".
-// NOTE: check `e.code === "KeyF"` (the physical key), NOT `e.key` — on macOS
-// Option/Alt is a dead-modifier that changes `e.key` to a glyph (Alt+F → "ƒ"),
-// so an `e.key === "f"` check would never fire on macOS.
-function onGlobalSearchHotkey(e: KeyboardEvent): void {
-  if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === "KeyF") {
+// Omnibar hotkeys (the title-bar picker). Three entry points, all checked on
+// `e.code` (the physical key) — on macOS Option/Alt is a dead-modifier that turns
+// `e.key` into a glyph, so an `e.key === "f"` check would never fire for Alt+F.
+//   Ctrl/Cmd+Alt+F → notes mode   (the legacy "find in all notes" binding)
+//   Ctrl/Cmd+K     → command mode (prefills `>`) — the primary telescope opener
+//   Ctrl/Cmd+Shift+P → command mode (alias, preserved for muscle memory)
+// Plain Cmd/Ctrl+F (no Alt) is the per-pane find-in-note binding in `Editor.vue`.
+function onOmnibarHotkey(e: KeyboardEvent): void {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.altKey && e.code === "KeyF") {
     e.preventDefault();
-    search.focus();
+    omnibar.openNotes();
+  } else if (e.code === "KeyK") {
+    e.preventDefault();
+    omnibar.openCommands();
+  } else if (e.shiftKey && (e.key === "p" || e.key === "P")) {
+    e.preventDefault();
+    omnibar.openCommands();
   }
 }
 
 onMounted(() => {
   measureControlsWidth();
   navigator.windowControlsOverlay?.addEventListener("geometrychange", onGeometryChange);
-  window.addEventListener("keydown", onGlobalSearchHotkey);
+  window.addEventListener("keydown", onOmnibarHotkey);
 });
 
 onUnmounted(() => {
   navigator.windowControlsOverlay?.removeEventListener("geometrychange", onGeometryChange);
-  window.removeEventListener("keydown", onGlobalSearchHotkey);
+  window.removeEventListener("keydown", onOmnibarHotkey);
 });
 </script>
 
@@ -74,17 +92,52 @@ onUnmounted(() => {
     :style="{ paddingLeft: titlebar.padding.left + 'px', paddingRight: titlebar.padding.right + 'px' }"
   >
     <button
-      class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted hover:bg-glass-hover"
+      class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted transition-[opacity,background-color,color] duration-200 hover:bg-glass-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
       title="Toggle Sidebar"
+      :disabled="shell.focusMode"
       @click="shell.toggleSidebar()"
     >
       <Icon name="panel-left" :size="16" />
+    </button>
+    <!-- Focus mode: hides the sidebar + notes list for a distraction-free
+         writing surface. While on, the sidebar toggle is disabled (the panel
+         is force-hidden — revealing it would just hide again on re-render).
+         The icon scales up slightly when active for a tactile toggle feel. -->
+    <button
+      class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted transition-[background-color,color,transform] duration-200 hover:bg-glass-hover"
+      :class="shell.focusMode ? 'bg-glass-hover text-text' : ''"
+      :title="shell.focusMode ? 'Exit focus mode' : 'Enter focus mode'"
+      @click="shell.toggleFocusMode()"
+    >
+      <Icon
+        name="focus"
+        :size="16"
+        class="transition-transform duration-200"
+        :class="shell.focusMode ? 'scale-110' : ''"
+      />
     </button>
     <!-- The editor tab strips live per-pane (Phase 4.2/4.3); the title-bar
          center slot hosts the global search (replacing the old app label).
          Platform-aware padding still keeps this clear of the OS window controls. -->
     <GlobalSearchInput class="flex-1" />
     <div class="flex items-center gap-1">
+      <span
+        v-if="upstream.hasNewer"
+        class="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-px text-[10px] text-accent"
+        :title="`Upstream ${upstream.status?.latestTag} is newer than the ${upstream.status?.baselineTag} you built against — click to view`"
+      >
+        <button type="button" class="flex cursor-pointer items-center gap-1 hover:underline" @click="openUpstreamRelease">
+          <Icon name="arrow-up" :size="10" /> upstream {{ upstream.status?.latestTag }}
+        </button>
+        <button
+          type="button"
+          class="cursor-pointer text-text-muted hover:text-text"
+          title="Dismiss until a newer release"
+          @click="upstream.dismiss()"
+        >
+          <Icon name="x" :size="12" />
+        </button>
+      </span>
       <span class="text-[10px] text-text-muted">v0.0.1</span>
     </div>
   </div>

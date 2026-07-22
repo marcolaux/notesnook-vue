@@ -61,6 +61,13 @@ function isSelected(): boolean {
   return collections.selected?.type === "notebook" && collections.selected.id === props.node.item.id;
 }
 
+/** Is this row the target of the currently-open context menu? The store tags
+ *  the target via `contextId` on `show` + clears it on `close`, so this only
+ *  reads true while this notebook's menu is open. */
+function isContextTarget(): boolean {
+  return contextMenu.contextId === props.node.item.id;
+}
+
 /** Is this row currently in inline-rename mode? */
 const isRenaming = computed(
   () =>
@@ -113,7 +120,7 @@ function onContext(e: MouseEvent): void {
     confirm: (opts) => dialog.confirm(opts),
     deleteNotebook: (id) => collections.deleteNotebook(id)
   });
-  contextMenu.show(entries, e.clientX, e.clientY);
+  contextMenu.show(entries, e.clientX, e.clientY, props.node.item.id);
 }
 
 /** Commit the inline rename (Enter / blur). */
@@ -201,7 +208,8 @@ function onDrop(e: DragEvent): void {
       class="titlebar-no-drag group relative flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-[12px] transition-colors"
       :class="[
         isSelected() ? 'bg-glass-active text-text' : 'text-text hover:bg-glass-hover',
-        noteDropOver ? 'ring-2 ring-blue-400 bg-blue-400/10' : ''
+        noteDropOver ? 'ring-2 ring-blue-400 bg-blue-400/10' : '',
+        isContextTarget() ? 'context-target-row' : ''
       ]"
       :style="{ paddingLeft: props.depth * 12 + 8 + 'px' }"
       :title="node.item.description || node.item.title"

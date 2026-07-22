@@ -11,6 +11,9 @@ import { useColorDialogStore } from "@/stores/color-dialog";
 import { useReminderDialogStore } from "@/stores/reminder-dialog";
 import { useRemindersStore } from "@/stores/reminders";
 import { useDialogStore } from "@/stores/dialog";
+import { usePublishStore } from "@/stores/publish";
+import { usePublishDialogStore } from "@/stores/publish-dialog";
+import { formatPublishUrl } from "@/utils/publish";
 import { getDatabase } from "@/platform/bootstrap";
 import { desktop } from "@/platform/desktop-bridge";
 import { DefaultColors } from "@notesnook-vue/contracts";
@@ -42,6 +45,8 @@ const colorDialog = useColorDialogStore();
 const reminderDialog = useReminderDialogStore();
 const reminders = useRemindersStore();
 const dialog = useDialogStore();
+const publish = usePublishStore();
+const publishDialog = usePublishDialogStore();
 
 /** Core's `DefaultColors` (name → hex) as title-cased preset entries for the
  *  Color submenu — picking one creates the color in the db + assigns it. */
@@ -96,13 +101,25 @@ function clearCollectionFilter(): void {
 }
 
 /** Whether a row should render the multi-selection treatment (accent bg +
- *  ring + checkmark). A selected row gets it whenever it is NOT the lone
- *  active note: a non-active selected row always does, and the active note
- *  joins it when it is part of a multi-selection (count > 1) so the whole
- *  selected set reads as one consistent selection. The active note only
- *  keeps its `bg-glass-active` "open" highlight when it is the sole selection. */
+ *  ring + checkmark). Only when MORE than one note is selected — so a lone
+ *  selection never reads as "multi-select". This matters for right-click:
+ *  `onNoteContext` reconciles the selection to the right-clicked row (so its
+ *  menu acts on that note), but a single selected row that isn't the open
+ *  note must NOT light up as if it were multi-selected; the active note keeps
+ *  its `bg-glass-active` "open" highlight, and the lone non-active selection
+ *  shows no special treatment. When count > 1, every selected row (including
+ *  the active one) joins the treatment so the whole set reads as one. */
 function noteRowSelected(id: string): boolean {
-  return notes.isSelected(id) && (notes.activeNote?.id !== id || notes.selectedCount > 1);
+  return notes.isSelected(id) && notes.selectedCount > 1;
+}
+
+/** Whether a row is the target of the currently-open context menu — so it
+ *  keeps a dashed outline while the menu is open, marking which note the menu
+ *  acts on (the menu floats away from the row, so without it the target is
+ *  ambiguous once the cursor moves to the menu). Cleared by `close` + every
+ *  `show`, so it never lingers after the menu closes or switches source. */
+function noteRowContext(id: string): boolean {
+  return contextMenu.contextId === id;
 }
 
 /** Plain / cmd / shift click on a note row (file-manager semantics):
@@ -118,13 +135,23 @@ function onNoteClick(note: NoteListItem, e: MouseEvent): void {
  *  part of the current multi-selection the whole selection travels with the
  *  drag; otherwise the drag carries just this note and the selection collapses
  *  to it so the highlight matches the dragged set. The payload is read by
- *  sidebar drop targets (Notebook / Tag / Color / Archive / Trash). Records the
+ *  sidebar drop targets (Notebook / Tag / Color / Archive / Trash) AND the
+ *  editor-area drop targets (tab strip, editor-pane split zone). Records the
  *  start screen point + grabbed note id so `onNoteDragEnd` can tear off into a
  *  new window when the drag is released outside every window (mirroring tab
- *  tear-off via `desktop.window.releaseTab`). */
+ *  tear-off via `desktop.window.releaseTab`).
+ *
+ *  The selection collapse uses `setSelection` (NOT `selectOnly`) deliberately:
+ *  `selectOnly` also calls `layout.openNote`, which would open the grabbed note
+ *  in the active pane the instant the drag starts — defeating a drag onto
+ *  another pane/tab strip (the note would already be a tab there, so the drop
+ *  target's `openTab` would reuse it in place and an edge-split would create an
+ *  empty sibling). `setSelection` selects without any editor effect, so the
+ *  drag truly carries the note without opening it. Plain-click still opens via
+ *  `onNoteClick → selectOnly`; only the drag path is opening-free. */
 function onNoteDragStart(note: NoteListItem, e: DragEvent): void {
   const ids = notes.isSelected(note.id) ? [...notes.selectedNoteIds] : [note.id];
-  if (!notes.isSelected(note.id)) notes.selectOnly(note.id);
+  if (!notes.isSelected(note.id)) notes.setSelection([note.id]);
   writeNotePayload(e, { ids });
   resetNoteDropHandled();
   noteDragStart.value = { x: e.screenX, y: e.screenY, noteId: note.id };
@@ -206,7 +233,7 @@ async function onNoteContext(
   if (notes.selectedCount > 1) {
     const ids = [...notes.selectedNoteIds];
     const entries = await buildMultiEntries(ids);
-    contextMenu.show(entries, e.clientX, e.clientY);
+    contextMenu.show(entries, e.clientX, e.clientY, note.id);
     return;
   }
 
@@ -217,22 +244,28 @@ async function onNoteContext(
   let colorId: string | null = null;
   let tagIds: string[] = [];
   let notebookIds: string[] = [];
+  let published = false;
   try {
     const [colorItems, tagItems, notebookItems] = await Promise.all([
       db.relations.to(ref, "color").resolve().catch(() => []),
       db.relations.to(ref, "tag").resolve().catch(() => []),
-      db.relations.to(ref, "notebook").resolve().catch(() => [])
+      db.relations.to(ref, "notebook").resolve().catch(() => []),
+      // Repopulate the in-memory monographs cache so `isPublished` is accurate
+      // for a note published in another window/process (core events are
+      // per-process; the cache may be stale until the next sync refresh).
+      db.monographs.refresh().catch(() => undefined)
     ]);
     colorId = (colorItems as { id: string }[])[0]?.id ?? null;
     tagIds = (tagItems as { id: string }[]).map((t) => t.id);
     notebookIds = (notebookItems as { id: string }[]).map((n) => n.id);
+    published = db.monographs.isPublished(note.id);
   } catch {
     // leave the snapshot empty — the menu opens without checks
   }
 
   // The mutable snapshot the submenu builders close over. The keepOpen toggle
   // callbacks mutate it so the store's `refreshSubmenu` rebuild shows the new ✓.
-  const target: NoteMenuTarget = { ...note, colorId, tagIds, notebookIds };
+  const target: NoteMenuTarget = { ...note, published, colorId, tagIds, notebookIds };
 
   const entries = buildNoteMenu(target, {
     openInWindow: (id) => {
@@ -326,9 +359,44 @@ async function onNoteContext(
       void reminderDialog.openCreateForNote(noteId, noteTitle).then((input) => {
         if (input) void reminders.add(input);
       });
+    },
+    // Publish-to-web: open the publish dialog seeded with the note's title; on
+    // confirm, publish via the publish store's explicit-id action (works for a
+    // right-clicked note that is not the active note). `target.published` is set
+    // optimistically so the menu shows the published state if re-opened.
+    publishNote: (noteId, noteTitle) => {
+      void publishDialog.openCreate(noteId, noteTitle).then((input) => {
+        if (!input) return;
+        const { title, ...opts } = input;
+        void publish.publishById(noteId, title, opts).then((ok) => {
+          if (ok) target.published = true;
+        });
+      });
+    },
+    // Unpublish (confirm is composed by the builder). Optimistically clear.
+    unpublishNote: (noteId) => {
+      void publish.unpublishById(noteId).then((ok) => {
+        if (ok) target.published = false;
+      });
+    },
+    // Copy the authoritative server-returned `Monograph.publishUrl`.
+    copyMonographUrl: (noteId) => {
+      void (async () => {
+        const m = await db.monographs.get(noteId);
+        const url = formatPublishUrl(m);
+        if (url) void navigator.clipboard.writeText(url);
+      })();
+    },
+    // Open in the system browser (`window.open` → `shell.openExternal`).
+    openMonograph: (noteId) => {
+      void (async () => {
+        const m = await db.monographs.get(noteId);
+        const url = formatPublishUrl(m);
+        if (url) window.open(url, "_blank", "noopener");
+      })();
     }
   });
-  contextMenu.show(entries, e.clientX, e.clientY);
+  contextMenu.show(entries, e.clientX, e.clientY, note.id);
 }
 
 /** Build the multi-selection context menu for `ids`: fetch the per-assignment
@@ -545,6 +613,7 @@ function formatDate(ts: number): string {
           :class="{
             'bg-glass-active': notes.activeNote?.id === note.id && !noteRowSelected(note.id),
             'note-row-selected': noteRowSelected(note.id),
+            'context-target-row': noteRowContext(note.id),
             'has-tint': !!note.color
           }"
           :style="note.color ? { '--note-tint': note.color.colorCode } : undefined"
@@ -567,6 +636,7 @@ function formatDate(ts: number): string {
             />
             <Icon v-if="note.pinned" name="pin" :size="10" class="text-amber-300/80" fill="currentColor" title="Pinned" />
             <Icon v-if="note.favorite" name="star" :size="10" class="text-amber-300/80 thin-outline" fill="currentColor" title="Favorite" />
+            <Icon v-if="notes.publishedIds.has(note.id)" name="globe" :size="10" class="text-text-muted" title="Published" />
             <span class="truncate text-xs font-medium text-text">
               <template v-for="(seg, i) in segmentsOf(note.title)" :key="i">
                 <mark v-if="seg.match" class="rounded-sm bg-amber-400/30 px-0.5 text-text">{{ seg.text }}</mark>

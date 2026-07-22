@@ -7,6 +7,7 @@ import { useColorsStore } from "@/stores/colors";
 import { useAuthStore } from "@/stores/auth";
 import { useStatusStore } from "@/stores/status";
 import { useSyncStore } from "@/stores/sync";
+import { usePublishStore } from "@/stores/publish";
 import { useVaultStore } from "@/stores/vault";
 import { useBackupsStore } from "@/stores/backup";
 import { useSpellCheckerStore } from "@/stores/spell-checker";
@@ -19,6 +20,7 @@ import { useShortcutsStore } from "@/stores/shortcuts";
 import { useRemindersStore } from "@/stores/reminders";
 import { useToolbarStore } from "@/stores/toolbar";
 import { useNotebookIconsStore } from "@/stores/notebook-icons";
+import { useMonographsStore } from "@/stores/monographs";
 import { bootstrap } from "@/platform/bootstrap";
 import { desktop } from "@/platform/desktop-bridge";
 import { restoreSession } from "@/platform/session-restore";
@@ -30,14 +32,13 @@ import {
 } from "@/composables/use-session-persistence";
 import { dropZoneFromPoint } from "@/utils/tab-dnd";
 import { setTheme, ThemeDark, ThemeLight } from "@notesnook-vue/theme-vue";
-import { useCommandPalette } from "@/composables/use-command-palette";
 import { useReminderNotifications } from "@/composables/use-reminder-notifications";
-import CommandPalette from "@/components/CommandPalette.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ColorEditorDialog from "@/components/ColorEditorDialog.vue";
 import IconEditorDialog from "@/components/IconEditorDialog.vue";
 import ReminderEditorDialog from "@/components/ReminderEditorDialog.vue";
+import PublishDialog from "@/components/PublishDialog.vue";
 
 const router = useRouter();
 
@@ -72,6 +73,7 @@ const vault = useVaultStore();
 const backups = useBackupsStore();
 const spellChecker = useSpellCheckerStore();
 const editorLayout = useEditorLayoutStore();
+const publish = usePublishStore();
 const settings = useSettingsStore();
 const upstreamNotifier = useUpstreamNotifierStore();
 const config = useConfigStore();
@@ -149,10 +151,6 @@ function bindCrossWindowThemeListener(): void {
   window.addEventListener("storage", onStorage);
   storageCleanup = () => window.removeEventListener("storage", onStorage);
 }
-
-// Command palette hotkey (Ctrl/Cmd+Shift+P) toggles the palette store; the
-// <CommandPalette> overlay below renders the store's items.
-useCommandPalette();
 
 // Reminder OS-notification scheduling (main window only — settings / note
 // windows don't own reminders, and only one window should push the schedule
@@ -377,6 +375,12 @@ onMounted(async () => {
     // + sync-enabled + main window; note/settings windows defer). Safe
     // pre-login — the handler is a no-op until logged in.
     sync.bindAutoSyncEvents();
+    // Bind the monographs-updated event once (idempotent): when the server
+    // pushes monograph changes from another device, core emits
+    // `monographsUpdated` (bridged in `event-bridge.ts`) and this reseeds the
+    // active note's publish state + reloads the notes list. Safe pre-login —
+    // no-op until a note is active / the event fires.
+    publish.bindMonographsEvents();
     // If booting into an already-logged-in account (cached user — e.g. a
     // return visit, or right after login's reload), pull the account's server
     // data. A fresh login also lands here after its reload. Local mode is
@@ -569,6 +573,11 @@ if (!isSettingsWindow) {
       void useShortcutsStore().refresh();
       void useRemindersStore().refresh();
       void useNotebookIconsStore().load();
+      // Refresh the active note's publish state (core's sync `stop()` already
+      // refreshed the monographs cache) + the Monographs list so cross-device
+      // publish/unpublish changes appear without a manual reload.
+      void publish.refresh();
+      void useMonographsStore().load();
       for (const id of openNoteIds) {
         const after = notes.items.find((n) => n.id === id)?.dateEdited;
         if (after !== undefined && after !== before.get(id)) {
@@ -651,10 +660,6 @@ if (!isSettingsWindow) {
         </div>
       </div>
 
-      <!-- Command palette overlay (Ctrl/Cmd+Shift+P). Teleports to <body>;
-           stays mounted so it is available on the shell and login screen. -->
-      <CommandPalette />
-
       <!-- Right-click context menus (notes list + sidebar). Teleports to
            <body>; driven by useContextMenuStore. -->
       <ContextMenu />
@@ -674,6 +679,11 @@ if (!isSettingsWindow) {
       <!-- Reminder-editor dialog (RemindersView "New reminder" / row "Edit").
            Teleports to <body>; driven by useReminderDialogStore. -->
       <ReminderEditorDialog />
+
+      <!-- Publish-note dialog (editor toolbar ⋯ / note context menu /
+           `app:publish-note` command). Teleports to <body>; driven by
+           usePublishDialogStore. -->
+      <PublishDialog />
     </div>
   </div>
 </template>

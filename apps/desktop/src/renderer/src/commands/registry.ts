@@ -19,9 +19,24 @@ import type { useUpdaterStore } from "@/stores/updater";
 import type { useSpellCheckerStore } from "@/stores/spell-checker";
 import type { useEditorLayoutStore } from "@/stores/editor-layout";
 import type { useEditorStore } from "@/stores/editor";
-import type { useSearchStore } from "@/stores/search";
+import type { usePublishStore } from "@/stores/publish";
 
 export type CommandGroup = "app" | "editor";
+
+/**
+ * The narrow slice of the omnibar store that command handlers may call. Kept
+ * as a standalone interface (NOT `ReturnType<typeof useOmnibarStore>`) so the
+ * registry doesn't import the store (the store imports the registry — that
+ * would be a circular dep). The omnibar store satisfies this structurally.
+ */
+export interface OmnibarActions {
+  /** Open the omnibar in note-search mode (clears the query, focuses the field). */
+  openNotes(): void;
+  /** Open the omnibar in command mode (prefills `>`, focuses the field). */
+  openCommands(): void;
+  /** Bump the focus signal (focus the field in whatever mode is active). */
+  focus(): void;
+}
 
 export interface CommandContext {
   /** The focused pane's TipTap editor (undefined when no editor is live). */
@@ -40,8 +55,10 @@ export interface CommandContext {
   layout: ReturnType<typeof useEditorLayoutStore>;
   /** Focused-editor registry — `requestFind()` opens the focused tab's find bar. */
   editorStore: ReturnType<typeof useEditorStore>;
-  /** Global-search store — `focus()` focuses the title-bar search input. */
-  search: ReturnType<typeof useSearchStore>;
+  /** Publish-to-web state for the active note (publish/unpublish/URL) — Phase 5.1. */
+  publish: ReturnType<typeof usePublishStore>;
+  /** Title-bar omnibar — `openNotes()`/`openCommands()` switch the picker mode. */
+  omnibar: OmnibarActions;
   /** The Vue Router instance (set from `main.ts`; undefined outside the app). */
   router: Router | undefined;
   /** Close the palette overlay (called by the store after execute). */

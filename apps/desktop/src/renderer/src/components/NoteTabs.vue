@@ -14,6 +14,16 @@
  *  - different group → `layout.moveTab` into this group, then `reorderTab` to
  *    the drop position (insert before/after the hovered tab, or append).
  *
+ * Note drags from the notes list (`application/x-notesnook-note`, payload
+ * `{ids}`) are also accepted on the per-tab handlers and the empty strip:
+ * every dragged note is opened as a tab in this group, inserted at the cursor
+ * position (before/after the hovered tab, or appended at the end for the empty
+ * strip). A note that already has a tab is MOVED into this group (if it was in
+ * another) and reordered to the cursor — so a drag actually relocates the
+ * already-open note's tab, mirroring tab-reorder. One tab per note is preserved
+ * (the tab changes group, not duplicated). `markNoteDropHandled` is set so the
+ * source row's `dragend` skips the cross-window tear-off.
+ *
  * Tab cross-window move + tear-off (multi-window): HTML5 `dataTransfer` does
  * NOT cross Electron windows, so a drop on ANOTHER window's tab bar / drop zone
  * is invisible to it — the within-window drop handlers never fire there. The
@@ -48,6 +58,11 @@ import {
   consumeTabDropHandled,
   resetTabDropHandled
 } from "@/utils/tab-dnd";
+import {
+  isNoteDrag,
+  readNotePayload,
+  markNoteDropHandled
+} from "@/utils/note-dnd";
 
 const props = defineProps<{ groupId: string }>();
 const notes = useNotesStore();
@@ -104,7 +119,8 @@ function onTabMouseDown(e: MouseEvent, tab: { id: string }): void {
 }
 
 function onTabDragOver(e: DragEvent, tab: { id: string }): void {
-  if (!isTabDrag(e)) return;
+  // Accept both tab drags (reorder/move) and note drags (open as a tab here).
+  if (!isTabDrag(e) && !isNoteDrag(e)) return;
   // preventDefault is required to make this tab a valid drop target (so `drop`
   // fires and the OS doesn't swallow the drag into another app).
   e.preventDefault();
@@ -121,10 +137,27 @@ function onTabDragOver(e: DragEvent, tab: { id: string }): void {
 function onTabDrop(e: DragEvent, targetTab: { id: string }): void {
   e.preventDefault();
   e.stopPropagation();
-  markTabDropHandled(); // a within-window target consumed the drop → skip releaseTab
-  const src = readTabPayload(e);
+  // A within-window target consumed the drop → skip the source's cross-window
+  // releaseTab. Mark the flag matching the drag kind (tab vs note source).
+  if (isNoteDrag(e)) markNoteDropHandled();
+  else markTabDropHandled();
   tabDropTarget.value = null;
   dropAtEnd.value = false;
+
+  // Note drag → open every dragged note as a tab in this group, inserted at the
+  // cursor position (before/after the hovered tab).
+  if (isNoteDrag(e)) {
+    const payload = readNotePayload(e);
+    if (!payload) return;
+    const targetIdx = tabs.value.findIndex((t) => t.id === targetTab.id);
+    if (targetIdx < 0) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const after = e.clientX > rect.left + rect.width / 2;
+    openNotesAt(after ? targetIdx + 1 : targetIdx, payload.ids);
+    return;
+  }
+
+  const src = readTabPayload(e);
   if (!src.tabId) return;
   const list = tabs.value;
   const targetIdx = list.findIndex((t) => t.id === targetTab.id);
@@ -136,6 +169,32 @@ function onTabDrop(e: DragEvent, targetTab: { id: string }): void {
   const after = e.clientX > rect.left + rect.width / 2;
   const toIndex = after ? targetIdx + 1 : targetIdx;
   moveOrReorder(src, toIndex);
+}
+
+/** Open each dragged note as a tab in this group at position `toIndex` (the
+ *  desired final index of the FIRST tab; subsequent ones follow in order).
+ *
+ *  A note that already has a tab is RELOCATED here (moved into this group if it
+ *  was in another, then reordered to the cursor) — so a drag actually moves the
+ *  already-open note's tab to where you dropped it, mirroring tab-reorder. One
+ *  tab per note is preserved (the tab changes group, not duplicated). A note
+ *  with no tab yet is created in this group via `openTab` (appended), then
+ *  reordered to the cursor. */
+function openNotesAt(toIndex: number, ids: string[]): void {
+  let idx = toIndex;
+  for (const noteId of ids) {
+    const existing = layout.tabForNote(noteId);
+    let tabId: string | undefined;
+    if (existing) {
+      if (existing.groupId !== props.groupId) layout.moveTab(existing.id, props.groupId);
+      tabId = existing.id;
+    } else {
+      tabId = layout.openTab(props.groupId, noteId);
+    }
+    if (!tabId) continue;
+    layout.reorderTab(props.groupId, tabId, idx);
+    idx++;
+  }
 }
 
 /** Same-group → reorder; cross-group → move into this group then reorder to
@@ -156,7 +215,7 @@ function moveOrReorder(
  *  the strip. Only fires for the empty area — the per-tab handlers stop
  *  propagation when the pointer is over a tab. */
 function onStripDragOver(e: DragEvent): void {
-  if (!isTabDrag(e)) return;
+  if (!isTabDrag(e) && !isNoteDrag(e)) return;
   e.preventDefault();
   if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
   tabDropTarget.value = null;
@@ -165,10 +224,21 @@ function onStripDragOver(e: DragEvent): void {
 
 function onStripDrop(e: DragEvent): void {
   e.preventDefault();
-  markTabDropHandled(); // a within-window target consumed the drop → skip releaseTab
-  const src = readTabPayload(e);
+  if (isNoteDrag(e)) markNoteDropHandled();
+  else markTabDropHandled(); // a within-window target consumed the drop → skip releaseTab
   tabDropTarget.value = null;
   dropAtEnd.value = false;
+
+  // Note drag → open every dragged note as a tab appended at the end of this
+  // group's strip.
+  if (isNoteDrag(e)) {
+    const payload = readNotePayload(e);
+    if (!payload) return;
+    openNotesAt(tabs.value.length, payload.ids);
+    return;
+  }
+
+  const src = readTabPayload(e);
   if (!src.tabId) return;
   // Append at the end of this group's tab list.
   const toIndex = tabs.value.length;

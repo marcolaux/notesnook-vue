@@ -1,26 +1,26 @@
 <!--
   Search Results tab — the structured full-results surface for a global search.
   Rendered by `EditorPane.vue` for `kind: "search"` tabs (outside `<KeepAlive>`:
-  it re-reads from the search store's `resultsCache`, cheap, and caching would
+  it re-reads from the omnibar store's `resultsCache`, cheap, and caching would
   pin a stale result set). Reads the tab's `searchQuery` from the layout store
-  and the cached result list for it; re-fetches via `search.loadResults` if the
+  and the cached result list for it; re-fetches via `omnibar.loadResults` if the
   cache entry was evicted (rare — the tab is usually opened right after a search).
 
   Each result is a card: the (highlighted) note title + its body snippet blocks.
   Clicking a snippet block opens the note in a new tab scrolled to that match
-  (`search.openNoteAt`). Snippets render via `v-html` of `matchesToHtml`
+  (`omnibar.openNoteAt`). Snippets render via `v-html` of `matchesToHtml`
   (escaped + `<mark>`-wrapped) — safe by construction (see `@contracts/search`).
 -->
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
-import { useSearchStore } from "@/stores/search";
+import { useOmnibarStore } from "@/stores/omnibar";
 import { matchesToHtml, type HighlightedResult } from "@contracts/search";
 
 const props = defineProps<{ tabId: string }>();
 
 const layout = useEditorLayoutStore();
-const search = useSearchStore();
+const omnibar = useOmnibarStore();
 
 const query = computed(() => layout.tabs[props.tabId]?.searchQuery ?? "");
 const items = ref<HighlightedResult[]>([]);
@@ -29,18 +29,18 @@ const loading = ref(false);
 onMounted(async () => {
   const q = query.value;
   if (!q) return;
-  const cached = search.resultsCache[q];
+  const cached = omnibar.resultsCache[q];
   if (cached) {
     items.value = cached;
     return;
   }
   loading.value = true;
-  items.value = await search.loadResults(q);
+  items.value = await omnibar.loadResults(q);
   loading.value = false;
 });
 
 function open(noteId: string, matchIndex: number): void {
-  search.openNoteAt(noteId, query.value, matchIndex);
+  omnibar.openNoteAt(noteId, query.value, matchIndex);
 }
 </script>
 

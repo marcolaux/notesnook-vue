@@ -63,8 +63,7 @@ export const VIEWS: readonly ViewEntry[] = [
     path: "/monographs",
     name: RouteName.monographs,
     label: "Monographs",
-    position: "top",
-    hint: "Published notes — coming in Phase 6."
+    position: "top"
   },
   {
     path: "/archive",
@@ -129,8 +128,8 @@ export const routes: RouteRecordRaw[] = [
       {
         path: "monographs",
         name: RouteName.monographs,
-        component: () => import("@/components/PlaceholderView.vue"),
-        meta: { title: "Monographs", hint: "Published notes — coming in Phase 6." }
+        component: () => import("@/components/MonographsView.vue"),
+        meta: { title: "Monographs" }
       },
       {
         path: "archive",

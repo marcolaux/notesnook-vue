@@ -34,11 +34,13 @@ describe("event bridge — db.eventManager → global EV", () => {
     EVENTS.syncProgress,
     EVENTS.syncCompleted,
     EVENTS.syncAborted,
+    EVENTS.databaseSyncRequested,
     EVENTS.vaultLocked,
     EVENTS.vaultAutoLocked,
     EVENTS.vaultUnlocked,
     EVENTS.userSessionExpired,
-    EVENTS.userLoggedOut
+    EVENTS.userLoggedOut,
+    EVENTS.monographsUpdated
   ];
 
   it.each(bridged)("re-publishes %s from db.eventManager to EV", (name) => {

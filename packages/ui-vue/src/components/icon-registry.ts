@@ -27,6 +27,7 @@ import {
   // navigation / chrome
   PanelLeft,
   PanelRight,
+  Focus,
   ChevronRight,
   ChevronUp,
   ChevronDown,
@@ -86,7 +87,13 @@ import {
   // first paint, so static (not left to the lazy full set).
   History,
   Lock,
-  RotateCcw
+  RotateCcw,
+  // monographs (publish to web) — editor toolbar ⋯ + badge + note context menu,
+  // chrome, must render at first paint.
+  Globe,
+  Link,
+  Copy,
+  Eye
 } from "@lucide/vue";
 
 /**
@@ -97,6 +104,7 @@ export const ICONS: Record<string, Component> = {
   // navigation / chrome
   "panel-left": PanelLeft,
   "panel-right": PanelRight,
+  focus: Focus,
   "chevron-right": ChevronRight,
   "chevron-up": ChevronUp,
   "chevron-down": ChevronDown,
@@ -155,7 +163,12 @@ export const ICONS: Record<string, Component> = {
   // note-history (editor toolbar + HistorySidebar).
   history: History,
   lock: Lock,
-  "rotate-ccw": RotateCcw
+  "rotate-ccw": RotateCcw,
+  // monographs (publish to web).
+  globe: Globe,
+  link: Link,
+  copy: Copy,
+  eye: Eye
 };
 
 /**

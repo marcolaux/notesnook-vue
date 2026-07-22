@@ -40,10 +40,13 @@ export type ConfirmFn = (opts: ConfirmOpts) => Promise<boolean>;
  *  menu-open time). */
 export interface NoteMenuTarget {
   id: string;
-  /** The note's title (used to seed a "Remind me…" reminder). */
+  /** The note's title (used to seed a "Remind me…" reminder + the publish dialog). */
   title: string;
   pinned: boolean;
   favorite: boolean;
+  /** Whether the note is published to the web (a monograph). Drives whether the
+   *  Publish / Unpublish + Copy URL / Open entries show. */
+  published: boolean;
   /** The note's current color id, or `null` when none. */
   colorId: string | null;
   /** Tag ids currently assigned to the note. */
@@ -104,6 +107,20 @@ export interface NoteMenuDeps {
    *  `nn://note/<id>` description, then create the reminder + link it to the
    *  note. The dialog flow + relation link live in NotesList.vue. */
   remindMe: (noteId: string, noteTitle: string) => void | Promise<void>;
+  /** Publish-to-web (monographs) — open the publish dialog seeded with the
+   *  note's title; on confirm, call `db.monographs.publish`. The dialog flow +
+   *  publish-store call live in NotesList.vue. */
+  publishNote: (noteId: string, noteTitle: string) => void | Promise<void>;
+  /** Unpublish the note (plain `db.monographs.unpublish`) — the builder composes
+   *  `confirm` around this (matching the "Move to trash" entry), so the dep does
+   *  NOT need to wire the confirm flow itself. */
+  unpublishNote: (noteId: string) => void | Promise<void>;
+  /** Copy the note's monograph URL to the clipboard (the authoritative
+   *  server-returned `Monograph.publishUrl`). */
+  copyMonographUrl: (noteId: string) => void | Promise<void>;
+  /** Open the note's monograph in the system browser (`window.open` →
+   *  `shell.openExternal`). */
+  openMonograph: (noteId: string) => void | Promise<void>;
 }
 
 /**
@@ -259,6 +276,9 @@ export function buildNotebooksSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps):
  *   Favorite          (✓ note.favorite)
  *   Remind me…
  *   ──
+ *   Publish note / Unpublish note        (depending on note.published)
+ *   Copy monograph URL / Open in browser (only when published)
+ *   ──
  *   Color           ▸ (submenu)
  *   Tags            ▸ (submenu, search)
  *   Notebooks       ▸ (submenu, search)
@@ -266,6 +286,37 @@ export function buildNotebooksSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps):
  *   Move to trash                        (danger; confirm)
  */
 export function buildNoteMenu(note: NoteMenuTarget, deps: NoteMenuDeps): MenuItem[] {
+  // Publish section — Publish (when not published) vs Unpublish + Copy URL +
+  // Open (when published). Unpublish is confirm-gated here (matching the
+  // "Move to trash" entry) so the dep stays a plain call.
+  const publishItems: MenuItem[] = note.published
+    ? [
+        {
+          id: "unpublish",
+          label: "Unpublish note",
+          icon: "trash-2",
+          danger: true,
+          onSelect: async () => {
+            const ok = await deps.confirm({
+              title: "Unpublish note",
+              message: "This note will no longer be public. The link will stop working.",
+              confirmLabel: "Unpublish",
+              danger: true
+            });
+            if (ok) await deps.unpublishNote(note.id);
+          }
+        },
+        { id: "copy-url", label: "Copy monograph URL", icon: "link", onSelect: () => deps.copyMonographUrl(note.id) },
+        { id: "open-monograph", label: "Open in browser", icon: "external-link", onSelect: () => deps.openMonograph(note.id) }
+      ]
+    : [
+        {
+          id: "publish",
+          label: "Publish note",
+          icon: "globe",
+          onSelect: () => deps.publishNote(note.id, note.title)
+        }
+      ];
   return [
     { id: "open-window", label: "Open in new window", onSelect: () => deps.openInWindow(note.id) },
     { id: "split-right", label: "Open in split right", onSelect: () => deps.openInSplit(note.id, "right") },
@@ -284,6 +335,8 @@ export function buildNoteMenu(note: NoteMenuTarget, deps: NoteMenuDeps): MenuIte
       onSelect: () => deps.toggleFavorite(note.id)
     },
     { id: "remind-me", label: "Remind me…", onSelect: () => deps.remindMe(note.id, note.title) },
+    separator("publish-sep"),
+    ...publishItems,
     separator("sep-2"),
     { id: "color", label: "Color", submenu: buildColorSubmenu(note, deps) },
     { id: "tags", label: "Tags", submenu: buildTagsSubmenu(note, deps) },

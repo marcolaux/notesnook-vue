@@ -648,6 +648,18 @@ body,
   filter:
     drop-shadow(0.4px 0 0 rgba(0, 0, 0, 0.22))
     drop-shadow(-0.4px 0 0 rgba(0, 0, 0, 0.22))
-    drop-shadow(0 0.4px 0 rgba(0, 0, 0, 0.22))
-    drop-shadow(0 -0.4px 0 rgba(0, 0, 0, 0.22));
+    drop-shadow(0 0.4px 0 0 rgba(0, 0, 0, 0.22))
+    drop-shadow(0 -0.4px 0 0 rgba(0, 0, 0, 0.22));
+}
+
+/* The row an open context menu targets — a dashed accent outline so the user
+   can see which item the (floating) menu acts on after moving the cursor to it.
+   Shared by the notes list, the sidebar rows (tag / color / shortcut / notebook
+   / section header): the context-menu store tags the target via `contextId`,
+   and each row binds this class when its id matches. Dashed (vs a solid ring)
+   reads as "menu target" and stays distinct from selection/active highlights;
+   negative offset draws it inside, following the row's border-radius. */
+.context-target-row {
+  outline: 1.5px dashed color-mix(in oklab, var(--color-accent) 65%, transparent);
+  outline-offset: -2px;
 }

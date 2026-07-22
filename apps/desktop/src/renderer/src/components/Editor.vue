@@ -694,6 +694,11 @@ watch(
   (e) => {
     if (e) {
       editorStore.register(myKey.value, e);
+      // Publish this pane's autosave flusher so the publish store can force the
+      // FOCUSED pane's pending save to disk before `db.monographs.publish`
+      // reads `db.content.get` (see `editorStore.flushFocusedSave`). Registered
+      // alongside the editor; unregistered on unmount.
+      editorStore.registerFlusher(myKey.value, flushSave);
       e.on("update", refreshStatus);
       e.on("selectionUpdate", refreshStatus);
       // Wire the attachments storage hooks the image node-view + toolbar image
@@ -801,6 +806,7 @@ onBeforeUnmount(() => {
     inst.off("selectionUpdate", refreshStatus);
     editorStore.unregister(myKey.value, inst);
   }
+  editorStore.unregisterFlusher(myKey.value);
   // Tear down the tag-mention bridge (transaction listener + properties.tags
   // watch) so a per-tab editor doesn't leak its store subscription on unmount.
   disposeTagMention?.();
@@ -944,6 +950,12 @@ function onEditorAreaClick(e: MouseEvent): void {
               </li>
             </ul>
           </div>
+          <!-- Word count + cursor position for the focused pane's editor,
+               pushed in by this Editor via status.setEditorStats on every
+               update/selectionUpdate. Right-aligned in the tags footer. -->
+          <span class="ml-auto shrink-0 text-[10px] text-text-muted">
+            {{ status.wordCount }} words · Ln {{ status.cursorLine }}, Col {{ status.cursorColumn }}
+          </span>
         </div>
         <div v-if="!isDraft" class="editor-links mt-4 border-t border-glass-border pt-3 text-xs text-text-muted">
           <div class="mb-1 font-medium text-text">Links</div>

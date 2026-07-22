@@ -52,6 +52,13 @@ export const useContextMenuStore = defineStore("contextMenu", () => {
   const activeIndex = ref(0);
   /** The currently-open submenu, or `null` (v2). At most one at a time. */
   const submenu = ref<SubmenuState | null>(null);
+  /** Optional domain id of the thing the open menu targets (e.g. the right-
+   *  clicked note's id), so the originating list can keep an outline on that
+   *  row while the menu is open. Domain-agnostic: callers pass whatever id
+   *  they want (or nothing); `close` + every `show` rewrite it, so it never
+   *  goes stale across a re-show from a different source. `null` when the
+   *  menu is closed or the caller passed no id. */
+  const contextId = ref<string | null>(null);
 
   /** The selectable (non-separator, non-disabled) root entries — for the
    *  overlay's keyboard nav + to short-circuit `execute` when there is nothing. */
@@ -64,19 +71,22 @@ export const useContextMenuStore = defineStore("contextMenu", () => {
 
   /** Open a menu at the given cursor coords. Resets the active row to the first
    *  selectable entry + closes any open submenu. Replacing an already-open
-   *  menu closes it first. */
-  function show(nextItems: readonly MenuItem[], px: number, py: number): void {
+   *  menu closes it first. `ctxId` (optional) tags the menu's target so the
+   *  originating list can highlight that row while the menu is open. */
+  function show(nextItems: readonly MenuItem[], px: number, py: number, ctxId?: string | null): void {
     items.value = [...nextItems];
     x.value = px;
     y.value = py;
     activeIndex.value = firstMenuIndex(items.value);
     submenu.value = null;
+    contextId.value = ctxId ?? null;
     open.value = true;
   }
 
   function close(): void {
     open.value = false;
     submenu.value = null;
+    contextId.value = null;
     // Keep `items` until the next `show` so a closing overlay can finish its
     // exit without a flash of empty content; `show` overwrites them.
   }
@@ -219,6 +229,7 @@ export const useContextMenuStore = defineStore("contextMenu", () => {
     y,
     activeIndex,
     submenu,
+    contextId,
     selectableItems,
     submenuItems,
     show,

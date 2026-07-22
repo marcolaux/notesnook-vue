@@ -36,6 +36,10 @@ const db = {
       /* repopulate cache from local DB — here the set IS the cache */
     }),
     isPublished: vi.fn((id: string) => db._published.has(id)),
+    // `notes.load()` → `loadPublishedIds()` reads `all.ids()` for the list's
+    // published globe icon. Stubbed empty so it logs nothing during the
+    // publish-store tests (which exercise publish/unpublish, not the set).
+    all: { ids: vi.fn(async () => Array.from(db._published.keys())) },
     publish: vi.fn(async (id: string, title: string, opts: PublishOptions) => {
       db._published.add(id);
       const m = {
@@ -56,7 +60,11 @@ const db = {
       db._monographs.delete(id);
     }),
     get: vi.fn(async (id: string) => db._monographs.get(id))
-  }
+  },
+  // `publishById` runs a "send" sync before `db.monographs.publish` to upload
+  // pending image attachments to the server (otherwise the public page can't
+  // resolve `<img data-hash>` against S3). Stubbed so the call is observable.
+  sync: vi.fn(async () => true)
 };
 vi.mock("@/platform/bootstrap", () => ({
   getDatabase: () => db,
@@ -135,6 +143,7 @@ describe("usePublishStore", () => {
     db.monographs.publish.mockClear();
     db.monographs.unpublish.mockClear();
     db.monographs.get.mockClear();
+    db.sync.mockClear();
   });
 
   it("no active note → unpublished + empty url", async () => {
@@ -258,5 +267,99 @@ describe("usePublishStore", () => {
     await pub.refresh();
     expect(pub.published).toBe(false);
     expect(pub.publishUrl).toBe("");
+  });
+
+  it("publishById publishes the active note + reseeds its state", async () => {
+    await openNote(fakeNote({ id: "a", title: "My note" }));
+    const pub = usePublishStore();
+    const ok = await pub.publishById("a", undefined, { selfDestruct: true });
+    expect(ok).toBe(true);
+    // title defaults to the active note's title when undefined.
+    expect(db.monographs.publish).toHaveBeenCalledWith("a", "My note", { selfDestruct: true });
+    expect(pub.published).toBe(true);
+    expect(pub.publishUrl).toBe("https://monogr.ph/a");
+    expect(db.notes.all.items).toHaveBeenCalled();
+  });
+
+  it("publishById publishes a non-active note (uses given title, no reseed)", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const pub = usePublishStore();
+    // "b" is NOT the active note — publish it by explicit id + title.
+    const ok = await pub.publishById("b", "B title", { password: "pw" });
+    expect(ok).toBe(true);
+    expect(db.monographs.publish).toHaveBeenCalledWith("b", "B title", { password: "pw" });
+    expect(db._published.has("b")).toBe(true);
+    // The active note is still "a" (unpublished) → its state is NOT reseeded.
+    expect(pub.published).toBe(false);
+    expect(pub.publishUrl).toBe("");
+    // The notes list is still reloaded.
+    expect(db.notes.all.items).toHaveBeenCalled();
+  });
+
+  it("publishById returns false + sets lastError when publish throws", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    db.monographs.publish.mockRejectedValueOnce(new Error("locked notes cannot be published"));
+    const pub = usePublishStore();
+    const ok = await pub.publishById("a", "A");
+    expect(ok).toBe(false);
+    expect(pub.lastError).toBe("locked notes cannot be published");
+    expect(pub.publishing).toBe(false);
+  });
+
+  it("publishById uploads pending attachments via a 'send' sync before publishing", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const pub = usePublishStore();
+    const ok = await pub.publishById("a", "A");
+    expect(ok).toBe(true);
+    // A "send" sync (uploads pending attachments, does not pull) runs before
+    // the publish call so image blobs are on the server when the public page
+    // resolves `<img data-hash>` against S3.
+    expect(db.sync).toHaveBeenCalledWith({ type: "send" });
+    const syncOrder = db.sync.mock.invocationCallOrder[0];
+    const publishOrder = db.monographs.publish.mock.invocationCallOrder[0];
+    expect(syncOrder).toBeLessThan(publishOrder);
+  });
+
+  it("publishById still succeeds when the pre-publish send-sync throws (upload failure is non-blocking)", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    db.sync.mockRejectedValueOnce(new Error("offline"));
+    const pub = usePublishStore();
+    const ok = await pub.publishById("a", "A");
+    // Publish proceeds regardless — its own auth/server error surfaces via
+    // lastError; a sync failure is swallowed (logged) so the user still gets a
+    // URL (they can re-publish after a successful sync).
+    expect(ok).toBe(true);
+    expect(db.monographs.publish).toHaveBeenCalledWith("a", "A", {});
+    expect(pub.lastError).toBeNull();
+  });
+
+  it("unpublishById unpublishes an explicit id + reseeds only when it is the active note", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    db._published.add("a");
+    db._monographs.set("a", { id: "a", type: "monograph", title: "A", datePublished: 200, dateCreated: 200, dateModified: 200, selfDestruct: false, publishUrl: "ua" } as Monograph);
+    const pub = usePublishStore();
+    await pub.refresh();
+    expect(pub.published).toBe(true);
+    const ok = await pub.unpublishById("a");
+    expect(ok).toBe(true);
+    expect(db.monographs.unpublish).toHaveBeenCalledWith("a");
+    expect(pub.published).toBe(false);
+    expect(pub.publishUrl).toBe("");
+  });
+
+  it("unpublishById unpublishes a non-active note without reseeding the active note's state", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    db._published.add("a");
+    db._monographs.set("a", { id: "a", type: "monograph", title: "A", datePublished: 200, dateCreated: 200, dateModified: 200, selfDestruct: false, publishUrl: "ua" } as Monograph);
+    const pub = usePublishStore();
+    await pub.refresh();
+    expect(pub.published).toBe(true);
+    // Unpublish "b" (NOT the active note).
+    const ok = await pub.unpublishById("b");
+    expect(ok).toBe(true);
+    expect(db.monographs.unpublish).toHaveBeenCalledWith("b");
+    // The active note "a" is still published — its state is untouched.
+    expect(pub.published).toBe(true);
+    expect(pub.publishUrl).toBe("ua");
   });
 });

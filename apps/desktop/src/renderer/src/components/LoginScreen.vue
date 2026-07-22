@@ -2,9 +2,11 @@
 /**
  * LoginScreen — the auth entry surface. Sign in / sign up against the
  * configured server, with MFA code step, and a server selector that points the
- * app at the default Notesnook servers or a self-hosted bag (five per-component
- * host fields, mirroring upstream Settings → Servers — there is no single
- * discovery URL yet).
+ * app at the default Notesnook servers or a self-hosted bag. The configurable
+ * set is the SAME four hosts upstream's web Settings → Servers exposes
+ * (`HostIds`: API / AUTH / SSE / MONOGRAPH) — the remaining components
+ * (SUBSCRIPTIONS, ISSUES, NOTESNOOK) stay at their defaults, exactly as in
+ * upstream. There is no single discovery URL yet (upstream issue #9670).
  *
  * Talks to `useAuthStore` directly; `App.vue` reacts to `auth.showShell` and
  * swaps this screen out for the notes shell. Changing the server persists the
@@ -40,12 +42,15 @@ const customHosts = ref<Hosts>(
   initialConfig.profile === "custom" ? { ...initialConfig.hosts } : defaultHosts()
 );
 
+// The four hosts upstream's web Settings → Servers exposes (`HostIds`):
+// API (sync), AUTH, SSE, MONOGRAPH. SUBSCRIPTIONS / ISSUES / NOTESNOOK are NOT
+// user-configurable upstream — they stay at their defaults (merged in
+// `resolveHosts`). Labels + example ports mirror the upstream web app.
 const HOST_FIELDS: { key: keyof Hosts; label: string; placeholder: string }[] = [
-  { key: "API_HOST", label: "API / Sync server", placeholder: "https://api.example.com" },
-  { key: "AUTH_HOST", label: "Auth server", placeholder: "https://auth.example.com" },
-  { key: "SSE_HOST", label: "Events (SSE) server", placeholder: "https://events.example.com" },
-  { key: "SUBSCRIPTIONS_HOST", label: "Subscriptions server", placeholder: "https://subscriptions.example.com" },
-  { key: "ISSUES_HOST", label: "Issues server", placeholder: "https://issues.example.com" }
+  { key: "API_HOST", label: "Sync server URL", placeholder: "e.g. http://localhost:4326" },
+  { key: "AUTH_HOST", label: "Auth server URL", placeholder: "e.g. http://localhost:5326" },
+  { key: "SSE_HOST", label: "SSE server URL", placeholder: "e.g. http://localhost:7326" },
+  { key: "MONOGRAPH_HOST", label: "Monograph server URL", placeholder: "e.g. http://localhost:6326" }
 ];
 
 const busy = computed(
@@ -99,17 +104,23 @@ function submitMfa(): void {
 function applyServer(): void {
   localError.value = "";
   if (serverProfile.value === "custom") {
+    // Partial bag, like upstream: start from the defaults and override only the
+    // fields the user filled (and validated). An empty field keeps the default
+    // for that component — so a self-hoster only sets what they actually run.
+    const merged = defaultHosts();
     for (const f of HOST_FIELDS) {
-      const v = customHosts.value[f.key];
+      const raw = (customHosts.value[f.key] ?? "").trim();
+      if (raw === "") continue;
       try {
-        const u = new URL(v.trim());
+        const u = new URL(raw);
         if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("scheme");
+        merged[f.key] = raw;
       } catch {
         localError.value = `${f.label} must be a valid http(s) URL.`;
         return;
       }
     }
-    writeServerConfig({ profile: "custom", hosts: { ...customHosts.value } });
+    writeServerConfig({ profile: "custom", hosts: merged });
   } else {
     writeServerConfig({ profile: "notesnook" });
   }

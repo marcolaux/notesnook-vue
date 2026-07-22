@@ -21,6 +21,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "resize", width: number): void;
+  /** Fired on pointerdown so the owning panel can suppress its width
+   *  transition during the drag (otherwise each pointermove animates over the
+   *  transition duration and the drag feels laggy). */
+  (e: "resize-start"): void;
+  (e: "resize-end"): void;
 }>();
 
 let startX = 0;
@@ -33,6 +38,7 @@ function onPointerDown(e: PointerEvent): void {
   startX = e.clientX;
   startWidth = props.width;
   dragging.value = true;
+  emit("resize-start");
 }
 
 function onPointerMove(e: PointerEvent): void {
@@ -44,6 +50,7 @@ function onPointerUp(e: PointerEvent): void {
   if (!dragging.value) return;
   (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   dragging.value = false;
+  emit("resize-end");
 }
 </script>
 

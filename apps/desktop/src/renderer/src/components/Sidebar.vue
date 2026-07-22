@@ -5,6 +5,8 @@ import { useI18n } from "vue-i18n";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
+import { useStatusStore } from "@/stores/status";
+import { syncStatusText } from "@/utils/status";
 import { useCollectionsStore } from "@/stores/collections";
 import { useShortcutsStore } from "@/stores/shortcuts";
 import { useColorsStore } from "@/stores/colors";
@@ -35,6 +37,7 @@ import type { CollectionType } from "@/stores/collections";
 
 const notes = useNotesStore();
 const auth = useAuthStore();
+const status = useStatusStore();
 const collections = useCollectionsStore();
 const shortcuts = useShortcutsStore();
 const colors = useColorsStore();
@@ -51,6 +54,14 @@ const dialog = useDialogStore();
 const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
+
+// Sync status for the account area: "Local only" when logged out, else the
+// sync lifecycle from `useStatusStore` formatted via `syncStatusText`. Reads
+// `status.now` (a reactive wall-clock bumped by the status store's interval)
+// so the relative time stays accurate without a nudge.
+const syncText = computed(() =>
+  syncStatusText(auth.isLoggedIn, status.syncState, status.lastSynced, status.hasUnsyncedChanges, status.now)
+);
 
 /** Function ref for the tag rename `<input>`: focus it as soon as it mounts
  *  (avoids the v-for array-ref trap — only the renaming row renders an input).
@@ -107,6 +118,14 @@ function isActive(path: string): boolean {
 /** Is a given collection item the currently-selected one? */
 function isSelected(type: CollectionType, id: string): boolean {
   return collections.selected?.type === type && collections.selected.id === id;
+}
+
+/** Is this row the target of the currently-open context menu? The context-menu
+ *  store tags the target via `contextId` on `show`; `close` + every `show`
+ *  rewrites it, so it never lingers after the menu closes or switches source.
+ *  Used to keep a dashed outline on the row the (floating) menu acts on. */
+function isContextTarget(id: string): boolean {
+  return contextMenu.contextId === id;
 }
 
 /** "All Notes" drops any active collection filter + selection. */
@@ -209,7 +228,7 @@ function onTagContext(tag: { id: string; title: string }, e: MouseEvent): void {
     confirm: (opts) => dialog.confirm(opts),
     deleteTag: (id) => collections.deleteTag(id)
   });
-  contextMenu.show(entries, e.clientX, e.clientY);
+  contextMenu.show(entries, e.clientX, e.clientY, tag.id);
 }
 
 /** Right-click a color row → color-row context menu (Rename… / Delete color)
@@ -227,7 +246,7 @@ function onColorContext(
     toggleShortcut: (id) => colors.toggleFavoriteColor(id),
     isShortcut: (id) => colors.isFavoriteColor(id)
   });
-  contextMenu.show(entries, e.clientX, e.clientY);
+  contextMenu.show(entries, e.clientX, e.clientY, color.id);
 }
 
 /** Right-click a shortcut row → shortcut context menu at the cursor. */
@@ -236,7 +255,7 @@ function onShortcutContext(sc: ShortcutMenuTarget, e: MouseEvent): void {
     open: (target) => openShortcut(target),
     removeShortcut: (id) => removeShortcut(sc)
   });
-  contextMenu.show(entries, e.clientX, e.clientY);
+  contextMenu.show(entries, e.clientX, e.clientY, sc.id);
 }
 
 /** Bound to a tag rename `<input>`. */
@@ -445,7 +464,7 @@ function onNotebooksHeaderContext(e: MouseEvent): void {
     hasManualOrder: collections.notebookOrder.length > 0,
     resetOrder: () => collections.resetNotebookOrder()
   });
-  contextMenu.show(entries, e.clientX, e.clientY);
+  contextMenu.show(entries, e.clientX, e.clientY, "section:notebooks");
 }
 /** Right-click the Colors header → a "Reset manual order" entry (disabled when
  *  no synced `sideBarOrder:colors` is stored). */
@@ -454,7 +473,7 @@ function onColorsHeaderContext(e: MouseEvent): void {
     hasManualOrder: colors.order.length > 0,
     resetOrder: () => void colors.setOrder([])
   });
-  contextMenu.show(entries, e.clientX, e.clientY);
+  contextMenu.show(entries, e.clientX, e.clientY, "section:colors");
 }
 /** Right-click the Shortcuts header → a "Reset manual order" entry (disabled
  *  when no local manual order is stored). */
@@ -463,7 +482,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
     hasManualOrder: shortcuts.order.length > 0,
     resetOrder: () => shortcuts.resetOrder()
   });
-  contextMenu.show(entries, e.clientX, e.clientY);
+  contextMenu.show(entries, e.clientX, e.clientY, "section:shortcuts");
 }
 </script>
 
@@ -505,6 +524,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
     <div v-if="shortcutRows.length > 0" class="mt-1">
       <button
         class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
+        :class="isContextTarget('section:shortcuts') ? 'context-target-row' : ''"
         @click="shortcutsCollapsed = !shortcutsCollapsed"
         @contextmenu.prevent="onShortcutsHeaderContext"
       >
@@ -522,11 +542,12 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           v-for="sc in shortcutRows"
           :key="sc.id"
           class="group relative flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
-          :class="
+          :class="[
             isShortcutActive(sc)
               ? 'bg-glass-active text-text'
-              : 'text-text hover:bg-glass-hover'
-          "
+              : 'text-text hover:bg-glass-hover',
+            isContextTarget(sc.id) ? 'context-target-row' : ''
+          ]"
           draggable="true"
           @contextmenu.prevent="onShortcutContext(sc, $event)"
           @dragstart="onShortcutDragStart(sc, $event)"
@@ -568,6 +589,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
     <div class="mt-1">
       <button
         class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
+        :class="isContextTarget('section:notebooks') ? 'context-target-row' : ''"
         @click="collections.toggleSection('notebooks')"
         @contextmenu.prevent="onNotebooksHeaderContext"
       >
@@ -622,7 +644,8 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
               : 'text-text hover:bg-glass-hover',
             noteDropOver && noteDropOver.kind === 'tag' && noteDropOver.id === tag.id
               ? 'ring-2 ring-blue-400 bg-blue-400/10'
-              : ''
+              : '',
+            isContextTarget(tag.id) ? 'context-target-row' : ''
           ]"
           @click="!isTagRenaming(tag.id) && selectCollection('tag', tag.id)"
           @contextmenu.prevent="onTagContext(tag, $event)"
@@ -668,6 +691,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
     <div class="mt-1">
       <button
         class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
+        :class="isContextTarget('section:colors') ? 'context-target-row' : ''"
         @click="colorsCollapsed = !colorsCollapsed"
         @contextmenu.prevent="onColorsHeaderContext"
       >
@@ -691,7 +715,8 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
               : 'text-text hover:bg-glass-hover',
             noteDropOver && noteDropOver.kind === 'color' && noteDropOver.id === color.id
               ? 'ring-2 ring-blue-400 bg-blue-400/10'
-              : ''
+              : '',
+            isContextTarget(color.id) ? 'context-target-row' : ''
           ]"
           draggable="true"
           @click="!isColorRenaming(color.id) && selectCollection('color', color.id)"
@@ -774,15 +799,19 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
       Settings
     </button>
 
-    <!-- Account area -->
+    <!-- Account area: email + a row with Log out (left) and the sync status
+         (right). Sync text is derived in the script via `syncStatusText`. -->
     <div v-if="auth.isLoggedIn" class="mt-1 rounded-md bg-glass-surface px-2 py-1.5">
       <div class="truncate text-[11px] text-text-muted">{{ auth.user?.email }}</div>
-      <button
-        class="mt-1 w-full rounded px-1 py-0.5 text-left text-[10px] text-text-muted hover:bg-glass-hover"
-        @click="auth.logout()"
-      >
-        Log out
-      </button>
+      <div class="mt-1 flex items-center justify-between gap-2">
+        <button
+          class="rounded px-1 py-0.5 text-left text-[10px] text-text-muted hover:bg-glass-hover"
+          @click="auth.logout()"
+        >
+          Log out
+        </button>
+        <span class="shrink-0 text-[10px] text-text-muted" :title="syncText">{{ syncText }}</span>
+      </div>
     </div>
     <button
       v-else
@@ -792,8 +821,5 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
       Sign in
     </button>
 
-    <div class="mt-1 rounded-md bg-glass-surface px-2 py-1.5 text-[10px] text-text-muted">
-      Notes: {{ notes.count }}
-    </div>
   </nav>
 </template>

@@ -40,7 +40,7 @@ function confirmSpy(ok: boolean): ConfirmFn & ReturnType<typeof vi.fn> {
 
 /** A note target with empty assignments (the common submenu baseline). */
 function noteTarget(over: Partial<NoteMenuTarget> = {}): NoteMenuTarget {
-  return { id: "n1", title: "Note 1", pinned: false, favorite: false, colorId: null, tagIds: [], notebookIds: [], ...over };
+  return { id: "n1", title: "Note 1", pinned: false, favorite: false, published: false, colorId: null, tagIds: [], notebookIds: [], ...over };
 }
 
 /** Full NoteMenuDeps fixture with spy callbacks + sample colors/tags/notebooks. */
@@ -79,7 +79,11 @@ function baseNoteDeps() {
     confirm: vi.fn(() => Promise.resolve(true)) as unknown as ConfirmFn & ReturnType<typeof vi.fn>,
     deleteNote: vi.fn(),
     archiveNote: vi.fn(),
-    remindMe: vi.fn()
+    remindMe: vi.fn(),
+    publishNote: vi.fn(),
+    unpublishNote: vi.fn(),
+    copyMonographUrl: vi.fn(),
+    openMonograph: vi.fn()
   };
 }
 type NoteDeps = ReturnType<typeof baseNoteDeps>;
@@ -98,6 +102,8 @@ describe("buildNoteMenu", () => {
       "Pin to top",
       "Favorite",
       "Remind me…",
+      "─",
+      "Publish note",
       "─",
       "Color",
       "Tags",
@@ -150,6 +156,41 @@ describe("buildNoteMenu", () => {
     const entries = buildNoteMenu(noteTarget(), deps);
     await runById(entries, "delete");
     expect(deps.deleteNote).toHaveBeenCalledWith("n1");
+  });
+
+  it("when not published shows a Publish note entry that calls publishNote(id, title)", async () => {
+    const deps = noteDeps();
+    const entries = buildNoteMenu(noteTarget({ published: false }), deps);
+    expect(labels(entries)).toContain("Publish note");
+    expect(entries.find((e) => e.id === "unpublish")).toBeUndefined();
+    await runById(entries, "publish");
+    expect(deps.publishNote).toHaveBeenCalledWith("n1", "Note 1");
+  });
+
+  it("when published shows Unpublish / Copy URL / Open in browser (no Publish note)", async () => {
+    const deps = noteDeps();
+    const entries = buildNoteMenu(noteTarget({ published: true }), deps);
+    expect(labels(entries)).not.toContain("Publish note");
+    expect(labels(entries)).toEqual(expect.arrayContaining(["Unpublish note", "Copy monograph URL", "Open in browser"]));
+    await runById(entries, "copy-url");
+    expect(deps.copyMonographUrl).toHaveBeenCalledWith("n1");
+    await runById(entries, "open-monograph");
+    expect(deps.openMonograph).toHaveBeenCalledWith("n1");
+  });
+
+  it("unpublish is confirm-gated; on cancel it does NOT unpublish", async () => {
+    const deps = noteDeps({ confirm: confirmSpy(false) });
+    const entries = buildNoteMenu(noteTarget({ published: true }), deps);
+    await runById(entries, "unpublish");
+    expect(deps.confirm).toHaveBeenCalledOnce();
+    expect(deps.unpublishNote).not.toHaveBeenCalled();
+  });
+
+  it("unpublish on confirm calls unpublishNote with the note id", async () => {
+    const deps = noteDeps({ confirm: confirmSpy(true) });
+    const entries = buildNoteMenu(noteTarget({ published: true }), deps);
+    await runById(entries, "unpublish");
+    expect(deps.unpublishNote).toHaveBeenCalledWith("n1");
   });
 });
 

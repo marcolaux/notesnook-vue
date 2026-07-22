@@ -1,10 +1,12 @@
 /**
- * Pure status-bar logic (Phase 3.4) — word/character counts, cursor
+ * Pure status logic (Phase 3.4) — word/character counts, cursor
  * line/column, and sync-status formatting. Kept framework-agnostic so it is
  * unit-tested in isolation (see `tests/contract/status.spec.ts`). The
  * `useStatusStore` holds the reactive state; `Editor.vue` pushes computed
  * editor stats in via `setEditorStats`, and `App.vue` drives sync state via
- * `refreshSync` + `bindSyncEvents`.
+ * `refreshSync` + `bindSyncEvents`. The formatters are consumed by the
+ * sidebar sync indicator and the editor tags footer (the bottom status bar
+ * was removed).
  */
 
 /** Sync progress states surfaced by the status bar. `offline` is derived in

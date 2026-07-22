@@ -8,7 +8,7 @@ import { useShellStore } from "@/stores/shell";
 import { SIDEBAR_MIN, SIDEBAR_MAX } from "@/utils/resizer";
 import TitleBar from "@/components/TitleBar.vue";
 import Sidebar from "@/components/Sidebar.vue";
-import Resizer from "@/components/Resizer.vue";
+import CollapsiblePanel from "@/components/CollapsiblePanel.vue";
 
 const shell = useShellStore();
 </script>
@@ -17,18 +17,15 @@ const shell = useShellStore();
   <div class="flex h-full min-h-0 flex-1 min-w-0 flex-col">
     <TitleBar />
     <div class="relative flex min-h-0 flex-1">
-      <Sidebar
-        v-show="!shell.sidebarCollapsed && !shell.focusMode"
-        class="shrink-0 backdrop-blur-2xl"
-        :style="{ width: shell.sidebarWidth + 'px' }"
-      />
-      <Resizer
-        v-show="!shell.sidebarCollapsed && !shell.focusMode"
+      <CollapsiblePanel
+        :visible="!shell.sidebarCollapsed && !shell.focusMode"
         :width="shell.sidebarWidth"
         :min="SIDEBAR_MIN"
         :max="SIDEBAR_MAX"
         @resize="shell.setSidebarWidth"
-      />
+      >
+        <Sidebar class="h-full backdrop-blur-2xl" />
+      </CollapsiblePanel>
       <RouterView />
     </div>
   </div>

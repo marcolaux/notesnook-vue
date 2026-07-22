@@ -97,6 +97,32 @@ function toListItem(n: Note): NoteListItem {
 export const useNotesStore = defineStore("notes", () => {
   const items = ref<NoteListItem[]>([]);
 
+  /** Published-note ids (monographs) for the list's "published" globe icon.
+   *  Populated by {@link loadPublishedIds} (refreshes the in-memory monographs
+   *  cache, then reads `db.monographs.all.ids()`). Fire-and-forget from `load()`
+   *  so it never blocks the list render; reloaded on every `load()` so a
+   *  publish/unpublish (which calls `notes.load()`) keeps the icon in sync. */
+  const publishedIds = ref<Set<string>>(new Set());
+
+  /** Repopulate {@link publishedIds} from the db. Never throws — a failure
+   *  leaves the previous set intact. No-ops when `db.monographs` isn't present
+   *  (minimal test mocks / pre-init), so the set stays empty without noise. */
+  async function loadPublishedIds(): Promise<void> {
+    try {
+      const db = getDatabase();
+      const monographs = db.monographs;
+      if (!monographs?.refresh || !monographs?.all?.ids) return;
+      // MUST precede `all.ids()` — the in-memory published-id cache is empty
+      // until refreshed.
+      await monographs.refresh();
+      const ids = await monographs.all.ids();
+      publishedIds.value = new Set(ids);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] loadPublishedIds failed:", e);
+    }
+  }
+
   // Tab state lives in the editor-layout store (Phase 4.1). The fields below
   // are facades over it so consumers don't change.
   const layout = useEditorLayoutStore();
@@ -541,6 +567,9 @@ export const useNotesStore = defineStore("notes", () => {
       void loadPreview(id);
     });
     runChunked(colorTags, () => runChunked(previews, () => {}));
+    // Refresh the published-id set for the list's globe icon (fire-and-forget —
+    // never blocks the list render; a publish/unpublish calls load() again).
+    void loadPublishedIds();
   }
 
   /**
@@ -1136,6 +1165,8 @@ export const useNotesStore = defineStore("notes", () => {
 
   return {
     items,
+    publishedIds,
+    loadPublishedIds,
     visibleItems,
     openTabs,
     activeTabId,
@@ -1161,6 +1192,7 @@ export const useNotesStore = defineStore("notes", () => {
     pendingBodyFocus,
     previews,
     collectionFilter,
+    titleOf,
     openTab,
     closeTab,
     reorderTab,

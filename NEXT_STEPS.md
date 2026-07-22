@@ -4571,6 +4571,28 @@ User-Beobachtung: im Upstream-Web-App sieht eine Instanz Edits einer anderen Ins
 
 _Zuletzt aktualisiert: 2026-07-22 (Cross-Device Auto-Sync: HeaderEventSource polyfill + databaseSyncRequested bridge + bindAutoSyncEvents gating + open-note live-reload via bumpNoteChanged; 1279 tests grün; typecheck clean; on-site two-instance gate pending) — siehe oben; davor 2026-07-22 StatusBar entfernt_
 
+## Drag Note aus Notes-Liste in Tab-Strip / Editor-Pane Drop-Zone (2026-07-22)
+
+User-Beobachtung: man kann eine Note aus der Notes-Liste nicht mehr in die Tab-Leiste oder eine Drop-Zone ziehen — sie öffnet sich sofort im aktiven Pane und beim Drop entsteht ein leeres Pane.
+
+**Recherche-Ergebnis:** die Fähigkeit stand **nie** in der Repo-Historie — `isNoteDrag`/`NOTE_MIME` (`utils/note-dnd.ts`) war bisher AUSSCHLIESSLICH im Sidebar verdrahtet (`NotebookNode.vue`, `Sidebar.vue`: Notebook/Tag/Color/Archive/Trash). Tab-Strip (`NoteTabs.vue`) und Editor-Split-Zone (`EditorPane.vue`) guardeten jeden `dragover`/`drop` mit `if (!isTabDrag(e)) return;` → Note-Drag wurde dort komplett ignoriert. Der laufende Omnibar-Refactor (gelöschte `CommandPalette`/`SearchDropdown`/`StatusBar`) war unabh.; die Working-Tree-Diffs in `NotesList.vue`/`ShellLayout.vue` tangieren kein DnD. Also: Neu-Implementierung, keine Restauration — slot aber sauber in die bestehende DnD-Machinery.
+
+**Implementiert (3 Files):**
+
+1. **`NoteTabs.vue`** — per-tab- + empty-strip-`dragover`/`drop` akzeptieren jetzt `isNoteDrag` zusätzlich zu `isTabDrag`. `openNotesAt(toIndex, ids)` macht pro gedraggte Note einen Tab in dieser Group, eingefügt an der Cursor-Position (before/after hovered tab, bzw. append für leeren Strip): eine Note, die **bereits** einen Tab hat, wird mit `layout.moveTab` in diese Group **verschoben** (falls woanders) + `layout.reorderTab` zur Cursor-Position; eine neue Note wird via `layout.openTab` (append) erstellt + reorder. Multi-Selection landet als kontinuierlicher Run (Insert-Index inkrementiert pro Note). One-tab-per-note bleibt erhalten (Tab wechselt Group, kein Duplikat).
+
+2. **`EditorPane.vue`** — capture-phase `dragover`/`dragleave`/`drop` akzeptieren `isNoteDrag`. Edge-Drop → `layout.splitGroupAt(groupId, dir, pos)` **EINMAL** + `moveOrCreateTab(noteId, newGroupId)` pro Note (NICHT `openNoteSplit` pro Note — das würde N-mal splitten). Centre-Drop → `moveOrCreateTab(noteId, props.groupId)` pro Note. `moveOrCreateTab` = existierenden Tab per `moveTab` verschieben ODER per `openTab` neu erstellen. File/Image-Drops fallen weiterhin durch (`isTabDrag`/`isNoteDrag` false → kein preventDefault/stopPropagation → Attachment-Drop des Editors bleibt intakt).
+
+3. **`NotesList.vue` — KEY BUGFIX.** `onNoteDragStart` rief `notes.selectOnly(note.id)`, und `selectOnly` macht zwei Dinge: Selection setzen **UND** `layout.openNote(id)` — d.h. beim Starten eines Drags einer unselektierten Note öffnete sie sich sofort im aktiven Pane. Beim anschließenden Drop auf eine Split-Edge hatte die Note bereits einen Tab in der Active-Group → `openTab` reuse-te ihn dort → neuer Sibling blieb **leer** (beide User-Symptome aus dieser einen Zeile). Fix: `notes.setSelection([note.id])` (Selection OHNE Editor-Effekt) statt `selectOnly`. Plain-Click öffnet weiterhin via `onNoteClick → selectOnly`; nur der Drag-Pfad ist jetzt öffnungsfrei.
+
+**`markNoteDropHandled()`** in jedem Note-Drop-Handler gesetzt, damit `NotesList.onNoteDragEnd` das cross-window `desktop.window.releaseTab` skippt (sonst würde ein Drop auf Strip/Pane die Note ZUSÄTZlich in ein neues Window tear-off). Selbes Flag-Pattern wie `tabDropHandled`.
+
+**Layout-Store-Primitive (alle bereits exportiert, keine Store-Änderung nötig):** `openTab`, `reorderTab`, `moveTab`, `splitGroupAt`, `dropTabToSplit`, `tabForNote`, `tabsOf`, `tabs`. `moveTab` reassigns source-active-Tab + collapsiert leere Source-Group (verifiziert) — therefore Drag der aktiven Note auf eine Edge tear-t sie in den eigenen Pane ohne leere Source (mirror von `dropTabToSplit`).
+
+**Verifiziert:** `typecheck:web` (vue-tsc) clean; Contract-Suite **1289/1289 grün** (keine Regression). **On-site gate pending:** (1) unselektierte Note von List auf Tab-Strip-Position droppen → Tab insert an Cursor, kein vorzeitiges Öffnen; (2) aktive Note auf andere Pane-Edge droppen → Tab moved in neuen Sibling (kein leeres Pane); (3) Multi-Selection droppen → alle als Tabs; (4) Centre-Drop öffnet/moved in Pane; (5) Sidebar-Drop (Assign) + Drag-out-of-Window (tear-off) weiterhin intakt; (6) File/Image-Drop in Editor weiterhin intakt.
+
+_Zuletzt aktualisiert: 2026-07-22 (Drag Note→Tab-Strip/Pane-Drop-Zone: NoteTabs+EditorPane akzeptieren isNoteDrag; existing Tab moved nicht dupliziert; KEY FIX dragstart setSelection statt selectOnly [öffnete vorzeitig → leeres Split-Sibling]; markNoteDropHandled; 1289 tests grün; typecheck:web clean; on-site pending) — siehe oben; davor 2026-07-22 Cross-Device Auto-Sync_
+
 ## TODO: strip cross-app image-sync temp diagnostics (reminder)
 
 The cross-app attachment-sync fix landed in two stages and is **verified on-site** (image uploaded in our app appears in the upstream web app, both directions). Stage 1 (`platform/fs.ts` upload/download HTTP transfers + `stores/sync.ts` `scheduleAutoSync` + `Editor.vue` download-on-open + `ImageComponent.vue` reactive reload) is permanent. Stage 2 (`scripts/build-vendor-from-source.mjs` — build the 5 runtime `@notesnook/*` from source with zero patches; the stale-dist `Attachments` `db.eventManager` fix is now picked up directly) retired the runtime `fileUploaded`/`fileDownloaded` event-bus bridge (`event-bridge.ts`) + reverted `attachments-bridge.ts` `subscribeAttachmentDownloaded` to `db.eventManager.subscribe`.
@@ -4581,3 +4603,62 @@ The cross-app attachment-sync fix landed in two stages and is **verified on-site
 - `apps/desktop/src/renderer/src/stores/notes.ts`: the `[notes] saveContent diag` IIFE block in `saveContent`.
 
 Strip once cross-app image sync is re-confirmed stable over a few sessions; keep `scheduleAutoSync` itself (permanent). See memory `drag-drop-images-attachments-bridge` + `vendoring-upstream-submodule`.
+
+## Unified Omnibar (subsumes search + command palette) (2026-07-22)
+
+User-Request: die getrennten Search- + Command-Palette-Oberflächen zusammenlegen zu einem einzigen title-bar Omnibar mit Prefix-Modes. **Gelöscht:** `components/CommandPalette.vue`, `components/SearchDropdown.vue`, `composables/use-command-palette.ts`, `stores/command-palette.ts`, `stores/search.ts` + deren Tests (`command-palette.spec.ts`, `command-palette-overlay.spec.ts`, `search.spec.ts`). **Neu:** `stores/omnibar.ts` (`useOmnibarStore`), `components/OmnibarDropdown.vue`, `components/GlobalSearchInput.vue` (rework zum title-bar Pill), `TitleBar.vue` hostet das Input + bindet Shortcuts.
+
+**Prefix-Modes:** (kein Prefix) → Notes (FTS5/BM25 title+content via `db.notes.all` + `@contracts/search` pure snippet helpers); `>` → Commands; `#` → Tags; `@` → Notebooks; `:` → recent Tabs. **Shortcuts (TitleBar):** Cmd+K → commands, Cmd+Alt+F → notes, Cmd+Shift+P → commands alias. `SearchResultsPane` liest weiterhin `omnibar.resultsCache`/`loadResults`/`openNoteAt` (Signaturen preserved — nur das Backing kam vom gelöschten `search.ts` in `omnibar.ts`).
+
+**Gotchas:**
+- `setQuery` MUSS für non-notes Modes `open=true` setzen — sonst zeigt Tippen eines Prefix in ein geschlossenes Field nichts.
+- `executeCommand` mode-switch close guard für den "Search notes"-Third-Flow.
+- `CommandContext.search` → `omnibar: OmnibarActions` (narrow iface in `registry.ts` um circular import zu vermeiden).
+- `notes.titleOf` exportiert (omnibar + context-menu nutzen es).
+- Editor-toolbar ⋯ → rechts der Omnibar-Pill verschoben.
+
+**Tests:** `tests/contract/omnibar.spec.ts` + `tests/contract/omnibar-overlay.spec.ts` (rename von command-palette-overlay). 1315 contract-Tests grün; typecheck clean.
+
+_Zuletzt aktualisiert: 2026-07-22 (Unified Omnibar; search+command-palette DELETED; prefix-modes notes/`>`/`#`/`@`/`:`; Cmd+K/Cmd+Alt+F/Cmd+Shift+P in TitleBar; 1315 tests grün) — on-site visual gate pending_
+
+## CollapsiblePanel (sidebar/notes-list width animation) (2026-07-22)
+
+`components/CollapsiblePanel.vue` ersetzt `v-show`-Pop der Sidebar + Notes-List mit einer width+fade Transition. Inner fixed-width div → Panel reflowt nie mid-anim. **Gotcha:** `transition: width` MUSS während Resizer-Drag suppresst werden (else drag lags) — `Resizer` emitted `resize-start`/`resize-end`, Panel swappt auf `transition:none`. `focus`-Icon der curated set hinzugefügt.
+
+_Zuletzt aktualisiert: 2026-07-22 (CollapsiblePanel width transition; Resizer drag-suppress; 1315 tests grün) — on-site pending_
+
+## Monographs (Publish-to-Web UI) (2026-07-22)
+
+Publish-to-Web UI auf die existierende Data-Layer (`stores/publish.ts` + `utils/publish.ts`) gebaut. **Self-hosting = upstream parity:** core POSTs nach `API_HOST`, public URL = server-returned `Monograph.publishUrl` via `formatPublishUrl` (NIE hand-construct `monogr.ph/<id>`); `MONOGRAPH_HOST` collected-but-unused (same as upstream).
+
+**Surfaces:**
+- `stores/publish-dialog.ts` + `components/PublishDialog.vue` — form-dialog (mirror `reminder-dialog`): title/password(selfDestruct; `confirm` omits password when empty für exactOptionalPropertyTypes. Mounted in `App.vue`.
+- `usePublishStore` generalisiert: `publishById(id, title, opts)` / `unpublishById(id)` (explicit-id; `publish`/`unpublish` sind thin wrappers). Commands `app:publish-note`/`unpublish-note`/`copy-monograph-url`/`open-monograph-in-browser` (`app-commands.ts`, `when`-gated auf `ctx.publish.published`); `publish: ReturnType<typeof usePublishStore>` zu `CommandContext` (registry.ts) + `omnibar.ts` ctx (viral).
+- `EditorToolbar.vue`: EIN context-sensitive **Publish button** (user-request — ersetzt ⋯ + badge): "Publish"-Text wenn unpublished → `publishDialog.openCreate`; globe icon (title "Published") wenn published → submenu (Unpublish [danger, confirm-gated] / Copy URL / Open) via `useContextMenuStore.show` an `publishBtn.getBoundingClientRect()` (NOT `EditorAction` — formatting-only path).
+- Note context menu: `NoteMenuTarget.published`; `NoteMenuDeps` gained `publishNote`/`unpublishNote`/`copyMonographUrl`/`openMonograph`; `buildNoteMenu` publish-section. Wired in `NotesList.vue:onNoteContext` (fetches `published` via `db.monographs.refresh()`+`isPublished(id)` im snapshot Promise.all). Notes-list published globe = monochrome `text-text-muted`.
+- `stores/monographs.ts` `useMonographsStore` + `components/MonographsView.vue` (mirror `archive.ts`/`ArchiveView.vue`) für `/monographs` route (swapped from PlaceholderView). Row actions Copy URL / Open / Unpublish.
+- `EVENTS.monographsUpdated` bridged (`event-bridge.ts`); `publish.bindMonographsEvents()` (idempotent) reseeds active-note state + `notes.load()`. Called from `App.vue`; `syncCompletedSignal`-watcher reloadet `publish.refresh()` + `useMonographsStore().load()`.
+- `notes.publishedIds` (Set) + `loadPublishedIds()` (refresh→`all.ids`) für den notes-list globe icon; fire-and-forget in `load()`.
+- `globe`/`link`/`copy`/`eye` curated icons.
+
+**Gotchas:**
+- `db.monographs.all` returns `Note[]` (filter on db.notes by published-id cache); `Monograph` row von `db.monographs.get(id)`. Monograph id == note id. MUST `await db.monographs.refresh()` first (cache empty until refreshed).
+- `db.monographs.unpublish(id)` SINGLE id (not variadic) — loop for bulk.
+- `totalViews` server-only via `db.monographs.metadata(id)` (lazy via `loadAnalytics`, fire-and-forget in `load()` → tests calling `load()`+`loadAnalytics()` trigger metadata twice).
+- `bindMonographsEvents` opt-in → store unit-testable (tests never call it → `EV` untouched).
+
+**Images-not-published FIX:** `db.attachments.save` (image insert via `attachments-bridge.ingestFile`) schreibt blobs LOCALLY mit `dateUploaded=null` (pending); nur ein send-sync uploadet sie nach S3 (`Sync.send`→`uploadAttachments`→`queueUploads`). Die public page resolved `<img data-hash>` gegen den Server → un-uploaded attachment = kein Bild, obwohl `db.content.downloadMedia` local eine inline `data:`-URL embedded. **Fix in `publishById`:** `db.sync({type:"send"})` BEFORE `db.monographs.publish` (`uploadPendingAttributes`, never-throws — sync failure logged+swallowed, publish proceeds + surfaces eigene auth error). PLUS flush des focused editor's pending autosave via `editorStore.flushFocusedSave` (new flusher registry `registerFlusher`/`unregisterFlusher`/`flushFocusedSave` in `stores/editor.ts`, wired in `Editor.vue`) damit `db.content.get` eine just-inserted image reflektiert. Tests: `publish.spec.ts` gained `db.sync` stub + 2 cases (send-sync ordered before publish; sync failure non-blocking).
+
+**Verifiziert:** typecheck clean; contract-Suite **1315/1315 grün** (new: `monographs.spec.ts` 9, `notes-published-ids.spec.ts` 4, publish +2, event-bridge bridged set, context-menu-entries publish-section). **On-site gate pending:** dialog/publish-button/list/cross-device update + **verify images render auf public page nach publish** (per [[ask-on-site-for-physical-presence-steps]]).
+
+_Zuletzt aktualisiert: 2026-07-22 (Monographs publish UI + images-fix via pre-publish send-sync + focused-editor flush; 1315 tests grün; typecheck clean; on-site image-render gate pending) — siehe oben; davor 2026-07-22 Unified Omnibar_
+
+## TODO: on-site gates pending (reminder)
+
+Headless-verifiziert, aber physical-presence verification steht aus (per [[ask-on-site-for-physical-presence-steps]]):
+- **Unified Omnibar:** prefix-modes notes/`>`/`#`/`@`/`:` render + select + Cmd+K/Cmd+Alt+F/Cmd+Shift+P shortcuts.
+- **CollapsiblePanel:** sidebar/notes-list slide+fade; drag-suppress während Resizer.
+- **Monographs:** Publish dialog → publish → globe button + notes-list globe; Copy URL / Open; `/monographs` list + row actions; cross-device `monographsUpdated` update; **images render auf public page nach publish**.
+- **Drag Note→Tab-Strip/Pane** (from prior commit): unselektierte Note auf Tab-Position droppen; aktive Note auf Pane-Edge → Sibling; Multi-Selection; Centre-Drop; Sidebar-Drop + tear-off + File/Image-Drop intakt.
+
+_Zuletzt aktualisiert: 2026-07-22 (on-site gates list)_

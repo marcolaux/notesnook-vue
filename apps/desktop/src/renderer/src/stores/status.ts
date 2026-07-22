@@ -5,7 +5,11 @@ import { getDatabase } from "@/platform/bootstrap";
 import type { EditorStats, SyncState } from "@/utils/status";
 
 /**
- * Status store (Phase 3.4) — the reactive backing for the bottom status bar.
+ * Status store (Phase 3.4) — the reactive backing for the distributed status
+ * surfaces (the bottom status bar was removed; its concerns were relocated):
+ *  - Sync status → the sidebar account area (`Sidebar.vue`).
+ *  - Word/line/col counts → the editor tags footer (`Editor.vue`).
+ *  - Autosave indicator → the editor toolbar (`EditorToolbar.vue`).
  * Holds three independent concerns:
  *
  *  - **Editor stats** (word/char count + cursor line/column): pushed in by
@@ -37,14 +41,15 @@ export const useStatusStore = defineStore("status", () => {
   const cursorLine = ref(1);
   const cursorColumn = ref(1);
 
-  // Autosave indicator (moved here from the editor toolbar): the "Saving… /
-  // Saved" state of the FOCUSED pane's editor, pushed in by `Editor.vue` via
-  // {@link setSaveState} with the same focused-guard as the editor stats.
+  // Autosave indicator: the "Saving… / Saved" state of the FOCUSED pane's
+  // editor, pushed in by `Editor.vue` via {@link setSaveState} with the same
+  // focused-guard as the editor stats. Read by the editor toolbar
+  // (`EditorToolbar.vue`).
   const saving = ref(false);
   const savedAt = ref<number | null>(null);
 
-  /** A reactive wall-clock the StatusBar reads so "5m ago" stays accurate
-   * without the user nudging the store. Bumped on an interval by
+  /** A reactive wall-clock the sidebar sync indicator reads so "5m ago" stays
+   * accurate without the user nudging the store. Bumped on an interval by
    * {@link startClock}; tests can set it directly for determinism. */
   const now = ref<number>(Date.now());
   let clockHandle: ReturnType<typeof setInterval> | null = null;

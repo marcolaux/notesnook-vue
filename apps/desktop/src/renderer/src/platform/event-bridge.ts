@@ -27,7 +27,14 @@ const BRIDGED_EVENTS = [
   EVENTS.vaultAutoLocked,
   EVENTS.vaultUnlocked,
   EVENTS.userSessionExpired,
-  EVENTS.userLoggedOut
+  EVENTS.userLoggedOut,
+  // Server-pushed monograph changes (publish/unpublish from another device).
+  // Core publishes this from the sync `SendMonographs` hub handler
+  // (`api/sync/index.ts:575`) with the affected note ids as payload, right
+  // after `db.monographs.refresh()` repopulates the in-memory cache. Bridging
+  // it lets the publish store reseed the active note's state + reload the notes
+  // list (db.monographs.all filters notes) so cross-device changes appear live.
+  EVENTS.monographsUpdated
 ] as const;
 
 /**

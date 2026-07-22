@@ -1,23 +1,31 @@
 // @vitest-environment happy-dom
+/**
+ * Omnibar overlay contract tests — mount the title-bar `GlobalSearchInput`
+ * (which hosts the teleported `OmnibarDropdown`) and assert prefix-mode
+ * switching, row rendering, keyboard nav, and the "Search notes" third-flow.
+ *
+ * Migrated from the former `command-palette-overlay.spec.ts` (which mounted the
+ * centered `CommandPalette`); the palette now lives in the title-bar dropdown.
+ */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createPinia, setActivePinia } from "pinia";
-import CommandPalette from "@/components/CommandPalette.vue";
-import { useCommandPaletteStore } from "@/stores/command-palette";
+import GlobalSearchInput from "@/components/GlobalSearchInput.vue";
+import { useOmnibarStore } from "@/stores/omnibar";
+import { useCollectionsStore } from "@/stores/collections";
 import { registerCommands, clearCommands, type Command } from "@/commands/registry";
 
-// notes.ts imports getDatabase from bootstrap; stub it so the platform graph
-// (sodium/crypto/bridge) isn't pulled into a pure overlay-mount test.
+// The omnibar store imports `getDatabase` + `goToCollection`; stub both so the
+// platform graph (sodium/crypto/bridge) + the router/db aren't pulled in.
 vi.mock("@/platform/bootstrap", () => ({
   getDatabase: () => ({}),
   bootstrap: vi.fn()
 }));
+vi.mock("@/utils/collection-nav", () => ({
+  goToCollection: vi.fn()
+}));
 
-// Build a fresh command set with captured spies so tests can assert which
-// command ran without mutating the registry mid-test (the palette store's
-// `items` computed caches `visibleCommands`, which reads the module `Map` once
-// per evaluation — mid-test re-registration would not propagate).
 function fakeCommands(): Command[] {
   return [
     { id: "alpha", title: "Always visible", keywords: ["a"], group: "app", run: vi.fn() },
@@ -34,16 +42,19 @@ function fakeCommands(): Command[] {
 }
 
 function inputEl(): HTMLInputElement | null {
-  return document.body.querySelector<HTMLInputElement>(".command-palette__input");
+  return document.body.querySelector<HTMLInputElement>(".global-search__input");
 }
 function rows(): NodeListOf<HTMLElement> {
-  return document.body.querySelectorAll<HTMLElement>(".command-palette__item");
+  return document.body.querySelectorAll<HTMLElement>(".omnibar-dropdown__item");
 }
 function activeRow(): HTMLElement | null {
-  return document.body.querySelector<HTMLElement>(".command-palette__item.is-active");
+  return document.body.querySelector<HTMLElement>(".omnibar-dropdown__item.is-active");
 }
 function emptyState(): HTMLElement | null {
-  return document.body.querySelector<HTMLElement>(".command-palette__empty");
+  return document.body.querySelector<HTMLElement>(".omnibar-dropdown__empty");
+}
+function footer(): HTMLElement | null {
+  return document.body.querySelector<HTMLElement>(".omnibar-dropdown__footer");
 }
 function fireKey(el: Element, key: string): void {
   el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
@@ -53,9 +64,9 @@ function type(el: HTMLInputElement, value: string): void {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-describe("CommandPalette.vue", () => {
+describe("GlobalSearchInput + OmnibarDropdown", () => {
   let wrapper: ReturnType<typeof mount>;
-  let palette: ReturnType<typeof useCommandPaletteStore>;
+  let omnibar: ReturnType<typeof useOmnibarStore>;
   let cmds: Command[];
 
   beforeEach(() => {
@@ -63,8 +74,8 @@ describe("CommandPalette.vue", () => {
     clearCommands();
     cmds = fakeCommands();
     registerCommands(cmds);
-    palette = useCommandPaletteStore();
-    wrapper = mount(CommandPalette, { attachTo: document.body });
+    omnibar = useOmnibarStore();
+    wrapper = mount(GlobalSearchInput, { attachTo: document.body });
   });
 
   afterEach(() => {
@@ -76,11 +87,11 @@ describe("CommandPalette.vue", () => {
 
   it("renders nothing while closed", () => {
     expect(rows().length).toBe(0);
-    expect(inputEl()).toBeNull();
+    expect(emptyState()).toBeNull();
   });
 
-  it("renders an input + a row per visible item when open, first row active", async () => {
-    palette.openPalette();
+  it("openCommands renders an input + a row per visible command, first row active", async () => {
+    omnibar.openCommands();
     await nextTick();
     // editor undefined → needs-editor hidden → 2 visible (alpha, new-note)
     expect(rows().length).toBe(2);
@@ -89,22 +100,22 @@ describe("CommandPalette.vue", () => {
   });
 
   it("autofocuses the input when opened", async () => {
-    palette.openPalette();
+    omnibar.openCommands();
     await nextTick();
     expect(document.activeElement).toBe(inputEl());
   });
 
-  it("typing filters the list via setQuery", async () => {
-    palette.openPalette();
+  it("typing filters the command list via setQuery", async () => {
+    omnibar.openCommands();
     await nextTick();
-    type(inputEl()!, "new");
+    type(inputEl()!, ">new");
     await nextTick();
     expect(rows().length).toBe(1);
     expect(rows()[0].textContent).toContain("New note");
   });
 
   it("ArrowDown/ArrowUp move the active row with wrapping", async () => {
-    palette.openPalette();
+    omnibar.openCommands();
     await nextTick();
     const input = inputEl()!;
     fireKey(input, "ArrowDown");
@@ -118,26 +129,26 @@ describe("CommandPalette.vue", () => {
     expect(activeRow()?.textContent).toContain("New note");
   });
 
-  it("Enter runs the active command and closes the palette", async () => {
-    palette.openPalette();
+  it("Enter runs the active command and closes the omnibar", async () => {
+    omnibar.openCommands();
     await nextTick();
     fireKey(inputEl()!, "Enter");
     await nextTick();
     expect(runOf("alpha")).toHaveBeenCalledOnce();
     expect(runOf("new-note")).not.toHaveBeenCalled();
-    expect(palette.open).toBe(false);
+    expect(omnibar.open).toBe(false);
   });
 
-  it("Escape closes the palette", async () => {
-    palette.openPalette();
+  it("Escape closes the omnibar", async () => {
+    omnibar.openCommands();
     await nextTick();
     fireKey(inputEl()!, "Escape");
     await nextTick();
-    expect(palette.open).toBe(false);
+    expect(omnibar.open).toBe(false);
   });
 
   it("hover sets the active row; click runs that command", async () => {
-    palette.openPalette();
+    omnibar.openCommands();
     await nextTick();
     rows()[1].dispatchEvent(new Event("mouseenter", { bubbles: true }));
     await nextTick();
@@ -146,15 +157,53 @@ describe("CommandPalette.vue", () => {
     await nextTick();
     expect(runOf("new-note")).toHaveBeenCalledOnce();
     expect(runOf("alpha")).not.toHaveBeenCalled();
-    expect(palette.open).toBe(false);
+    expect(omnibar.open).toBe(false);
   });
 
-  it("shows an empty state when the query matches nothing", async () => {
-    palette.openPalette();
+  it("shows an empty state when the command query matches nothing", async () => {
+    omnibar.openCommands();
     await nextTick();
-    type(inputEl()!, "zzz");
+    type(inputEl()!, ">zzz");
     await nextTick();
     expect(rows().length).toBe(0);
     expect(emptyState()?.textContent).toContain("No matching commands");
+  });
+
+  it("the notes-mode 'View all results' footer is absent in commands mode", async () => {
+    omnibar.openCommands();
+    await nextTick();
+    expect(footer()).toBeNull();
+  });
+
+  it("prefix switching: `#` enters tags mode and renders tag rows", async () => {
+    const collections = useCollectionsStore();
+    collections.tags = [
+      { id: "t1", title: "Work", dateCreated: 0, dateModified: 0 },
+      { id: "t2", title: "Home", dateCreated: 0, dateModified: 0 }
+    ];
+    omnibar.openCommands(); // focus the field
+    await nextTick();
+    type(inputEl()!, "#work");
+    await nextTick();
+    expect(omnibar.mode).toBe("tags");
+    expect(rows().length).toBe(1);
+    expect(rows()[0].textContent).toContain("Work");
+  });
+
+  it("third-flow: picking 'Search notes' switches the open omnibar to notes mode", async () => {
+    clearCommands();
+    const spy = vi.fn();
+    registerCommands([
+      { id: "search-notes", title: "Search notes", group: "app", run: (ctx) => { spy(); ctx.omnibar.openNotes(); } }
+    ]);
+    omnibar.openCommands();
+    await nextTick();
+    // The only command is "Search notes" — Enter runs it.
+    fireKey(inputEl()!, "Enter");
+    await nextTick();
+    expect(spy).toHaveBeenCalledOnce();
+    expect(omnibar.mode).toBe("notes");
+    expect(omnibar.open).toBe(true); // NOT closed — mode switched
+    expect(omnibar.query).toBe("");
   });
 });

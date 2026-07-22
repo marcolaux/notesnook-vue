@@ -11,7 +11,7 @@ import type { UpstreamReleaseStatus } from "@contracts/router";
  * `streetwriters/notesnook` desktop-stable release from GitHub and compare it
  * against the release we developed against (baked at build time). When a newer
  * release exists it fires a system `Notification` (once per tag) and exposes
- * `hasNewer` so the StatusBar can show a persistent "upstream update" indicator.
+ * `hasNewer` so the title bar can show a persistent "upstream update" indicator.
  *
  * Design (mirrors `stores/updater.ts`):
  *  - **Never throws.** `maybeCheck` catches bridge errors and leaves state
@@ -22,7 +22,7 @@ import type { UpstreamReleaseStatus } from "@contracts/router";
  *    (60/hr per IP). `checkNow(true)` bypasses the throttle.
  *  - **Once-per-tag notification.** `notifiedTag` records the last tag we
  *    surfaced a system notification for, so the same release doesn't re-notify
- *    on every daily check. `dismiss()` hides the StatusBar indicator until a
+ *    on every daily check. `dismiss()` hides the title-bar indicator until a
  *    newer tag arrives.
  *  - **Privacy toggle.** Honors `settings.upstreamReleaseCheckEnabled` (client
  *    only) — off ⇒ no check, no network call.
@@ -129,7 +129,7 @@ export const useUpstreamNotifierStore = defineStore("upstream-notifier", () => {
     }
   }
 
-  /** Hide the StatusBar indicator for the current latest tag (until a newer
+  /** Hide the title-bar indicator for the current latest tag (until a newer
    *  release appears). Also suppresses re-notification for this tag. */
   function dismiss(): void {
     const tag = status.value?.latestTag ?? null;

@@ -8,6 +8,8 @@ import { registerCommands } from "./registry";
 import type { Command } from "./registry";
 import { VIEWS } from "@/router/routes";
 import { desktop } from "@/platform/desktop-bridge";
+import { usePublishDialogStore } from "@/stores/publish-dialog";
+import { useDialogStore } from "@/stores/dialog";
 
 const appCommands: Command[] = [
   {
@@ -159,7 +161,7 @@ const appCommands: Command[] = [
     group: "app",
     when: (ctx) => ctx.auth.showShell,
     run: (ctx) => {
-      ctx.search.focus();
+      ctx.omnibar.openNotes();
     }
   },
   // In-content find & replace (per tab) — opens the focused tab's find bar via
@@ -290,6 +292,77 @@ const appCommands: Command[] = [
     when: (ctx) => ctx.auth.showShell,
     run: (ctx) => {
       void ctx.spellChecker.toggleSpellCheck(!ctx.spellChecker.enabled);
+    }
+  },
+  // Publish-to-web (monographs) commands — act on the active note. `publish-
+  // note` opens the publish dialog; `unpublish-note` confirm-gates then calls
+  // `db.monographs.unpublish`; `copy-monograph-url` / `open-monograph-in-
+  // browser` use the authoritative server-returned `publishUrl`. Only the
+  // applicable one of publish/unpublish shows (gated on `ctx.publish.published`
+  // — the publish store reseeds it on active-note switch). The public URL is
+  // read from `Monograph.publishUrl` (never hand-constructed) — self-hosters get
+  // the correct URL because their API server returns their monograph server's.
+  {
+    id: "app:publish-note",
+    title: "Publish note",
+    keywords: ["publish", "monograph", "public", "web", "share"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote && !ctx.publish.published,
+    run: (ctx) => {
+      const note = ctx.notes.activeNote;
+      if (!note) return;
+      const dialog = usePublishDialogStore();
+      void dialog.openCreate(note.id, note.title).then((input) => {
+        if (!input) return;
+        const { title, ...opts } = input;
+        void ctx.publish.publishById(note.id, title, opts);
+      });
+    }
+  },
+  {
+    id: "app:unpublish-note",
+    title: "Unpublish note",
+    keywords: ["unpublish", "monograph", "private", "remove", "web"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote && ctx.publish.published,
+    run: (ctx) => {
+      const note = ctx.notes.activeNote;
+      if (!note) return;
+      const dialog = useDialogStore();
+      void dialog
+        .confirm({
+          title: "Unpublish note",
+          message: "This note will no longer be public. The link will stop working.",
+          confirmLabel: "Unpublish",
+          danger: true
+        })
+        .then((ok) => {
+          if (ok) void ctx.publish.unpublishById(note.id);
+        });
+    }
+  },
+  {
+    id: "app:copy-monograph-url",
+    title: "Copy monograph URL",
+    keywords: ["copy", "monograph", "url", "link", "share"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote && ctx.publish.published,
+    run: (ctx) => {
+      const url = ctx.publish.publishUrl;
+      if (url) void navigator.clipboard.writeText(url);
+    }
+  },
+  {
+    id: "app:open-monograph-in-browser",
+    title: "Open monograph in browser",
+    keywords: ["open", "monograph", "browser", "web", "view"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote && ctx.publish.published,
+    run: (ctx) => {
+      const url = ctx.publish.publishUrl;
+      // `window.open` is intercepted by `setWindowOpenHandler` → `shell.openExternal`,
+      // so this opens the system browser, not an in-app window.
+      if (url) window.open(url, "_blank", "noopener");
     }
   }
 ];

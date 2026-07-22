@@ -48,6 +48,19 @@ export const useEditorStore = defineStore("editor", () => {
   // `.value` on register/unregister still triggers the `editor` computed.
   const registry = shallowRef<Record<string, Editor>>({});
   const focusedKey = ref<string | null>(null);
+
+  // Per-pane autosave flushers (Phase 5.1 — publish-with-images). Each
+  // `Editor.vue` owns a debounced `flushSave` in its setup scope (instance-local
+  // so split panes don't clobber each other's pending html). The publish store
+  // needs to force the FOCUSED pane's pending save to disk BEFORE
+  // `db.monographs.publish` reads `db.content.get(note.contentId)` — otherwise a
+  // just-inserted image whose autosave debounce hasn't fired is absent from the
+  // stored content, and `downloadMedia` finds no `data-hash` to embed. A signal
+  // bump can't be awaited (publish must await the flush), so this holds the
+  // actual async flusher keyed by the same `myKey` as the editor registry.
+  // `shallowRef` + immutable replace so registration triggers reactivity
+  // without deep-proxying the function map.
+  const flushers = shallowRef<Record<string, () => Promise<void>>>({});
   /** Bumped by the "Find in note" palette command; each `Editor.vue` watches it
    *  and opens its find bar when it is the focused pane (mirrors
    *  `notes.focusSearchSignal` — a palette entry point that needs no global
@@ -67,6 +80,39 @@ export const useEditorStore = defineStore("editor", () => {
       const next = { ...registry.value };
       delete next[key];
       registry.value = next;
+    }
+  }
+
+  /** Register the per-pane autosave flusher (see {@link flushSave}). Overwrites
+   *  on re-register (same key, same Editor instance under KeepAlive). */
+  function registerFlusher(key: string, fn: () => Promise<void>): void {
+    flushers.value = { ...flushers.value, [key]: fn };
+  }
+
+  /** Drop the flusher registered under `key`. */
+  function unregisterFlusher(key: string): void {
+    if (!(key in flushers.value)) return;
+    const next = { ...flushers.value };
+    delete next[key];
+    flushers.value = next;
+  }
+
+  /** Force the focused pane's pending autosave to disk and await it. No-op (a
+   *  resolved promise) when no flusher is registered for the focused pane (no
+   *  editor mounted, or the focused pane is an attachment/empty pane). Used by
+   *  the publish store to ensure `db.content.get` reflects the latest edits
+   *  before `db.monographs.publish`. Never throws — a flush failure is logged
+   *  and swallowed so a publish isn't blocked by a save error. */
+  async function flushFocusedSave(): Promise<void> {
+    const key = focusedKey.value;
+    if (!key) return;
+    const fn = flushers.value[key];
+    if (!fn) return;
+    try {
+      await fn();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[editor] flushFocusedSave failed:", e);
     }
   }
 
@@ -153,6 +199,9 @@ export const useEditorStore = defineStore("editor", () => {
     setPendingScrollTarget,
     pendingScrollTargetFor,
     clearPendingScrollTarget,
-    getEditor
+    getEditor,
+    registerFlusher,
+    unregisterFlusher,
+    flushFocusedSave
   };
 });

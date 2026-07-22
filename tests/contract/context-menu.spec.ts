@@ -117,6 +117,22 @@ describe("useContextMenuStore", () => {
     expect(m.activeIndex).toBe(1); // first selectable
   });
 
+  it("contextId tags the menu's target; show rewrites + close clears it", () => {
+    const m = useContextMenuStore();
+    expect(m.contextId).toBeNull();
+    // Omitted ctxId → null (non-note callers leave no target outline).
+    m.show([item("a")], 0, 0);
+    expect(m.contextId).toBeNull();
+    // A caller (e.g. NotesList) tags the row the menu acts on.
+    m.show([item("a")], 0, 0, "note-42");
+    expect(m.contextId).toBe("note-42");
+    // A re-show from a different source overwrites it (never goes stale).
+    m.show([item("a")], 0, 0, "note-99");
+    expect(m.contextId).toBe("note-99");
+    m.close();
+    expect(m.contextId).toBeNull();
+  });
+
   it("move wraps + skips separators/disabled", () => {
     const m = useContextMenuStore();
     m.show([item("a"), separator("s"), item("b"), item("c", { disabled: true })], 0, 0);

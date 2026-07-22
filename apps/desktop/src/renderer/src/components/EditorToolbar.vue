@@ -15,7 +15,12 @@
  *
  * Trailing utility buttons (not editor actions): find-in-note
  * (`editorStore.requestFind` → opens the focused pane's `FindBar`, same as ⌘F),
- * ToC + properties panel toggles (`useShellStore`), and ⋯ → command palette.
+ * ToC + properties panel toggles (`useShellStore`), and a context-sensitive
+ * Publish button: a "Publish" text button (opens the publish dialog) when the
+ * active note is unpublished, or the globe icon, title "Published", opening a
+ * note-actions context menu (Unpublish / Copy monograph URL / Open in browser)
+ * when it is published — built via `useContextMenuStore` (NOT the editor-vue
+ * `EditorAction` path, which is formatting-only).
  * Theme tokens (`bg-glass-*`/`text-text*`/`border-glass-border`) follow the app
  * theme.
  */
@@ -24,12 +29,17 @@ import type { Editor } from "@tiptap/vue-3";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useShellStore } from "@/stores/shell";
 import { useNotesStore } from "@/stores/notes";
-import { useCommandPaletteStore } from "@/stores/command-palette";
+import { useStatusStore } from "@/stores/status";
 import { useToolbarStore } from "@/stores/toolbar";
 import { useEditorStore } from "@/stores/editor";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useReminderDialogStore } from "@/stores/reminder-dialog";
 import { useRemindersStore } from "@/stores/reminders";
+import { usePublishStore } from "@/stores/publish";
+import { usePublishDialogStore } from "@/stores/publish-dialog";
+import { useDialogStore } from "@/stores/dialog";
+import { useContextMenuStore } from "@/stores/context-menu";
+import { type MenuItem } from "@/utils/context-menu";
 import ToolbarGroup from "./ToolbarGroup.vue";
 
 const props = defineProps<{
@@ -38,12 +48,19 @@ const props = defineProps<{
 
 const shell = useShellStore();
 const notes = useNotesStore();
-const palette = useCommandPaletteStore();
+const status = useStatusStore();
 const toolbar = useToolbarStore();
 const editorStore = useEditorStore();
 const layout = useEditorLayoutStore();
 const reminderDialog = useReminderDialogStore();
 const reminders = useRemindersStore();
+const publish = usePublishStore();
+const publishDialog = usePublishDialogStore();
+const dialog = useDialogStore();
+const contextMenu = useContextMenuStore();
+
+/** The publish button — template ref for positioning its submenu. */
+const publishBtn = ref<HTMLButtonElement | null>(null);
 
 /** "Remind me" for the active note: open the reminder dialog seeded with the
  *  note's title + `nn://note/<id>` description; on confirm, create the reminder
@@ -62,6 +79,66 @@ function remindMe(): void {
 function toggleHistory(): void {
   const id = layout.activeTab?.id;
   if (id) layout.toggleHistory(id);
+}
+
+/** Open the publish dialog for the active note (the "Publish" button click
+ *  when the note is not yet published). On confirm, publish via the publish
+ *  store's explicit-id action. No-op when no note is active. */
+function openPublishDialog(): void {
+  const n = notes.activeNote;
+  if (!n) return;
+  void publishDialog.openCreate(n.id, n.title).then((input) => {
+    if (!input) return;
+    const { title, ...opts } = input;
+    void publish.publishById(n.id, title, opts);
+  });
+}
+
+/** Open the "Published" submenu — unpublish / copy URL / open in browser for
+ *  the active note. Only called when the note is already published (the
+ *  published button opens this; the publish dialog path is separate). Uses the
+ *  context-menu store (the same surface as right-click) rather than the
+ *  editor-vue `EditorAction` path, which is formatting-only. */
+function openPublishedMenu(): void {
+  const n = notes.activeNote;
+  if (!n || !publishBtn.value) return;
+  const items: MenuItem[] = [
+    {
+      id: "unpublish",
+      label: "Unpublish note",
+      icon: "trash-2",
+      danger: true,
+      onSelect: async () => {
+        const ok = await dialog.confirm({
+          title: "Unpublish note",
+          message: "This note will no longer be public. The link will stop working.",
+          confirmLabel: "Unpublish",
+          danger: true
+        });
+        if (ok) void publish.unpublishById(n.id);
+      }
+    },
+    {
+      id: "copy-url",
+      label: "Copy monograph URL",
+      icon: "link",
+      onSelect: () => {
+        if (publish.publishUrl) void navigator.clipboard.writeText(publish.publishUrl);
+      }
+    },
+    {
+      id: "open",
+      label: "Open in browser",
+      icon: "external-link",
+      onSelect: () => {
+        // `window.open` is intercepted by `setWindowOpenHandler` →
+        // `shell.openExternal`, so this opens the system browser.
+        if (publish.publishUrl) window.open(publish.publishUrl, "_blank", "noopener");
+      }
+    }
+  ];
+  const r = publishBtn.value.getBoundingClientRect();
+  contextMenu.show(items, r.right, r.bottom + 4, n.id);
 }
 
 // Bumped on every editor transaction/update so the `ToolbarGroup` `items`
@@ -146,13 +223,37 @@ onBeforeUnmount(() => {
     >
       <Icon name="bell" :size="16" />
     </button>
+    <!-- Autosave indicator for the focused pane's editor, pushed in by
+         Editor.vue via status.setSaveState. `ml-auto` anchors this (and the
+         publish button after it) to the right edge; the empty-string idle
+         state keeps the layout stable. -->
+    <span class="ml-auto shrink-0 px-1 text-[10px] text-text-muted">
+      {{ status.saving ? "Saving…" : status.savedAt ? "Saved" : "" }}
+    </span>
+    <!-- Publish button — a single affordance that reflects publish state:
+         - Not published: a "Publish" text button → opens the publish dialog.
+         - Published: the globe icon, title "Published" → opens the submenu
+           (Unpublish / Copy monograph URL / Open in browser). -->
     <button
+      v-if="!publish.published"
+      ref="publishBtn"
       type="button"
-      class="ml-auto grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
-      title="Command palette (⌘⇧P)"
-      @click="palette.openPalette()"
+      class="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+      title="Publish note"
+      :disabled="!notes.activeNote"
+      @click="openPublishDialog()"
     >
-      <Icon name="ellipsis" :size="16" />
+      Publish
+    </button>
+    <button
+      v-else
+      ref="publishBtn"
+      type="button"
+      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
+      title="Published"
+      @click="openPublishedMenu()"
+    >
+      <Icon name="globe" :size="16" />
     </button>
   </div>
 </template>
