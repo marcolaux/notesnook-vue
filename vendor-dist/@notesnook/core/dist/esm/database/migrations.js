@@ -534,11 +534,11 @@ function runFTSTablesMigrations(db) {
             yield tx.schema.dropTable("notes_fts").execute();
             yield createFTS5Table("notes_fts", [{ name: "id" }, { name: "title" }], {
                 contentTable: "notes",
-                tokenizer: ["trigram", "remove_diacritics 1"]
+                tokenizer: ["better_trigram", "remove_diacritics 1"]
             }).execute(tx);
             yield createFTS5Table("content_fts", [{ name: "id" }, { name: "noteId" }, { name: "data" }], {
                 contentTable: "content",
-                tokenizer: ["trigram", "remove_diacritics 1"]
+                tokenizer: ["html", "better_trigram", "remove_diacritics 1"]
             }).execute(tx);
         }));
         yield rebuildSearchIndex(db);

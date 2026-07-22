@@ -56,12 +56,6 @@ export class Content {
             yield this.collection.init();
         });
     }
-    /**
-     * Required to satisfy the ICollection interface.
-     * This collection does not currently maintain a local cache that needs invalidation,
-     * but the method must exist for type safety when iterating over all collections.
-     */
-    invalidateCache() { }
     add(content) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a;

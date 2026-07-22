@@ -37,18 +37,66 @@ export const useRemindersStore = defineStore("reminders", () => {
   /** Last mutation error message, or `null`. Cleared on success. */
   const lastError = ref<string | null>(null);
 
+  /** Per-reminder linked-note meta (reminderId → { noteId, title }), built in
+   *  `refresh()` from the reminder↔note relations (`db.relations`). A reminder
+   *  is standalone in core (no noteId field); the link is a relation. The
+   *  Reminders view renders a clickable note-title chip from this; the
+   *  scheduler reads `noteIdMap` (derived below) to thread `noteId` to main so
+   *  the notification `click` opens the note. */
+  const noteLinks = ref<Record<string, { noteId: string; title: string }>>({});
+  /** reminderId → noteId (derived from `noteLinks`) for the scheduler mapper. */
+  const noteIdMap = computed<Record<string, string>>(() => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(noteLinks.value)) out[k] = v.noteId;
+    return out;
+  });
+
   const count = computed(() => items.value.length);
   /** Active reminders (core's `isReminderActive` — disabled / past-once excluded). */
   const activeItems = computed(() => items.value.filter(isReminderActive));
 
-  /** Reload the reminder list from the database, newest-created-first. Never
-   *  throws — a failure leaves the previous list intact and logs. */
+  /** Reload the reminder list from the database, newest-created-first, and
+   *  rebuild the reminder↔note link map. Never throws — a failure leaves the
+   *  previous list intact and logs. `noteLinks` is assigned BEFORE `items` so
+   *  the scheduler watch (on `items`) sees a consistent pair when it fires. */
   async function refresh(): Promise<void> {
     loading.value = true;
     try {
       const db = getDatabase();
       const all: Reminder[] = await db.reminders.all.items();
-      items.value = sortRemindersByCreatedDesc(all);
+      const sorted = sortRemindersByCreatedDesc(all);
+      const links: Record<string, { noteId: string; title: string }> = {};
+      if (sorted.length > 0) {
+        try {
+          const rows = await db.relations
+            .to({ type: "reminder", ids: sorted.map((r) => r.id) }, "note")
+            .get();
+          const relRows = rows as { fromId: string; toId: string }[];
+          const noteIds = [...new Set(relRows.map((r) => r.toId))];
+          const titles = new Map<string, string>();
+          await Promise.all(
+            noteIds.map(async (nid) => {
+              try {
+                const n = await db.notes.note(nid);
+                if (n) titles.set(nid, n.title || "Untitled");
+              } catch {
+                /* note gone — skip */
+              }
+            })
+          );
+          for (const row of relRows) {
+            links[row.fromId] = {
+              noteId: row.toId,
+              title: titles.get(row.toId) ?? "Untitled"
+            };
+          }
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error("[reminders] noteLinks load failed:", e);
+        }
+      }
+      noteLinks.value = links;
+      items.value = sorted;
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[reminders] refresh failed:", e);
@@ -61,12 +109,28 @@ export const useRemindersStore = defineStore("reminders", () => {
    * Create a reminder via `db.reminders.add`, then reload. Returns the new id,
    * or `null` if the call threw (error surfaced via `lastError`). Core requires
    * `title` + `date` on create (throws otherwise — caught here). `busy`-gated.
+   *
+   * If `input.noteId` is set, links the new reminder to that note via
+   * `db.relations.add` (reminder↔note). The relation is idempotent (core
+   * generates the relation id from from+to) and a link failure is logged but
+   * does NOT fail the add — the reminder exists either way.
    */
   async function add(input: ReminderInput): Promise<string | null> {
     busy.value = true;
     try {
       const db = getDatabase();
       const id = await db.reminders.add(buildReminderInput(input));
+      if (id && input.noteId) {
+        try {
+          await db.relations.add(
+            { type: "reminder", id },
+            { type: "note", id: input.noteId }
+          );
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error("[reminders] link reminder→note failed:", e);
+        }
+      }
       lastError.value = null;
       await refresh();
       return id ?? null;
@@ -151,6 +215,8 @@ export const useRemindersStore = defineStore("reminders", () => {
     lastError,
     count,
     activeItems,
+    noteLinks,
+    noteIdMap,
     refresh,
     add,
     remove,

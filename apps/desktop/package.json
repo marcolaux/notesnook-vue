@@ -26,7 +26,19 @@
     "better-sqlite3-multiple-ciphers": "^12.4.1",
     "electron-trpc": "^0.7.1",
     "electron-updater": "^6.8.9",
+    "sqlite-better-trigram": "^0.0.6",
+    "sqlite3-fts5-html": "^0.0.6",
     "zod": "^3.23.0"
+  },
+  "optionalDependencies": {
+    "sqlite-better-trigram-darwin-arm64": "^0.0.6",
+    "sqlite-better-trigram-darwin-x64": "^0.0.6",
+    "sqlite-better-trigram-linux-x64": "^0.0.6",
+    "sqlite-better-trigram-windows-x64": "^0.0.6",
+    "sqlite3-fts5-html-darwin-arm64": "^0.0.6",
+    "sqlite3-fts5-html-darwin-x64": "^0.0.6",
+    "sqlite3-fts5-html-linux-x64": "^0.0.6",
+    "sqlite3-fts5-html-windows-x64": "^0.0.6"
   },
   "devDependencies": {
     "@notesnook-vue/contracts": "*",
@@ -52,6 +64,7 @@
     "electron": "37.10.3",
     "electron-builder": "^25.1.0",
     "electron-vite": "^2.3.0",
+    "@lucide/vue": "^1.25.0",
     "pinia": "^2.2.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.6.3",

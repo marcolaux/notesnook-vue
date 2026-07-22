@@ -1,7 +1,15 @@
 /**
  * SQLite engine sanity test — confirms `better-sqlite3-multiple-ciphers` loads
- * and runs in node (native-module build is intact) and that the `trigram`
- * FTS5 tokenizer is NOT available without the loadable extension (justifying M4).
+ * and runs in node (native-module build is intact) and documents the built-in
+ * FTS5 tokenizer set.
+ *
+ * M4 (done): core's migrations reference `better_trigram` + `html` tokenizers,
+ * which are NOT built in — they come from the `sqlite-better-trigram` /
+ * `sqlite3-fts5-html` loadable extensions, loaded by the app
+ * (`apps/desktop/src/main/sqlite.ts`) and by the contract tests that run
+ * migrations (`tests/contract/helpers/fts5-extensions.ts`). This file checks
+ * the native module's *built-in* capabilities only (no extensions loaded);
+ * the extension-loaded path is exercised by the real-db specs.
  *
  * This does NOT exercise `main/sqlite.ts` (that module imports Electron's `app`,
  * unavailable outside Electron); the engine wiring is verified via the running
@@ -42,12 +50,10 @@ describe("better-sqlite3-multiple-ciphers (native module)", () => {
   });
 
   it("ships the built-in trigram tokenizer (SQLite >= 3.34)", () => {
-    // `db.init()` migrations use `tokenize='porter trigram remove_diacritics 1'`.
     // SQLite 3.53.2 (bundled with better-sqlite3-multiple-ciphers@12) includes
-    // `trigram` as a built-in FTS5 tokenizer, so the migrations pass WITHOUT the
-    // loadable `sqlite-better-trigram` extension. The `html` tokenizer (from
-    // `sqlite3-fts5-html`) is still absent — only needed later for HTML-aware
-    // search highlighting, not for init.
+    // `trigram` as a built-in FTS5 tokenizer. (Core's migrations use the custom
+    // `better_trigram` instead — provided by the M4 loadable extension, not
+    // built-in; see `helpers/fts5-extensions.ts`.)
     const db = new Database(":memory:").unsafeMode(true);
     expect(() =>
       db.exec(
@@ -58,6 +64,8 @@ describe("better-sqlite3-multiple-ciphers (native module)", () => {
   });
 
   it("html tokenizer is NOT built-in (requires sqlite3-fts5-html extension)", () => {
+    // Without the M4 `sqlite3-fts5-html` extension loaded, `html` is absent.
+    // The extension-loaded path (app + real-db tests) makes this available.
     const db = new Database(":memory:").unsafeMode(true);
     expect(() =>
       db.exec("CREATE VIRTUAL TABLE fh USING fts5(x, tokenize='html')")

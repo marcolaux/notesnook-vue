@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
+import { useColorsStore } from "@/stores/colors";
 import { useAuthStore } from "@/stores/auth";
 import { useStatusStore } from "@/stores/status";
 import { useSyncStore } from "@/stores/sync";
@@ -15,12 +16,28 @@ import { useSettingsStore, THEME_MODE_KEY } from "@/stores/settings";
 import { useConfigStore } from "@/stores/config";
 import { useUpstreamNotifierStore } from "@/stores/upstream-notifier";
 import { useShortcutsStore } from "@/stores/shortcuts";
+import { useRemindersStore } from "@/stores/reminders";
+import { useToolbarStore } from "@/stores/toolbar";
+import { useNotebookIconsStore } from "@/stores/notebook-icons";
 import { bootstrap } from "@/platform/bootstrap";
 import { desktop } from "@/platform/desktop-bridge";
+import { restoreSession } from "@/platform/session-restore";
+import { readCurrentContext } from "@/platform/account-context";
+import {
+  useSessionPersistence,
+  flushNow,
+  setPersistenceSuppressed
+} from "@/composables/use-session-persistence";
 import { dropZoneFromPoint } from "@/utils/tab-dnd";
 import { setTheme, ThemeDark, ThemeLight } from "@notesnook-vue/theme-vue";
 import { useCommandPalette } from "@/composables/use-command-palette";
+import { useReminderNotifications } from "@/composables/use-reminder-notifications";
 import CommandPalette from "@/components/CommandPalette.vue";
+import ContextMenu from "@/components/ContextMenu.vue";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import ColorEditorDialog from "@/components/ColorEditorDialog.vue";
+import IconEditorDialog from "@/components/IconEditorDialog.vue";
+import ReminderEditorDialog from "@/components/ReminderEditorDialog.vue";
 
 const router = useRouter();
 
@@ -58,6 +75,7 @@ const editorLayout = useEditorLayoutStore();
 const settings = useSettingsStore();
 const upstreamNotifier = useUpstreamNotifierStore();
 const config = useConfigStore();
+const notes = useNotesStore();
 
 // --- Theme application (Phase 7.0 on-site) ---------------------------------
 // `bootstrap()` injects `ThemeDark` as the pre-mount default (no flash); here
@@ -136,6 +154,14 @@ function bindCrossWindowThemeListener(): void {
 // <CommandPalette> overlay below renders the store's items.
 useCommandPalette();
 
+// Reminder OS-notification scheduling (main window only — settings / note
+// windows don't own reminders, and only one window should push the schedule
+// to main to avoid double-scheduling across windows). Wires the reminders
+// store's `items` to `desktop.reminders.schedule` + listens for
+// `app:reminder-fired` to reschedule. Called synchronously at setup so its
+// `onUnmounted` cleanup registers against this component instance.
+if (!isSettingsWindow && !isNoteWindow) useReminderNotifications();
+
 // Deep-link (Phase 6.5): the main process forwards `nn://note/<id>` URLs as
 // `app:open-note` events. Open the note in the editor when the shell is
 // visible; otherwise queue until login/local-only shows the shell.
@@ -190,6 +216,21 @@ function openNoteAt(payload: { noteId: string; x: number; y: number }): void {
     // the active group (no pane to target).
     useNotesStore().selectNote(payload.noteId);
   });
+}
+
+/**
+ * Bind this window's webContents to the current account context on the main
+ * side (`desktop.session.bindContext`) so main-side window-geometry writes land
+ * under the right account. Best-effort — silently no-ops when main is
+ * unreachable (e.g. contract tests). Call once on boot and again after a
+ * context switch.
+ */
+function bindContextToSession(): void {
+  void desktop.session.bindContext
+    .mutate({ contextId: readCurrentContext() })
+    .catch(() => {
+      /* main unreachable — no-op */
+    });
 }
 
 onMounted(async () => {
@@ -248,6 +289,7 @@ onMounted(async () => {
 
   const notes = useNotesStore();
   const collections = useCollectionsStore();
+  const colors = useColorsStore();
 
   // App-menu "Close Tab" (Cmd/Ctrl+W, sent from main's ApplicationMenu) closes
   // the active editor tab. The renderer is the source of truth for the active
@@ -266,6 +308,8 @@ onMounted(async () => {
     if (!auth.showShell) return;
     void useNotesStore().load();
     void useCollectionsStore().load();
+    void useColorsStore().refresh();
+    void useRemindersStore().refresh();
     void vault.refresh();
     void backups.refresh();
     void status.refreshSync();
@@ -301,6 +345,23 @@ onMounted(async () => {
     // editor has a group to open tabs in. Idempotent. Multi-pane splits are
     // Phase 4.2/4.3 (on-site).
     editorLayout.init();
+    // Session persistence (main window only): bind this window to its account
+    // context so main-side geometry writes land under the right account, mount
+    // the debounced layout-snapshot watcher, and flush on quit. Settings /
+    // note windows don't own the layout (note windows are single-tab focus mode).
+    if (!isSettingsWindow && !isNoteWindow) {
+      bindContextToSession();
+      useSessionPersistence();
+      window.appEvents?.onBeforeQuit(() => {
+        void flushNow();
+      });
+      // macOS lets the user close the main window without quitting (the app
+      // stays alive). Flush the layout there too so the last edits land on disk
+      // before the window's renderer unloads. Best-effort (async IPC).
+      window.addEventListener("beforeunload", () => {
+        void flushNow();
+      });
+    }
     // Bind sync events once (idempotent) and seed the status bar's sync
     // state from `db.lastSynced()`; safe even when not logged in — the view
     // renders "Local only" until login, and `refreshSync` only queries the
@@ -317,6 +378,9 @@ onMounted(async () => {
     // main window owns sync to avoid double-sync across windows; the note
     // window still binds sync events above for status display.
     if (auth.isLoggedIn && config.syncEnabled && !isNoteWindow) void sync.startSync();
+    // TEMP-DIAG sync-pull: did the boot-sync gate pass, and with what inputs?
+    // eslint-disable-next-line no-console
+    console.log("[sync] boot gate:", { isLoggedIn: auth.isLoggedIn, syncEnabled: config.syncEnabled, isNoteWindow });
     // Bind vault lock/unlock events once (idempotent) + seed vault existence
     // / lock state from `db.vault`. Safe pre-login — `exists()` is local.
     vault.bindVaultEvents();
@@ -333,9 +397,39 @@ onMounted(async () => {
     // blocks boot. Privacy-toggle-gated + once-per-24h inside the store.
     if (!isNoteWindow) void upstreamNotifier.maybeCheck();
     if (auth.showShell) {
+      // Await shortcuts BEFORE notes.load. SQLite is a single serialized mutex
+      // (`sqlite-dialect.ts`) and `notes.load()` fires 3 fire-and-forget queries
+      // × N notes (preview/tags/color) that saturate it. `db.shortcuts.resolved()`
+      // issues its notebook/tag queries across two awaits, so if it ran after
+      // notes.load its second query would queue behind the N-note fan-out and
+      // stall the boot overlay. Running shortcuts first keeps both its queries
+      // ahead of the fan-out; awaiting it also makes notebook/tag shortcut rows
+      // present at first paint (no pop-in vs favourite-note rows, which are a
+      // sync computed over notes items). See plan melodic-hopping-rainbow.
+      await useShortcutsStore().refresh();
       await notes.load();
       void collections.load();
-      void useShortcutsStore().refresh();
+      void colors.refresh();
+      // Seed the reminders list (db.reminders) so the sidebar badge + the
+      // RemindersView populate on first paint. The `useReminderNotifications`
+      // composable watches `items` and pushes the schedule to main on change.
+      void useRemindersStore().refresh();
+      // Load the persisted editor-toolbar layout (db.settings, synced per
+      // account). Fire-and-forget — the toolbar renders `DEFAULT_TOOLBAR`
+      // immediately and `load()` swaps to the custom layout if one is stored.
+      void useToolbarStore().load();
+      // Load the per-notebook icon map (db.settings, synced per account). Fire-
+      // and-forget — the sidebar renders the default `book` glyph immediately
+      // and `load()` swaps in custom icons if any are stored. Decorative only,
+      // so safe to run alongside the list fan-out (no IPC dependency).
+      void useNotebookIconsStore().load();
+      // Restore the saved editor session for this account (open tabs + split
+      // layout + torn-off note windows). After `notes.load()` so the list is
+      // the source of valid note ids for filtering. Main window only — note /
+      // settings windows don't restore a multi-tab session.
+      if (!isSettingsWindow && !isNoteWindow) {
+        await restoreSession(readCurrentContext());
+      }
     }
     bootState.value = "ready";
     // Settle the initial route now that auth is resolved. During boot the
@@ -366,6 +460,22 @@ watch(
   () => applyTheme(settings.themeMode)
 );
 
+// Auto-sync after a save (debounced + gated inside the sync store). Without
+// this, a mid-session edit — e.g. dropping an image — saves locally (the
+// attachment is stored + the note content is written) but never reaches the
+// server until the next boot sync, so a just-added image doesn't appear on
+// other devices until a restart. Fires on every `saveState` → "saved"
+// transition; the sync store collapses a burst of saves into one sync and
+// skips it when not logged in / sync disabled / in a note or settings window.
+if (!isSettingsWindow) {
+  watch(
+    () => notes.saveState,
+    (s) => {
+      if (s === "saved") sync.scheduleAutoSync();
+    }
+  );
+}
+
 onUnmounted(() => {
   mediaCleanup?.();
   storageCleanup?.();
@@ -384,11 +494,22 @@ if (!isSettingsWindow) {
         notesLoaded.value = true;
         await useNotesStore().load();
         void useCollectionsStore().load();
+        void useColorsStore().refresh();
         void useShortcutsStore().refresh();
+        void useRemindersStore().refresh();
+        void useNotebookIconsStore().load();
         void status.refreshSync();
         void vault.refresh();
         void backups.refresh();
         void spellChecker.refresh();
+        // Restore the saved editor session now that the shell is visible and
+        // the notes list is populated (valid note ids for filtering). Main
+        // window only. `restoreSession` guards against re-restoring the same
+        // context, so a redundant call here (when onMounted already restored)
+        // is a no-op.
+        if (!isNoteWindow) {
+          await restoreSession(readCurrentContext());
+        }
       }
       // Flush a deep link that arrived while the user was logged out.
       if (show && pendingDeepLinkNote.value) {
@@ -417,10 +538,16 @@ if (!isSettingsWindow) {
   watch(
     () => status.syncCompletedSignal,
     () => {
+      // TEMP-DIAG sync-pull: is the reload-on-sync watch firing + gated?
+      // eslint-disable-next-line no-console
+      console.log("[sync] reload-on-sync firing; showShell:", auth.showShell);
       if (!auth.showShell) return;
       void useNotesStore().load();
       void useCollectionsStore().load();
+      void useColorsStore().refresh();
       void useShortcutsStore().refresh();
+      void useRemindersStore().refresh();
+      void useNotebookIconsStore().load();
     }
   );
 
@@ -444,9 +571,23 @@ if (!isSettingsWindow) {
     async () => {
       if (!auth.showShell) return;
       const notes = useNotesStore();
+      // Pause layout persistence across the context switch so the transient
+      // empty state (after `resetView` → `closeAllTabs`) is never written to
+      // disk for the NEW account — that would clobber its saved session. The
+      // restored state is already on disk (loaded below), so resuming doesn't
+      // need to force a save.
+      setPersistenceSuppressed(true);
       notes.resetView();
       await notes.load();
       void useCollectionsStore().load();
+      void useColorsStore().refresh();
+      void useRemindersStore().refresh();
+      void useNotebookIconsStore().load();
+      // Re-bind the main window to the new context (main-side geometry writes
+      // must land under the new account) and restore its saved session.
+      bindContextToSession();
+      await restoreSession(readCurrentContext());
+      setPersistenceSuppressed(false);
       if (auth.isLoggedIn && config.syncEnabled && config.autoSyncEnabled) {
         void sync.startSync().then((ok) => {
           if (ok) void notes.load();
@@ -486,6 +627,26 @@ if (!isSettingsWindow) {
       <!-- Command palette overlay (Ctrl/Cmd+Shift+P). Teleports to <body>;
            stays mounted so it is available on the shell and login screen. -->
       <CommandPalette />
+
+      <!-- Right-click context menus (notes list + sidebar). Teleports to
+           <body>; driven by useContextMenuStore. -->
+      <ContextMenu />
+
+      <!-- Generic confirm dialog (destructive context-menu actions). Teleports
+           to <body>; driven by useDialogStore. -->
+      <ConfirmDialog />
+
+      <!-- Color-editor dialog (note-row menu "New color…"). Teleports to
+           <body>; driven by useColorDialogStore. -->
+      <ColorEditorDialog />
+
+      <!-- Icon-picker dialog (notebook-row menu "Set icon…"). Teleports to
+           <body>; driven by useIconDialogStore. -->
+      <IconEditorDialog />
+
+      <!-- Reminder-editor dialog (RemindersView "New reminder" / row "Edit").
+           Teleports to <body>; driven by useReminderDialogStore. -->
+      <ReminderEditorDialog />
     </div>
   </div>
 </template>

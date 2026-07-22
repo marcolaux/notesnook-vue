@@ -58,9 +58,22 @@ export const useEditorStore = defineStore("editor", () => {
     focusedKey.value = key;
   }
 
-  /** Bump the find-signal (called by the "Find in note" palette command). */
+  /** Bump the find-signal (called by the "Find in note" palette command).
+   *  Each `Editor.vue` watches it and opens its find bar when it is the focused
+   *  pane (mirrors `notes.focusSearchSignal` — a palette entry point that needs
+   *  no global keybinding to reach the per-tab component state). */
   function requestFind(): void {
     findSignal.value++;
+  }
+
+  /** Bump the find-toggle-signal: like `requestFind` but the focused pane
+   *  TOGGLES its find bar instead of only opening it — so the toolbar
+   *  magnifying-glass button closes the bar when it's already open. Kept
+   *  separate from `findSignal` so the palette command + ⌘F stay open-only
+   *  (standard "open find" semantics) while the icon is a toggle. */
+  const findToggleSignal = ref(0);
+  function requestFindToggle(): void {
+    findToggleSignal.value++;
   }
 
   /** The focused pane's editor, or `undefined` when none is live. */
@@ -74,11 +87,13 @@ export const useEditorStore = defineStore("editor", () => {
     registry,
     focusedKey,
     findSignal,
+    findToggleSignal,
     editor,
     isEditable,
     register,
     unregister,
     setFocusedKey,
-    requestFind
+    requestFind,
+    requestFindToggle
   };
 });

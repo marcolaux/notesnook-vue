@@ -1,8 +1,10 @@
 <script setup lang="ts">
 /**
- * Bottom status bar (Phase 3.4) — three concerns:
+ * Bottom status bar (Phase 3.4) — four concerns:
  *  - **Sync status** (left): "Local only" when not logged in, else the sync
  *    lifecycle from `useStatusStore` formatted via `syncStatusText`.
+ *  - **Autosave indicator** (right): "Saving… / Saved" for the focused pane's
+ *    editor (moved here from the editor toolbar; pushed via `setSaveState`).
  *  - **Word count** (right): from the active TipTap editor's text.
  *  - **Cursor position** (right): line/column of the editor caret.
  *
@@ -11,6 +13,7 @@
  * read their zero/origin defaults.
  */
 import { computed } from "vue";
+import { Icon } from "@notesnook-vue/ui-vue";
 import { useStatusStore } from "@/stores/status";
 import { useAuthStore } from "@/stores/auth";
 import { useUpstreamNotifierStore } from "@/stores/upstream-notifier";
@@ -46,8 +49,8 @@ function openUpstreamRelease(): void {
         class="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-px text-accent"
         :title="`Upstream ${upstream.status?.latestTag} is newer than the ${upstream.status?.baselineTag} you built against — click to view`"
       >
-        <button type="button" class="cursor-pointer hover:underline" @click="openUpstreamRelease">
-          ↑ upstream {{ upstream.status?.latestTag }}
+        <button type="button" class="flex cursor-pointer items-center gap-1 hover:underline" @click="openUpstreamRelease">
+          <Icon name="arrow-up" :size="10" /> upstream {{ upstream.status?.latestTag }}
         </button>
         <button
           type="button"
@@ -55,11 +58,13 @@ function openUpstreamRelease(): void {
           title="Dismiss until a newer release"
           @click="upstream.dismiss()"
         >
-          ×
+          <Icon name="x" :size="12" />
         </button>
       </span>
     </span>
     <span class="flex items-center gap-3">
+      <span v-if="status.saving">Saving…</span>
+      <span v-else-if="status.savedAt">Saved</span>
       <span>{{ status.wordCount }} words</span>
       <span>Ln {{ status.cursorLine }}, Col {{ status.cursorColumn }}</span>
     </span>

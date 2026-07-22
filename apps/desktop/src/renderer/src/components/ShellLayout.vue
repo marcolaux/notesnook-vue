@@ -5,8 +5,10 @@
  * PlaceholderView). Login is a separate top-level route *outside* this layout.
  */
 import { useShellStore } from "@/stores/shell";
+import { SIDEBAR_MIN, SIDEBAR_MAX } from "@/utils/resizer";
 import TitleBar from "@/components/TitleBar.vue";
 import Sidebar from "@/components/Sidebar.vue";
+import Resizer from "@/components/Resizer.vue";
 
 const shell = useShellStore();
 </script>
@@ -17,7 +19,15 @@ const shell = useShellStore();
     <div class="relative flex min-h-0 flex-1">
       <Sidebar
         v-show="!shell.sidebarCollapsed && !shell.focusMode"
-        class="w-60 shrink-0 border-r border-glass-border backdrop-blur-2xl"
+        class="shrink-0 backdrop-blur-2xl"
+        :style="{ width: shell.sidebarWidth + 'px' }"
+      />
+      <Resizer
+        v-show="!shell.sidebarCollapsed && !shell.focusMode"
+        :width="shell.sidebarWidth"
+        :min="SIDEBAR_MIN"
+        :max="SIDEBAR_MAX"
+        @resize="shell.setSidebarWidth"
       />
       <RouterView />
     </div>

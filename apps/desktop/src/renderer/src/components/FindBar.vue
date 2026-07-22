@@ -17,6 +17,7 @@
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import type { Editor } from "@tiptap/vue-3";
 import { findReplacePluginKey } from "@notesnook-vue/editor-vue";
+import { Icon } from "@notesnook-vue/ui-vue";
 
 const props = defineProps<{ editor: Editor | undefined }>();
 const emit = defineEmits<{ close: [] }>();
@@ -129,13 +130,13 @@ function onKeydown(e: KeyboardEvent): void {
 
 <template>
   <div
-    class="titlebar-no-drag absolute right-3 top-2 z-20 flex w-80 flex-col gap-2 rounded-md border border-glass-border bg-glass-surface p-2 text-xs shadow-lg"
+    class="titlebar-no-drag absolute right-3 top-2 z-20 flex w-96 flex-col gap-2 rounded-md border border-border bg-surface-solid p-2 text-xs shadow-lg"
   >
     <div class="flex items-center gap-1">
       <input
         ref="findInput"
         v-model="query"
-        class="min-w-0 flex-1 rounded border border-glass-border bg-glass-surface px-2 py-1 text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
+        class="min-w-0 flex-1 rounded border border-glass-border bg-glass-hover px-2 py-1 text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
         placeholder="Find"
         @keydown="onKeydown"
       />
@@ -155,7 +156,7 @@ function onKeydown(e: KeyboardEvent): void {
         class="rounded px-1.5 py-1 text-text-muted hover:bg-glass-hover hover:text-text"
         title="Toggle replace"
         @click="showReplace = !showReplace"
-      >⇅</button>
+      ><Icon name="arrow-up-down" :size="14" /></button>
       <span class="w-16 shrink-0 text-center text-text-muted">
         {{ count === 0 ? "No results" : `${index < 0 ? 0 : index + 1}/${count}` }}
       </span>
@@ -164,23 +165,23 @@ function onKeydown(e: KeyboardEvent): void {
         title="Previous (Shift+Enter)"
         :disabled="count === 0"
         @click="findPrev"
-      >↑</button>
+      ><Icon name="chevron-up" :size="14" /></button>
       <button
         class="rounded px-1.5 py-1 text-text-muted hover:bg-glass-hover hover:text-text disabled:opacity-30"
         title="Next (Enter)"
         :disabled="count === 0"
         @click="findNext"
-      >↓</button>
+      ><Icon name="chevron-down" :size="14" /></button>
       <button
         class="rounded px-1.5 py-1 text-text-muted hover:bg-glass-hover hover:text-text"
         title="Close (Escape)"
         @click="close"
-      >×</button>
+      ><Icon name="x" :size="14" /></button>
     </div>
     <div v-if="showReplace" class="flex items-center gap-1">
       <input
         v-model="replaceQuery"
-        class="min-w-0 flex-1 rounded border border-glass-border bg-glass-surface px-2 py-1 text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
+        class="min-w-0 flex-1 rounded border border-glass-border bg-glass-hover px-2 py-1 text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
         placeholder="Replace"
         @keydown.escape.prevent="close"
       />

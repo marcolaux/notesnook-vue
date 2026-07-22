@@ -12,6 +12,7 @@
  *   fallback width is used.
  */
 import { onMounted, onUnmounted } from "vue";
+import { Icon } from "@notesnook-vue/ui-vue";
 import { useShellStore } from "@/stores/shell";
 import { useTitleBarStore } from "@/stores/titlebar";
 
@@ -59,10 +60,7 @@ onUnmounted(() => {
       title="Toggle Sidebar"
       @click="shell.toggleSidebar()"
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <line x1="9" y1="3" x2="9" y2="21" />
-      </svg>
+      <Icon name="panel-left" :size="16" />
     </button>
     <!-- The editor tab strips now live per-pane (Phase 4.2/4.3), so the title
          bar just shows the app label. Platform-aware padding still keeps this

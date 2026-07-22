@@ -23,6 +23,8 @@ export { default as Text } from "./components/Text.vue";
 export { default as Button } from "./components/Button.vue";
 export { default as Input } from "./components/Input.vue";
 export { default as Icon } from "./components/Icon.vue";
+export { ICONS, getIcon, loadAllIcons, allIconNames, fullIcons } from "./components/icon-registry";
+export type { IconName } from "./components/icon-registry";
 export { default as Surface } from "./components/Surface.vue";
 
 export { cx } from "./utils/merge";

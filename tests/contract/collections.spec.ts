@@ -23,6 +23,7 @@ let mockDb: {
   };
   tags: { all: { items: () => Promise<Tag[]> } };
   trash: { all: () => Promise<unknown[]> };
+  notes: { archived: { ids: () => Promise<string[]> } };
   relations: {
     from: (ref: ItemRef, type: "notebook") => { resolve: () => Promise<Notebook[]> };
     add: (from: ItemRef, to: ItemRef) => Promise<void>;
@@ -97,6 +98,7 @@ beforeEach(() => {
     },
     tags: { all: { items: async () => TAGS } },
     trash: { all: async () => [{ id: "x" }, { id: "y" }] },
+    notes: { archived: { ids: async () => [] } },
     relations: {
       from: (ref: ItemRef, type: "notebook") => ({
         resolve: async () =>

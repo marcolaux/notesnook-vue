@@ -6,6 +6,9 @@ import {
   buildShortcutInput,
   sortShortcutsByCreated,
   toResolvedShortcut,
+  readShortcutOrder,
+  writeShortcutOrder,
+  clearShortcutOrder,
   type ResolvedShortcut,
   type ShortcutItemType
 } from "@/utils/shortcuts";
@@ -33,6 +36,11 @@ export const useShortcutsStore = defineStore("shortcuts", () => {
   const items = ref<Shortcut[]>([]);
   /** The resolved pinned notebooks/tags for the sidebar section. */
   const resolved = ref<ResolvedShortcut[]>([]);
+  /** Manual order of the Shortcuts-section row ids (local-only, `localStorage`
+   *  — a mix of notebook/tag ids + favourite-note ids; see `SHORTCUT_ORDER_KEY`).
+   *  Empty → the base order (shortcuts dateCreated, favourites dateEdited-desc).
+   *  The view applies it over the merged rows; this store only owns the ids. */
+  const order = ref<string[]>([]);
   /** True while the list is being (re)loaded. */
   const loading = ref(false);
   /** True while a pin/unpin mutation is in flight. */
@@ -56,6 +64,7 @@ export const useShortcutsStore = defineStore("shortcuts", () => {
       items.value = sortShortcutsByCreated(db.shortcuts.all);
       const r = await db.shortcuts.resolved();
       resolved.value = (r as Array<Notebook | Tag>).map(toResolvedShortcut);
+      order.value = readShortcutOrder();
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[shortcuts] refresh failed:", e);
@@ -124,9 +133,28 @@ export const useShortcutsStore = defineStore("shortcuts", () => {
     return shortcutIds.value.has(itemId);
   }
 
+  /**
+   * Persist a full manual order of the Shortcuts-section row ids to
+   * `localStorage` (local-only — does NOT sync; see `SHORTCUT_ORDER_KEY`).
+   * Pass `[]` to reset. The view computes the desired id sequence from a drop
+   * (over the merged shortcuts + favourites rows) and passes it wholesale;
+   * this store just owns the ids (it does not know about favourite notes).
+   */
+  function setOrder(ids: string[]): void {
+    order.value = ids;
+    writeShortcutOrder(ids);
+  }
+
+  /** Clear the manual Shortcuts-section order (back to the base order). Local. */
+  function resetOrder(): void {
+    order.value = [];
+    clearShortcutOrder();
+  }
+
   return {
     items,
     resolved,
+    order,
     loading,
     busy,
     lastError,
@@ -135,6 +163,8 @@ export const useShortcutsStore = defineStore("shortcuts", () => {
     add,
     remove,
     toggle,
-    isShortcut
+    isShortcut,
+    setOrder,
+    resetOrder
   };
 });

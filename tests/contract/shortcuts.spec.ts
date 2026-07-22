@@ -6,6 +6,8 @@ import {
   sortShortcutsByCreated,
   toResolvedShortcut,
   SHORTCUT_ITEM_TYPES,
+  SHORTCUT_ORDER_KEY,
+  readShortcutOrder,
   type ShortcutInput
 } from "@/utils/shortcuts";
 import { useShortcutsStore } from "@/stores/shortcuts";
@@ -153,6 +155,22 @@ describe("pure helpers", () => {
 });
 
 describe("useShortcutsStore", () => {
+  // Map-backed localStorage mock (node has none) for the local-only manual
+  // shortcut order. Scoped to this file (vitest isolates module state).
+  class MemStorage {
+    private m = new Map<string, string>();
+    getItem(k: string) {
+      return this.m.has(k) ? this.m.get(k)! : null;
+    }
+    setItem(k: string, v: string) {
+      this.m.set(k, v);
+    }
+    removeItem(k: string) {
+      this.m.delete(k);
+    }
+  }
+  let storage: MemStorage;
+
   beforeEach(() => {
     setActivePinia(createPinia());
     clock = 1_000_000;
@@ -164,6 +182,8 @@ describe("useShortcutsStore", () => {
     db.shortcuts.add.mockClear();
     db.shortcuts.remove.mockClear();
     db.shortcuts.resolved.mockClear();
+    storage = new MemStorage();
+    (globalThis as { localStorage?: MemStorage }).localStorage = storage;
   });
 
   it("starts empty", () => {
@@ -262,5 +282,62 @@ describe("useShortcutsStore", () => {
     // raw `all` still loaded; resolved left as-is (previous value)
     expect(s.items).toHaveLength(1);
     expect(s.loading).toBe(false);
+  });
+
+  it("refresh reads the stored manual order from localStorage", async () => {
+    db._notebooks.set("n1", fakeNotebook("n1", "Work"));
+    db._notebooks.set("n2", fakeNotebook("n2", "Personal"));
+    await (globalThis as { localStorage: MemStorage }).localStorage.setItem(
+      SHORTCUT_ORDER_KEY,
+      JSON.stringify(["n2", "n1", "favNote1"])
+    );
+    const s = useShortcutsStore();
+    await s.add("n1", "notebook");
+    await s.add("n2", "notebook");
+    await s.refresh();
+    expect(s.order).toEqual(["n2", "n1", "favNote1"]);
+  });
+
+  it("refresh defaults order to [] when nothing stored", async () => {
+    const s = useShortcutsStore();
+    await s.refresh();
+    expect(s.order).toEqual([]);
+  });
+
+  it("setOrder persists to localStorage + updates the ref", async () => {
+    const s = useShortcutsStore();
+    await s.refresh();
+    s.setOrder(["n2", "n1", "favNote1"]);
+    expect(s.order).toEqual(["n2", "n1", "favNote1"]);
+    expect(readShortcutOrder()).toEqual(["n2", "n1", "favNote1"]);
+    expect((globalThis as { localStorage: MemStorage }).localStorage.getItem(SHORTCUT_ORDER_KEY)).toBe(
+      JSON.stringify(["n2", "n1", "favNote1"])
+    );
+  });
+
+  it("setOrder([]) persists an empty array", async () => {
+    const s = useShortcutsStore();
+    await s.refresh();
+    s.setOrder(["n1"]);
+    s.setOrder([]);
+    expect(s.order).toEqual([]);
+    expect(readShortcutOrder()).toEqual([]);
+  });
+
+  it("resetOrder clears the persisted order", async () => {
+    const s = useShortcutsStore();
+    await s.refresh();
+    s.setOrder(["n1", "n2"]);
+    s.resetOrder();
+    expect(s.order).toEqual([]);
+    expect(readShortcutOrder()).toEqual([]);
+  });
+
+  it("readShortcutOrder tolerates missing/garbled storage", () => {
+    expect(readShortcutOrder()).toEqual([]);
+    (globalThis as { localStorage: MemStorage }).localStorage.setItem(SHORTCUT_ORDER_KEY, "{not json");
+    expect(readShortcutOrder()).toEqual([]);
+    (globalThis as { localStorage: MemStorage }).localStorage.setItem(SHORTCUT_ORDER_KEY, "[1,2,3]");
+    expect(readShortcutOrder()).toEqual([]);
   });
 });

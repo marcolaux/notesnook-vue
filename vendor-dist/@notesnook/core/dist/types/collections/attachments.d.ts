@@ -11,18 +11,13 @@ export declare class Attachments implements ICollection {
     readonly collection: SQLCollection<"attachments", Attachment>;
     constructor(db: Database);
     init(): Promise<void>;
-    /**
-     * Required to satisfy the ICollection interface.
-     * This collection does not currently maintain a local cache that needs invalidation,
-     * but the method must exist for type safety when iterating over all collections.
-     */
-    invalidateCache(): void;
     add(item: Partial<Omit<Attachment, "key" | "encryptionKey"> & {
         key: SerializedKey;
     }>): Promise<string | undefined>;
     generateKey(): Promise<SerializedKey>;
     decryptKey(key: Cipher<"base64">): Promise<SerializedKey | null>;
     remove(hashOrId: string, localOnly: boolean): Promise<boolean>;
+    bulkRemove(attachments: Attachment[], localOnly: boolean): Promise<void>;
     detach(attachment: Attachment): Promise<void>;
     private canDetach;
     ofNote(noteId: string, ...types: ("files" | "images" | "videos" | "audio" | "documents" | "webclips" | "all")[]): FilteredSelector<Attachment>;
@@ -49,5 +44,6 @@ export declare class Attachments implements ICollection {
     totalSize(selector?: FilteredSelector<Attachment>): Promise<number | undefined>;
     encryptKey(key: SerializedKey): Promise<Cipher<"base64">>;
     _getEncryptionKey(): Promise<SerializedKey>;
+    removeOrphaned(): Promise<void>;
 }
 export declare function getOutputType(attachment: Attachment): DataFormat;

@@ -8,12 +8,6 @@ export declare class Reminders implements ICollection {
     readonly collection: SQLCollection<"reminders", Reminder>;
     constructor(db: Database);
     init(): Promise<void>;
-    /**
-     * Required to satisfy the ICollection interface.
-     * This collection does not currently maintain a local cache that needs invalidation,
-     * but the method must exist for type safety when iterating over all collections.
-     */
-    invalidateCache(): void;
     add(reminder: Partial<Reminder>): Promise<string | undefined>;
     get all(): import("../database/sql-collection.js").FilteredSelector<Reminder>;
     get active(): import("../database/sql-collection.js").FilteredSelector<Reminder>;

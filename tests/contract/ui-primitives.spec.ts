@@ -236,39 +236,49 @@ describe("glassStyle (theme-var contract)", () => {
 });
 
 describe("Icon", () => {
-  it("renders an svg with the path and default 18px size", () => {
-    const w = mount(Icon, { props: { path: "M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" } });
-    const svg = w.element;
+  it("renders an svg for a known name with the default 16px size", () => {
+    const svg = mount(Icon, { props: { name: "x" } }).element;
     expect(svg.tagName).toBe("svg");
     expect(svg.getAttribute("viewBox")).toBe("0 0 24 24");
-    expect(svg.getAttribute("width")).toBe("18");
-    expect(svg.getAttribute("height")).toBe("18");
-    expect(svg.getAttribute("fill")).toBe("currentColor");
-    const path = svg.querySelector("path");
-    expect(path).toBeTruthy();
-    expect(path!.getAttribute("d")).toBe("M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z");
+    expect(svg.getAttribute("width")).toBe("16");
+    expect(svg.getAttribute("height")).toBe("16");
+    // Stroke set (outline look); fill defaults to "none" (filled via the
+    // `fill` prop for active states, see below).
+    expect(svg.getAttribute("stroke")).toBe("currentColor");
+    expect(svg.getAttribute("fill")).toBe("none");
+    expect(svg.querySelector("path")).toBeTruthy();
   });
 
   it("accepts a numeric size", () => {
-    const svg = mount(Icon, { props: { path: "M0 0", size: 20 } }).element;
+    const svg = mount(Icon, { props: { name: "x", size: 20 } }).element;
     expect(svg.getAttribute("width")).toBe("20");
     expect(svg.getAttribute("height")).toBe("20");
   });
 
+  it("fill prop overrides the default none (filled active state)", () => {
+    const svg = mount(Icon, { props: { name: "star", fill: "currentColor" } }).element;
+    expect(svg.getAttribute("fill")).toBe("currentColor");
+  });
+
   it("title makes it accessible; without title it is aria-hidden", () => {
-    const titled = mount(Icon, { props: { path: "M0 0", title: "Add" } });
+    const titled = mount(Icon, { props: { name: "x", title: "Add" } });
     expect(titled.element.getAttribute("role")).toBe("img");
     expect(titled.element.getAttribute("aria-hidden")).toBeNull();
     expect(titled.element.querySelector("title")?.textContent).toBe("Add");
 
-    const untitled = mount(Icon, { props: { path: "M0 0" } });
+    const untitled = mount(Icon, { props: { name: "x" } });
     expect(untitled.element.getAttribute("role")).toBeNull();
     expect(untitled.element.getAttribute("aria-hidden")).toBe("true");
     expect(untitled.element.querySelector("title")).toBeNull();
   });
 
   it("spin adds animate-spin", () => {
-    expect(classesOf(mount(Icon, { props: { path: "M0 0", spin: true } }).element)).toContain("animate-spin");
+    expect(classesOf(mount(Icon, { props: { name: "x", spin: true } }).element)).toContain("animate-spin");
+  });
+
+  it("an unknown name renders nothing (stale glyph strings fail safe)", () => {
+    const w = mount(Icon, { props: { name: "does-not-exist" } });
+    expect(w.find("svg").exists()).toBe(false);
   });
 });
 

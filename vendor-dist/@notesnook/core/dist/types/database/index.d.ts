@@ -1,5 +1,5 @@
 import { Kysely, KyselyPlugin, PluginTransformQueryArgs, PluginTransformResultArgs, QueryResult, UnknownRow, RootOperationNode, Transaction, ExpressionBuilder, ReferenceExpression, Dialect, MigrationProvider } from "@streetwriters/kysely";
-import { Attachment, Color, ContentItem, HistorySession, ItemReference, ItemReferences, ItemType, MaybeDeletedItem, Monograph, Note, Notebook, Relation, Reminder, SessionContentItem, SettingItem, Shortcut, Tag, TrashOrItem, Vault } from "../types.js";
+import { Attachment, Color, ContentItem, HistorySession, InboxItemHistory, ItemReference, ItemReferences, ItemType, MaybeDeletedItem, Monograph, Note, Notebook, Relation, Reminder, SessionContentItem, SettingItem, Shortcut, Tag, TrashOrItem, Vault } from "../types.js";
 export type SQLiteItem<T> = {
     [P in keyof T]?: T[P] | null;
 } & {
@@ -23,6 +23,7 @@ export interface DatabaseSchema {
     shortcuts: SQLiteItem<Shortcut>;
     vaults: SQLiteItem<Vault>;
     monographs: SQLiteItem<Monograph>;
+    inboxitemshistory: SQLiteItem<InboxItemHistory>;
 }
 export type RawDatabaseSchema = DatabaseSchema & {
     kv: {
@@ -88,7 +89,6 @@ export interface DatabaseCollection<T, IsAsync extends boolean> {
     records(ids: string[]): AsyncOrSyncResult<IsAsync, Record<string, MaybeDeletedItem<T> | undefined>>;
     unsynced(chunkSize: number, forceSync?: boolean): IsAsync extends true ? AsyncIterableIterator<MaybeDeletedItem<T>[]> : IterableIterator<MaybeDeletedItem<T>[]>;
     stream(chunkSize: number): IsAsync extends true ? AsyncIterableIterator<T> : IterableIterator<T>;
-    invalidateCache?(): void | Promise<void>;
 }
 export type DatabaseAccessor<TSchema = DatabaseSchema> = () => Kysely<TSchema> | Transaction<TSchema>;
 export type LazyDatabaseAccessor<TSchema = DatabaseSchema> = Promise<Kysely<TSchema> | Transaction<TSchema>>;

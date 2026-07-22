@@ -13,12 +13,6 @@ export declare class Notebooks implements ICollection {
     collection: SQLCollection<"notebooks", TrashOrItem<Notebook>>;
     constructor(db: Database);
     init(): Promise<void>;
-    /**
-     * Required to satisfy the ICollection interface.
-     * This collection does not currently maintain a local cache that needs invalidation,
-     * but the method must exist for type safety when iterating over all collections.
-     */
-    invalidateCache(): void;
     add(notebookArg: Partial<Notebook>): Promise<string>;
     get all(): import("../database/sql-collection.js").FilteredSelector<Notebook>;
     get pinned(): import("../database/sql-collection.js").FilteredSelector<Notebook>;
@@ -44,20 +38,21 @@ export declare function withSubNotebooks(db: Kysely<DatabaseSchema> | Transactio
         rootId: any;
     };
 }>) => import("@streetwriters/kysely").SelectQueryBuilder<{
-    notes: import("../database/index.js").SQLiteItem<TrashOrItem<import("../types.js").Note>>;
-    content: import("../database/index.js").SQLiteItem<import("../types.js").ContentItem>;
-    relations: import("../database/index.js").SQLiteItem<import("../types.js").Relation>;
     notebooks: import("../database/index.js").SQLiteItem<TrashOrItem<Notebook>>;
-    attachments: import("../database/index.js").SQLiteItem<import("../types.js").Attachment>;
-    tags: import("../database/index.js").SQLiteItem<import("../types.js").Tag>;
-    colors: import("../database/index.js").SQLiteItem<import("../types.js").Color>;
-    reminders: import("../database/index.js").SQLiteItem<import("../types.js").Reminder>;
-    settings: import("../database/index.js").SQLiteItem<import("../types.js").SettingItem<"groupOptions:notes" | "groupOptions:notebooks" | "groupOptions:tags" | "groupOptions:reminders" | "groupOptions:search" | "groupOptions:trash" | "groupOptions:home" | "groupOptions:favorites" | "groupOptions:archive" | "groupOptions:notes:notebooks" | "groupOptions:notes:tags" | "groupOptions:notes:colors" | "toolbarConfig:desktop" | "toolbarConfig:mobile" | "toolbarConfig:tablet" | "toolbarConfig:smallTablet" | "sideBarOrder:colors" | "sideBarOrder:shortcuts" | "sideBarOrder:routes" | "sideBarHiddenItems:colors" | "sideBarHiddenItems:routes" | "trashCleanupInterval" | "titleFormat" | "timeFormat" | "dayFormat" | "weekFormat" | "dateFormat" | "defaultNotebook" | "defaultTag" | "profile" | "vault:lockAfter">>;
-    notehistory: import("../database/index.js").SQLiteItem<import("../types.js").HistorySession>;
+    content: import("../database/index.js").SQLiteItem<import("../types.js").ContentItem>;
     sessioncontent: import("../database/index.js").SQLiteItem<import("../types.js").SessionContentItem>;
+    settings: import("../database/index.js").SQLiteItem<import("../types.js").SettingItem<"groupOptions:notebooks" | "groupOptions:trash" | "groupOptions:tags" | "groupOptions:home" | "groupOptions:notes" | "groupOptions:favorites" | "groupOptions:reminders" | "groupOptions:archive" | "groupOptions:search" | "groupOptions:notes:notebooks" | "groupOptions:notes:tags" | "groupOptions:notes:colors" | "toolbarConfig:desktop" | "toolbarConfig:mobile" | "toolbarConfig:tablet" | "toolbarConfig:smallTablet" | "sideBarOrder:routes" | "sideBarOrder:colors" | "sideBarOrder:shortcuts" | "sideBarHiddenItems:routes" | "sideBarHiddenItems:colors" | "trashCleanupInterval" | "titleFormat" | "timeFormat" | "dayFormat" | "weekFormat" | "dateFormat" | "defaultNotebook" | "defaultTag" | "profile" | "vault:lockAfter">>;
+    tags: import("../database/index.js").SQLiteItem<import("../types.js").Tag>;
+    notes: import("../database/index.js").SQLiteItem<TrashOrItem<import("../types.js").Note>>;
+    reminders: import("../database/index.js").SQLiteItem<import("../types.js").Reminder>;
+    colors: import("../database/index.js").SQLiteItem<import("../types.js").Color>;
     shortcuts: import("../database/index.js").SQLiteItem<import("../types.js").Shortcut>;
+    relations: import("../database/index.js").SQLiteItem<import("../types.js").Relation>;
+    attachments: import("../database/index.js").SQLiteItem<import("../types.js").Attachment>;
+    notehistory: import("../database/index.js").SQLiteItem<import("../types.js").HistorySession>;
     vaults: import("../database/index.js").SQLiteItem<import("../types.js").Vault>;
     monographs: import("../database/index.js").SQLiteItem<import("../types.js").Monograph>;
+    inboxitemshistory: import("../database/index.js").SQLiteItem<import("../types.js").InboxItemHistory>;
     subNotebooks: {
         id: any;
         path: any;

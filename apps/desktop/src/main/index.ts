@@ -6,6 +6,13 @@ import { registerSQLite } from "./sqlite";
 import { registerCompressor } from "./compress";
 import { registerSafeStorage } from "./safe-storage";
 import { registerFileStorage } from "./file-storage";
+import {
+  registerSession,
+  getMainBoundsForLastContext,
+  flushSession,
+  trackMainWindow
+} from "./session-state";
+import type { WindowBounds } from "../contracts/session-state";
 import { buildBrowserWindowOptionsForOS } from "./titlebar";
 import {
   enableDeepLinkProtocol,
@@ -21,6 +28,8 @@ import { registerSpellChecker } from "./spell-checker";
 import { registerAppMenu } from "./menu";
 import { registerWindow, setMainWindow } from "./window";
 import { registerDialog } from "./dialog";
+import { registerShell } from "./shell";
+import { registerReminders } from "./reminders";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -30,14 +39,20 @@ const isDev = !app.isPackaged;
 // `open-url` (macOS) is caught and queued rather than dropped.
 registerDeepLinkListeners();
 
-function createMainWindow(): BrowserWindow {
+function createMainWindow(bounds?: WindowBounds | undefined): BrowserWindow {
   const window = new BrowserWindow(
     buildBrowserWindowOptionsForOS(
       process.platform,
-      resolve(__dirname, "../preload/index.mjs")
+      resolve(__dirname, "../preload/index.mjs"),
+      bounds
     )
   );
 
+  // Re-apply maximize after construction (the saved size is the unmaximized
+  // restore size; a maximized window should open maximized regardless).
+  if (bounds?.maximized) {
+    window.once("ready-to-show", () => window.maximize());
+  }
   window.on("ready-to-show", () => window.show());
 
   // Wire the tRPC IPC bridge for this window. Must happen after the window
@@ -104,6 +119,10 @@ void app.whenReady().then(() => {
   registerCompressor();
   registerSafeStorage();
   registerFileStorage();
+  // Session-state owner (editor tabs + split layout + note windows + bounds,
+  // persisted to `userData/session.json` per account). Registered before the
+  // window so `desktop.session.*` procedures are ready on first renderer call.
+  registerSession();
 
   // Register the `nn://` custom protocol with the OS.
   enableDeepLinkProtocol();
@@ -117,7 +136,14 @@ void app.whenReady().then(() => {
     handleDeepLinkUrl(argvLink);
   }
 
-  const window = createMainWindow();
+  // Restore the main window's last size/position (best-effort, keyed by the
+  // last-used context so the first window avoids a 1280×800 size flash). The
+  // renderer corrects the context binding on boot (`bindContext`).
+  const savedBounds = getMainBoundsForLastContext();
+  const window = createMainWindow(savedBounds);
+  // Persist the main window's bounds on resize/move/maximize (writes land under
+  // the bound context once the renderer calls `bindContext`).
+  trackMainWindow(window);
   // Bind the window + flush any queued deep links (cold-start open-url / argv).
   setDeepLinkWindow(window);
   // Track the main window so the Settings window can signal cross-window DB
@@ -137,6 +163,14 @@ void app.whenReady().then(() => {
   // File dialogs (save/open a user-chosen file) for Backup & Export. Parented
   // to the focused window at call time (app-modal when none is focused).
   registerDialog(() => BrowserWindow.getFocusedWindow() ?? undefined);
+  // Shell — write decrypted attachment bytes to a temp file + open with the OS
+  // handler, for the attachment preview's "Open externally" action.
+  registerShell();
+  // Reminders — OS-notification scheduling. Bound to the main window (used to
+  // send `app:reminder-fired` back to the renderer so it can reschedule
+  // repeats / drop fired once-reminders). The renderer computes fire times and
+  // pushes the schedule over `desktop.reminders.schedule`.
+  registerReminders(window);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -145,4 +179,21 @@ void app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+// Persist the session on quit: signal the main renderer to flush its last
+// layout snapshot (best-effort — IPC may not land before quit), then write
+// main's cached copy (authoritative — updated by debounced saves through the
+// session). Covers Cmd+Q / tray Quit / window-close on every platform
+// (`window-all-closed` only quits on non-darwin, so this is the reliable hook).
+app.on("before-quit", () => {
+  const main = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+  if (main) {
+    try {
+      main.webContents.send("app:before-quit");
+    } catch {
+      /* webContents gone — no-op */
+    }
+  }
+  flushSession();
 });

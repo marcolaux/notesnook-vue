@@ -37,6 +37,12 @@ export const useStatusStore = defineStore("status", () => {
   const cursorLine = ref(1);
   const cursorColumn = ref(1);
 
+  // Autosave indicator (moved here from the editor toolbar): the "Saving… /
+  // Saved" state of the FOCUSED pane's editor, pushed in by `Editor.vue` via
+  // {@link setSaveState} with the same focused-guard as the editor stats.
+  const saving = ref(false);
+  const savedAt = ref<number | null>(null);
+
   /** A reactive wall-clock the StatusBar reads so "5m ago" stays accurate
    * without the user nudging the store. Bumped on an interval by
    * {@link startClock}; tests can set it directly for determinism. */
@@ -53,6 +59,14 @@ export const useStatusStore = defineStore("status", () => {
     cursorColumn.value = s.cursorColumn;
   }
 
+  /** Push the focused editor's autosave state so the status bar can render the
+   *  "Saving… / Saved" indicator. Called by `Editor.vue` only when it is the
+   *  focused pane (mirrors {@link setEditorStats}). */
+  function setSaveState(isSaving: boolean, savedAtTs: number | null): void {
+    saving.value = isSaving;
+    savedAt.value = savedAtTs;
+  }
+
   let syncBound = false;
   /**
    * Subscribe to `@notesnook/core`'s sync progress/completion/abort events
@@ -65,10 +79,18 @@ export const useStatusStore = defineStore("status", () => {
       syncState.value = "syncing";
     });
     EV.subscribe(EVENTS.syncCompleted, () => {
+      // TEMP-DIAG sync-pull: did core emit syncCompleted at all?
+      // eslint-disable-next-line no-console
+      console.log("[sync] syncCompleted event fired");
       void refreshSync().then(() => {
         if (syncState.value === "syncing") syncState.value = "synced";
         // Bump after refresh so watchers (App.vue) reload notes/collections
         // with the freshly-synced data.
+        // TEMP-DIAG sync-pull: lastSynced value core reported after the sync,
+        // + whether the local DB still has unsynced local changes (a dirty
+        // local note can block pulling the server's newer version).
+        // eslint-disable-next-line no-console
+        console.log("[sync] syncCompleted -> lastSynced:", lastSynced.value, "hasUnsyncedChanges:", hasUnsyncedChanges.value);
         syncCompletedSignal.value += 1;
       });
     });
@@ -133,7 +155,10 @@ export const useStatusStore = defineStore("status", () => {
     charCount,
     cursorLine,
     cursorColumn,
+    saving,
+    savedAt,
     setEditorStats,
+    setSaveState,
     refreshSync,
     bindSyncEvents,
     startClock,

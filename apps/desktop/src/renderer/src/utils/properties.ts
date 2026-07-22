@@ -14,7 +14,7 @@
  */
 
 import { countWords } from "@/utils/status";
-import type { Notebook, Tag } from "@notesnook-vue/contracts";
+import type { Color, Notebook, Tag } from "@notesnook-vue/contracts";
 
 /** Per-note toggles the properties panel exposes, backed by `db.notes.*`. */
 export type ToggleKey = "pinned" | "favorite" | "readonly" | "localOnly";
@@ -112,6 +112,15 @@ export interface AssignedNotebook {
   title: string;
 }
 
+/** Minimal color reference assigned to a note — enough for the properties panel
+ *  + the note-row Color submenu (id for the relation calls, title + colorCode for
+ *  the swatch). A note has at most one color. */
+export interface AssignedColor {
+  id: string;
+  title: string;
+  colorCode: string;
+}
+
 /** Map a core `Tag` to the panel's minimal tag reference. "Untitled" fallback
  * mirrors the sidebar list-item mapper. */
 export function toAssignedTag(t: Tag): AssignedTag {
@@ -121,6 +130,11 @@ export function toAssignedTag(t: Tag): AssignedTag {
 /** Map a core `Notebook` to the panel's minimal notebook reference. */
 export function toAssignedNotebook(n: Notebook): AssignedNotebook {
   return { id: n.id, title: n.title || "Untitled" };
+}
+
+/** Map a core `Color` to the panel's minimal color reference. */
+export function toAssignedColor(c: Color): AssignedColor {
+  return { id: c.id, title: c.title || "Untitled", colorCode: c.colorCode };
 }
 
 /** De-duplicate a list of `{id}` items by id, preserving first-seen order.

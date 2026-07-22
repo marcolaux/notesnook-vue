@@ -197,6 +197,39 @@ describe("useNotesStore view state", () => {
   });
 });
 
+describe("useNotesStore favorites", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it("favorites lists only favourite notes, dateEdited-desc", () => {
+    const notes = useNotesStore();
+    notes.items = [
+      item({ id: "a", title: "Alpha", dateEdited: 100, favorite: true }),
+      item({ id: "b", title: "Beta", dateEdited: 300, favorite: true }),
+      item({ id: "c", title: "Gamma", dateEdited: 200, favorite: false })
+    ];
+    expect(notes.favorites).toEqual([
+      { id: "b", title: "Beta", type: "note" },
+      { id: "a", title: "Alpha", type: "note" }
+    ]);
+  });
+
+  it("favorites is empty when nothing is favourited", () => {
+    const notes = useNotesStore();
+    notes.items = [item({ id: "a", title: "Alpha" }), item({ id: "b", title: "Beta" })];
+    expect(notes.favorites).toEqual([]);
+  });
+
+  it("favorites re-evaluates when items change (toggle off drops the row)", () => {
+    const notes = useNotesStore();
+    notes.items = [item({ id: "a", title: "Alpha", dateEdited: 100, favorite: true })];
+    expect(notes.favorites.map((f) => f.id)).toEqual(["a"]);
+    notes.items = [item({ id: "a", title: "Alpha", dateEdited: 100, favorite: false })];
+    expect(notes.favorites).toEqual([]);
+  });
+});
+
 describe("groupNotes", () => {
   // `now` fixed at 2026-07-19T12:00:00 local — a Sunday. Lets us exercise every
   // date bucket deterministically regardless of when the suite runs.

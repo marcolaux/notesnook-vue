@@ -8,6 +8,7 @@ syncs the parent list's progress bar from these attrs.
 import { computed } from "vue";
 import { NodeViewWrapper, NodeViewContent } from "@tiptap/vue-3";
 import type { NodeViewProps } from "@tiptap/vue-3";
+import { Check } from "@lucide/vue";
 
 const props = defineProps<NodeViewProps>();
 
@@ -50,7 +51,7 @@ function toggle(): void {
       @click.prevent="toggle"
       @mousedown.prevent.stop
     >
-      <span v-if="checked" class="text-[10px] leading-none">✓</span>
+      <Check v-if="checked" :size="10" />
     </button>
     <NodeViewContent as="div" class="min-w-0 flex-1" />
   </NodeViewWrapper>

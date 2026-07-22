@@ -14,6 +14,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { SqliteDialect } from "@streetwriters/kysely";
 import BetterSqlite from "better-sqlite3-multiple-ciphers";
+import { loadFts5Extensions } from "./helpers/fts5-extensions";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -55,6 +56,7 @@ function buildPlatform(filePath: string, password?: string): {
       dialect: () => {
         const instance = new BetterSqlite(filePath);
         instance.unsafeMode(true);
+        loadFts5Extensions(instance);
         return new SqliteDialect({ database: instance });
       },
       ...(password ? { password } : {}),

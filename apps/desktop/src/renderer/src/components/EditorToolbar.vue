@@ -1,155 +1,76 @@
 <script setup lang="ts">
 /**
- * Editor toolbar (Phase 5.3) — the formatting + utility strip below the editor
- * tab bar. Data-driven from `EDITOR_ACTIONS` (the same action set the command
- * palette + slash menu use), so every loaded styling option is one button;
- * adding an extension + its `EditorAction` automatically adds its button here.
+ * Editor toolbar (Phase 5.5) — the formatting + utility strip below the editor
+ * tab bar. Renders the 2D `ToolbarDefinition` from the {@link useToolbarStore}
+ * (the persisted, per-account layout; default `DEFAULT_TOOLBAR`): each group
+ * is a `ToolbarGroup` (rendered with a separator), and a nested array inside a
+ * group is the "more" split-button (`MoreToolsButton`) whose popup holds the
+ * group's extra actions.
  *
- * Button groups (in `EDITOR_ACTIONS` order, with separators):
- *  - History: undo/redo (disabled via `editor.can()`).
- *  - Inline marks: bold/italic/underline/strikethrough/code/highlight.
- *  - Headings + paragraph: H1/H2/H3/¶.
- *  - Lists: bullet/numbered/task.
- *  - Blocks: blockquote/code block/horizontal rule.
- *  - Inserts: image/table/embed.
- *  - Utility (not editor actions): search (`notes.focusSearch`), ToC + properties
- *    panel toggles (`useShellStore`), and ⋯ → command palette ("rest over command
- *    palette").
+ * Per-action active/disabled/hidden state lives on the `EditorAction` itself
+ * (editor-vue's `tool-definitions.ts`) — this component owns only the editor
+ * transaction listener that bumps `editorVersion` so those states re-evaluate
+ * on every transaction/update. The dropdown / colour / conditional menus are
+ * built fresh on each open against the live selection (see `toolbar-menu.ts`).
  *
- * Active state is per-action via `editor.isActive(...)` (note the custom
- * `CodeBlock` node is named `"codeblock"`, lowercase), re-evaluated on every
- * editor `transaction`/`update` via the `editorVersion` tick. Theme tokens
- * (`bg-glass-*`/`text-text*`/`border-glass-border`) follow the app theme.
- *
- * Not yet covered (upstream supports, but the extension isn't loaded here):
- * link / text-color / font-family / math. Loading those extensions + adding
- * their `EditorAction` makes their buttons appear here automatically; link +
- * text-color additionally need picker UIs (deferred). Underline + highlight
- * landed in Phase 5.3 (plain toggles).
+ * Trailing utility buttons (not editor actions): find-in-note
+ * (`editorStore.requestFind` → opens the focused pane's `FindBar`, same as ⌘F),
+ * ToC + properties panel toggles (`useShellStore`), and ⋯ → command palette.
+ * Theme tokens (`bg-glass-*`/`text-text*`/`border-glass-border`) follow the app
+ * theme.
  */
-import { ref, watch, onBeforeUnmount, computed } from "vue";
+import { ref, watch, onBeforeUnmount } from "vue";
 import type { Editor } from "@tiptap/vue-3";
-import { EDITOR_ACTIONS, type EditorAction } from "@notesnook-vue/editor-vue";
+import { Icon } from "@notesnook-vue/ui-vue";
 import { useShellStore } from "@/stores/shell";
 import { useNotesStore } from "@/stores/notes";
 import { useCommandPaletteStore } from "@/stores/command-palette";
+import { useToolbarStore } from "@/stores/toolbar";
+import { useEditorStore } from "@/stores/editor";
+import { useEditorLayoutStore } from "@/stores/editor-layout";
+import { useReminderDialogStore } from "@/stores/reminder-dialog";
+import { useRemindersStore } from "@/stores/reminders";
+import ToolbarGroup from "./ToolbarGroup.vue";
 
 const props = defineProps<{
   editor: Editor | undefined;
-  /** Autosave state from the Editor (drives the "Saving…/Saved" indicator). */
-  saving?: boolean;
-  savedAt?: number | null;
 }>();
 
 const shell = useShellStore();
 const notes = useNotesStore();
 const palette = useCommandPaletteStore();
+const toolbar = useToolbarStore();
+const editorStore = useEditorStore();
+const layout = useEditorLayoutStore();
+const reminderDialog = useReminderDialogStore();
+const reminders = useRemindersStore();
 
-// Bumped on every editor transaction/update so the `buttons` computed re-runs
-// and active/disabled states stay fresh.
+/** "Remind me" for the active note: open the reminder dialog seeded with the
+ *  note's title + `nn://note/<id>` description; on confirm, create the reminder
+ *  + link it to the note. No-op when no note is active (e.g. the ephemeral
+ *  draft with no id). */
+function remindMe(): void {
+  const n = notes.activeNote;
+  if (!n) return;
+  void reminderDialog.openCreateForNote(n.id, n.title).then((input) => {
+    if (input) void reminders.add(input);
+  });
+}
+
+/** Toggle the per-tab note-history sidebar on the focused pane's active note
+ *  tab. No-op when no note is active (e.g. the ephemeral draft). */
+function toggleHistory(): void {
+  const id = layout.activeTab?.id;
+  if (id) layout.toggleHistory(id);
+}
+
+// Bumped on every editor transaction/update so the `ToolbarGroup` `items`
+// computed re-runs and active/disabled/hidden states stay fresh.
 const editorVersion = ref(0);
-const canUndo = ref(false);
-const canRedo = ref(false);
 
 function refresh(): void {
-  const e = props.editor;
   editorVersion.value++;
-  canUndo.value = e ? e.can().undo() : false;
-  canRedo.value = e ? e.can().redo() : false;
 }
-
-/** Compact glyph per action id (fallback: the action title). */
-const GLYPHS: Record<string, string> = {
-  undo: "↶",
-  redo: "↷",
-  bold: "B",
-  italic: "I",
-  underline: "U",
-  strikethrough: "S",
-  code: "</>",
-  highlight: "🖍",
-  "headings-1": "H1",
-  "headings-2": "H2",
-  "headings-3": "H3",
-  paragraph: "¶",
-  bulletList: "•",
-  numberedList: "1.",
-  checkList: "☑",
-  blockquote: "❝",
-  codeBlock: "```",
-  horizontalRule: "―",
-  image: "🖼",
-  table: "⊞",
-  embed: "🎬"
-};
-
-/** First action of each group → render a separator before it. */
-const GROUP_STARTS = new Set(["bold", "headings-1", "bulletList", "blockquote", "image"]);
-
-function isActive(action: EditorAction): boolean {
-  const e = props.editor;
-  if (!e) return false;
-  switch (action.id) {
-    case "bold":
-      return e.isActive("bold");
-    case "italic":
-      return e.isActive("italic");
-    case "underline":
-      return e.isActive("underline");
-    case "strikethrough":
-      return e.isActive("strike");
-    case "code":
-      return e.isActive("code");
-    case "highlight":
-      return e.isActive("highlight");
-    case "headings-1":
-      return e.isActive("heading", { level: 1 });
-    case "headings-2":
-      return e.isActive("heading", { level: 2 });
-    case "headings-3":
-      return e.isActive("heading", { level: 3 });
-    case "paragraph":
-      return e.isActive("paragraph");
-    case "bulletList":
-      return e.isActive("bulletList");
-    case "numberedList":
-      return e.isActive("orderedList");
-    case "checkList":
-      return e.isActive("taskList");
-    case "codeBlock":
-      return e.isActive("codeblock"); // custom node, lowercase name
-    case "blockquote":
-      return e.isActive("blockquote");
-    default:
-      return false; // inserts (image/table/embed/hr) — no toggle active state
-  }
-}
-
-function isDisabled(action: EditorAction): boolean {
-  const e = props.editor;
-  if (!e) return true;
-  if (action.id === "undo") return !canUndo.value;
-  if (action.id === "redo") return !canRedo.value;
-  return !e.isEditable;
-}
-
-function runAction(action: EditorAction): void {
-  const e = props.editor;
-  if (e) action.run(e);
-}
-
-const buttons = computed(() => {
-  // Touch `editorVersion` so this re-runs on every editor transaction (active
-  // states call `editor.isActive`, which is a plain method, not reactive).
-  void editorVersion.value;
-  return EDITOR_ACTIONS.map((action) => ({
-    action,
-    glyph: GLYPHS[action.id] ?? action.title,
-    active: isActive(action),
-    disabled: isDisabled(action),
-    sepBefore: GROUP_STARTS.has(action.id)
-  }));
-});
 
 // Re-attach the transaction/update listeners when the editor instance changes
 // (create/destroy — the Editor is keyed by note id) and clean up the previous.
@@ -164,9 +85,6 @@ watch(
       e.on("transaction", refresh);
       e.on("update", refresh);
       refresh();
-    } else {
-      canUndo.value = false;
-      canRedo.value = false;
     }
   },
   { immediate: true }
@@ -185,28 +103,20 @@ onBeforeUnmount(() => {
   <div
     class="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-glass-border px-2"
   >
-    <template v-for="b in buttons" :key="b.action.id">
-      <span v-if="b.sepBefore" class="mx-1 h-5 w-px shrink-0 bg-glass-border" />
-      <button
-        type="button"
-        class="grid h-6 shrink-0 place-items-center rounded px-1.5 text-xs text-text-muted hover:bg-glass-hover hover:text-text disabled:opacity-40"
-        :class="{ 'bg-glass-active text-text': b.active }"
-        :disabled="b.disabled"
-        :title="b.action.title"
-        @click="runAction(b.action)"
-      >
-        {{ b.glyph }}
-      </button>
+    <template v-for="(group, i) in toolbar.toolbarConfig" :key="i">
+      <span v-if="i > 0" class="mx-1 h-5 w-px shrink-0 bg-glass-border" />
+      <ToolbarGroup :group="group" :editor="props.editor" :version="editorVersion" />
     </template>
 
     <span class="mx-1 h-5 w-px shrink-0 bg-glass-border" />
     <button
       type="button"
-      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
-      title="Search notes"
-      @click="notes.focusSearch()"
+      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+      title="Find in note (⌘F)"
+      :disabled="!props.editor"
+      @click="editorStore.requestFindToggle()"
     >
-      🔍
+      <Icon name="search" :size="16" />
     </button>
     <button
       type="button"
@@ -215,26 +125,34 @@ onBeforeUnmount(() => {
       title="Table of contents"
       @click="shell.toggleToc()"
     >
-      📋
+      <Icon name="list" :size="16" />
     </button>
     <button
       type="button"
-      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
-      :class="{ 'bg-glass-active text-text': shell.propertiesVisible }"
-      title="Properties"
-      @click="shell.toggleProperties()"
+      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+      :class="{ 'bg-glass-active text-text': !!layout.activeTab?.historyVisible }"
+      title="Note history"
+      :disabled="!notes.activeNote"
+      @click="toggleHistory()"
     >
-      ℹ
+      <Icon name="history" :size="16" />
     </button>
-    <span v-if="props.saving" class="ml-auto shrink-0 text-xs text-text-muted">Saving…</span>
-    <span v-else-if="props.savedAt" class="ml-auto shrink-0 text-xs text-text-muted">Saved</span>
+    <button
+      type="button"
+      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+      title="Remind me about this note"
+      :disabled="!notes.activeNote"
+      @click="remindMe()"
+    >
+      <Icon name="bell" :size="16" />
+    </button>
     <button
       type="button"
       class="ml-auto grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
       title="Command palette (⌘⇧P)"
       @click="palette.openPalette()"
     >
-      ⋯
+      <Icon name="ellipsis" :size="16" />
     </button>
   </div>
 </template>

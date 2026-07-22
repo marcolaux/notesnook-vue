@@ -53,12 +53,16 @@ const props = defineProps<{ groupId: string }>();
 const notes = useNotesStore();
 const layout = useEditorLayoutStore();
 
-/** This group's tabs, joined with titles for the strip. */
+/** This group's tabs, joined with titles for the strip. Attachment tabs use
+ *  their filename as the title (no note lookup). */
 const tabs = computed(() =>
   layout.tabsOf(props.groupId).map((t) => ({
     id: t.id,
-    noteId: t.noteId,
-    title: notes.items.find((n) => n.id === t.noteId)?.title ?? "Untitled"
+    noteId: t.noteId ?? "",
+    title:
+      t.kind === "attachment"
+        ? (t.attachment?.filename ?? "Attachment")
+        : (notes.items.find((n) => n.id === t.noteId)?.title ?? "Untitled")
   }))
 );
 const activeTabId = computed<string | null>(
@@ -201,6 +205,11 @@ async function onTabDragEnd(e: DragEvent): Promise<void> {
   // `app:open-note` to that window (move) or tears off a new note window. Close
   // the source tab for both (move semantics).
   if (consumeTabDropHandled()) return;
+  // Attachment tabs have no noteId and don't participate in cross-window
+  // tear-off (which is note-centric: main forwards `app:open-note`). A
+  // within-window move/reorder was already handled above; if the drag ended
+  // outside every drop target, just leave the attachment tab in place.
+  if (!start.noteId) return;
   try {
     const res = await desktop.window.releaseTab.mutate({
       noteId: start.noteId,

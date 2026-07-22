@@ -14,9 +14,8 @@ testable in node without a database. The `db`-backed orchestration lives in
     filter by prefix). `document` covers the common document mimetypes so the
     row shows the document icon rather than the generic file icon.
 
-The icon SVGs themselves live in `AttachmentsSection.vue` (the codebase
-inlines Lucide-style stroke SVGs per-component — there is no shared icon
-module and `@mdi/js` is not installed).
+The icons are rendered via the shared `Icon` (ui-vue) over the `@lucide/vue`
+registry (see `packages/ui-vue/src/components/icon-registry.ts`).
 */
 import type { Attachment, Database } from "@notesnook-vue/contracts";
 import type { FilteredSelector } from "@notesnook-vue/contracts";

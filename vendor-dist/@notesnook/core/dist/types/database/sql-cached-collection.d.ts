@@ -23,5 +23,4 @@ export declare class SQLCachedCollection<TCollectionType extends keyof DatabaseS
     unsynced(chunkSize: number): IterableIterator<MaybeDeletedItem<T>[]>;
     stream(): IterableIterator<T>;
     unsyncedCount(): Promise<number>;
-    invalidateCache(): void;
 }

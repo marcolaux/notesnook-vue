@@ -45,6 +45,25 @@ export { TableRow } from "@tiptap/extension-table-row";
 export { SlashCommands } from "./extensions/slash-commands/slash-commands";
 export { default as SlashMenu } from "./extensions/slash-commands/SlashMenu.vue";
 
+// Tag-mention (Phase 5.4). `TagMention` is an inline-atom `#tag` chip node that
+// round-trips as `<span data-tag-id data-tag-title>`; `TagSuggest` is the
+// `@tiptap/suggestion` extension that opens a picker on `#` (anywhere, via
+// `allowedPrefixes: null`, with its own `PluginKey`). The host injects the tag
+// list + assign/create callbacks onto `editor.storage` (`wireTagMention` in
+// the renderer) — editor-vue has no Pinia access.
+export { TagMention } from "./extensions/tag-mention/tag-mention";
+export { TagSuggest } from "./extensions/tag-mention/tag-suggest";
+export { findTagSuggestionMatch } from "./extensions/tag-mention/tag-suggest-match";
+export { default as TagMenu } from "./extensions/tag-mention/TagMenu.vue";
+export type { TagMentionAttributes, TagMentionOptions, TagSuggestionItem, ReconcileOptions } from "./extensions/tag-mention/types";
+export {
+  RECONCILE_META,
+  collectTagMentionTagIds,
+  findOrphanTagMentionRanges,
+  diffDeletedTagIds
+} from "./extensions/tag-mention/reconcile";
+export type { TagMentionRange } from "./extensions/tag-mention/reconcile";
+
 // Find & Replace (per-tab in-content find). A TipTap extension wrapping a
 // ProseMirror highlight plugin + commands (`setFind`/`findNext`/`findPrev`/
 // `replace`/`replaceAll`/`clearFind`); the pure matcher lives in
@@ -62,8 +81,23 @@ export type { SearchMatch, SearchOptions, TextMap } from "./extensions/search/ma
 // Editor-action metadata (2.5) — vendored parity source for the command
 // palette + slash menu. `import type { ToolId }` from @notesnook/editor is
 // erased, so React/theme-ui/zustand stay out of the renderer bundle.
-export { EDITOR_ACTIONS, SLASH_ITEMS, filterSlashItems, PARITY } from "./tool-definitions";
-export type { EditorAction, SlashItem } from "./tool-definitions";
+export {
+  EDITOR_ACTIONS,
+  EDITOR_ACTION_BY_ID,
+  SLASH_ITEMS,
+  filterSlashItems,
+  PARITY,
+  DEFAULT_TOOLBAR
+} from "./tool-definitions";
+export type {
+  EditorAction,
+  EditorActionKind,
+  SlashItem,
+  ToolbarItem,
+  ToolbarDefinition,
+  ToolbarMenuItem,
+  ToolbarMenuSubmenu
+} from "./tool-definitions";
 
 // Inline marks (Phase 5.3) — thin re-exports of the standard TipTap mark
 // extensions, pinned to 2.6.6 via the root overrides (see header). Pure
@@ -74,6 +108,22 @@ export { Underline } from "./extensions/underline/underline";
 export type { UnderlineOptions } from "./extensions/underline/underline";
 export { Highlight } from "./extensions/highlight/highlight";
 export type { HighlightOptions } from "./extensions/highlight/highlight";
+
+// Phase 5.5 toolbar marks/options — thin re-exports of the standard TipTap
+// extensions, pinned to 2.6.6 via the root overrides. `TextStyle` carries the
+// `color` (set by `Color`) and `fontFamily` (set by `FontFamily`) attrs, so it
+// MUST be registered alongside those two. `TextAlign` applies to paragraph +
+// heading. Subscript/Superscript are plain toggles.
+export { Subscript } from "./extensions/subscript/subscript";
+export { Superscript } from "./extensions/superscript/superscript";
+export { TextStyle } from "./extensions/text-style/text-style";
+export type { TextStyleOptions } from "./extensions/text-style/text-style";
+export { Color } from "./extensions/color/color";
+export type { ColorOptions } from "./extensions/color/color";
+export { FontFamily } from "./extensions/font-family/font-family";
+export type { FontFamilyOptions } from "./extensions/font-family/font-family";
+export { TextAlign } from "./extensions/text-align/text-align";
+export type { TextAlignOptions } from "./extensions/text-align/text-align";
 
 export { getSandboxFeatures } from "./utils/sandbox";
 export { filterByKey, subsequenceMatch, cycleIndex } from "./utils/filter";

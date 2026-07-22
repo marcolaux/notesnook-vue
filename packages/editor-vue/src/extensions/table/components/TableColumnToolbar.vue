@@ -7,6 +7,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { Editor } from "@tiptap/core";
+import { Plus, Ellipsis } from "@lucide/vue";
 import { findSelectedDOMNode } from "../../../utils/prosemirror";
 import TableToolbarButton from "./TableToolbarButton.vue";
 import TablePropertiesPopup from "./TablePropertiesPopup.vue";
@@ -58,8 +59,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="el" class="table-col-toolbar" style="display: none; position: absolute; z-index: 10" contenteditable="false">
-    <TableToolbarButton title="Insert column right" @click="editor.commands.addColumnAfter()">＋</TableToolbarButton>
-    <TableToolbarButton title="Column properties" @click="showProps = !showProps">⋯</TableToolbarButton>
+    <TableToolbarButton title="Insert column right" @click="editor.commands.addColumnAfter()"><Plus :size="14" /></TableToolbarButton>
+    <TableToolbarButton title="Column properties" @click="showProps = !showProps"><Ellipsis :size="14" /></TableToolbarButton>
     <TablePropertiesPopup v-if="showProps" :editor="editor" :anchor="el" @close="showProps = false" />
   </div>
 </template>

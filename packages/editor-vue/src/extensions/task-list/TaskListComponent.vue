@@ -10,6 +10,7 @@ the header is not persisted, only `title`/`readonly` (as data-* attrs) are.
 import { computed, ref, watch } from "vue";
 import { NodeViewWrapper, NodeViewContent } from "@tiptap/vue-3";
 import type { NodeViewProps } from "@tiptap/vue-3";
+import { Check } from "@lucide/vue";
 import { deleteCheckedItems } from "./utils";
 
 const props = defineProps<NodeViewProps>();
@@ -91,7 +92,7 @@ function clearCompleted(): void {
         @click.prevent="toggleAll"
         @mousedown.prevent.stop
       >
-        <span v-if="allChecked" class="text-[10px] leading-none">✓</span>
+        <Check v-if="allChecked" :size="10" />
         <span v-else-if="someChecked" class="text-[10px] leading-none">–</span>
       </button>
       <input

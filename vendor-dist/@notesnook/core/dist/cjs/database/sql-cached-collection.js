@@ -31,6 +31,7 @@ exports.SQLCachedCollection = void 0;
 const types_js_1 = require("../types.js");
 const sql_collection_js_1 = require("./sql-collection.js");
 class SQLCachedCollection {
+    // private cachedItems?: T[];
     constructor(sql, startTransaction, type, eventManager, sanitizer) {
         this.type = type;
         this.cache = new Map();
@@ -41,8 +42,17 @@ class SQLCachedCollection {
             yield this.collection.init();
             const records = yield this.collection.records([]);
             this.cache = new Map(Object.entries(records));
+            // const data = await this.collection.indexer.readMulti(
+            //   this.collection.indexer.indices
+            // );
+            // this.cache = new Map(data);
         });
     }
+    // async add(item: MaybeDeletedItem<T>) {
+    //   await this.collection.addItem(item);
+    //   this.cache.set(item.id, item);
+    //   this.invalidateCache();
+    // }
     clear() {
         return __awaiter(this, void 0, void 0, function* () {
             yield this.collection.clear();
@@ -155,9 +165,6 @@ class SQLCachedCollection {
         return __awaiter(this, void 0, void 0, function* () {
             return this.collection.unsyncedCount();
         });
-    }
-    invalidateCache() {
-        this.cache.clear();
     }
 }
 exports.SQLCachedCollection = SQLCachedCollection;

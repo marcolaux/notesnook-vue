@@ -212,6 +212,17 @@ const appCommands: Command[] = [
     when: (ctx) => ctx.auth.showShell,
     run: (ctx) => ctx.shell.toggleProperties()
   },
+  {
+    id: "app:toggle-note-history",
+    title: "Toggle note history",
+    keywords: ["history", "versions", "revisions", "timeline", "diff"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => {
+      const id = ctx.layout.activeTab?.id;
+      if (id) ctx.layout.toggleHistory(id);
+    }
+  },
   // Focus mode (multi-window): hides the sidebar AND the notes list for a
   // distraction-free writing surface. The torn-off note window boots with this
   // on; in the main window it's a palette toggle. Overrides the individual

@@ -40,7 +40,8 @@ describe("router routes", () => {
       RouteName.notebooks,
       RouteName.tags,
       RouteName.monographs,
-      RouteName.archive
+      RouteName.archive,
+      RouteName.reminders
     ]);
     expect(bottomViews.map((v) => v.name)).toEqual([RouteName.trash, RouteName.settings]);
   });

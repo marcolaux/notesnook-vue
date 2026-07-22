@@ -17,11 +17,10 @@
  * `window.confirm` gates live here (not the store), matching `VaultSection`,
  * so the store stays unit-testable in node. After a delete we rely on the
  * store's `notifyDataChanged` to signal the main window to reload affected
- * notes. Icons are inlined Lucide-style stroke SVGs (the codebase has no
- * shared icon module and `@mdi/js` is not installed).
+ * notes. Icons use the shared `Icon` (ui-vue) over the `@lucide/vue` registry.
  */
 import { ref, computed, onMounted } from "vue";
-import { Surface, Flex, Text, Button, Input } from "@notesnook-vue/ui-vue";
+import { Surface, Flex, Text, Button, Input, Icon } from "@notesnook-vue/ui-vue";
 import { useAttachmentsStore } from "@/stores/attachments";
 import {
   ATTACHMENT_FILTERS,
@@ -134,20 +133,11 @@ async function onOpen(n: Note): Promise<void> {
       <!-- Toolbar: search + remove-orphaned -->
       <Flex direction="row" align="center" :gap="2">
         <div class="relative min-w-0 flex-1">
-          <svg
+          <Icon
+            name="search"
+            :size="14"
             class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-text-muted"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.3-4.3" />
-          </svg>
+          />
           <Input v-model="search" block placeholder="Search attachments" class="pl-7" />
         </div>
         <Button
@@ -173,25 +163,7 @@ async function onOpen(n: Note): Promise<void> {
         :gap="2"
         class="py-10 text-text-muted"
       >
-        <svg
-          class="animate-spin"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-        >
-          <path d="M12 2v4" />
-          <path d="M12 18v4" />
-          <path d="m4.93 4.93 2.83 2.83" />
-          <path d="m16.24 16.24 2.83 2.83" />
-          <path d="M2 12h4" />
-          <path d="M18 12h4" />
-          <path d="m4.93 19.07 2.83-2.83" />
-          <path d="m16.24 7.76 2.83-2.83" />
-        </svg>
+        <Icon name="loader-circle" :size="16" spin />
         <Text variant="body" size="sm">Loading…</Text>
       </Flex>
 
@@ -204,19 +176,7 @@ async function onOpen(n: Note): Promise<void> {
         :gap="2"
         class="py-10 text-text-muted"
       >
-        <svg
-          width="28"
-          height="28"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
+        <Icon name="file-text" :size="28" :stroke-width="1.5" class="text-text-muted" />
         <Text variant="body" size="sm">
           {{ attachments.filter === "orphaned" ? "No orphaned attachments" : "No attachments" }}
         </Text>
@@ -231,86 +191,31 @@ async function onOpen(n: Note): Promise<void> {
         >
           <Flex direction="row" align="center" :gap="3" class="px-3 py-2">
             <!-- mime icon -->
-            <svg
+            <Icon
               v-if="mimeCategory(a.mimeType) === 'image'"
+              name="image"
+              :size="18"
               class="shrink-0 text-text-muted"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <circle cx="9" cy="9" r="2" />
-              <path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" />
-            </svg>
-            <svg
+            />
+            <Icon
               v-else-if="mimeCategory(a.mimeType) === 'video'"
+              name="video"
+              :size="18"
               class="shrink-0 text-text-muted"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="m22 8-6 4 6 4V8Z" />
-              <rect x="2" y="6" width="14" height="12" rx="2" />
-            </svg>
-            <svg
+            />
+            <Icon
               v-else-if="mimeCategory(a.mimeType) === 'audio'"
+              name="audio-lines"
+              :size="18"
               class="shrink-0 text-text-muted"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M9 18V5l12-2v13" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
-            </svg>
-            <svg
+            />
+            <Icon
               v-else-if="mimeCategory(a.mimeType) === 'document'"
+              name="file-text"
+              :size="18"
               class="shrink-0 text-text-muted"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" x2="8" y1="13" y2="13" />
-              <line x1="16" x2="8" y1="17" y2="17" />
-              <line x1="10" x2="8" y1="9" y2="9" />
-            </svg>
-            <svg
-              v-else
-              class="shrink-0 text-text-muted"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
+            />
+            <Icon v-else name="file" :size="18" class="shrink-0 text-text-muted" />
 
             <Flex direction="column" class="min-w-0 flex-1">
               <Text variant="body" size="sm" class="truncate">{{ a.filename || "Untitled" }}</Text>
@@ -333,20 +238,12 @@ async function onOpen(n: Note): Promise<void> {
               :title="expanded.has(a.hash) ? 'Hide usage' : 'Show usage'"
               @click="toggle(a)"
             >
-              <svg
-                :class="expanded.has(a.hash) ? 'rotate-90' : ''"
+              <Icon
+                name="chevron-right"
+                :size="14"
                 class="transition-transform"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="m9 18 6-6-6-6" />
-              </svg>
+                :class="expanded.has(a.hash) ? 'rotate-90' : ''"
+              />
             </Button>
 
             <Button
@@ -357,19 +254,7 @@ async function onOpen(n: Note): Promise<void> {
               title="Delete"
               @click="onDelete(a)"
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M3 6h18" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
+              <Icon name="trash-2" :size="14" />
             </Button>
           </Flex>
 
@@ -382,25 +267,7 @@ async function onOpen(n: Note): Promise<void> {
               :gap="2"
               class="text-text-muted"
             >
-              <svg
-                class="animate-spin"
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              >
-                <path d="M12 2v4" />
-                <path d="M12 18v4" />
-                <path d="m4.93 4.93 2.83 2.83" />
-                <path d="m16.24 16.24 2.83 2.83" />
-                <path d="M2 12h4" />
-                <path d="M18 12h4" />
-                <path d="m4.93 19.07 2.83-2.83" />
-                <path d="m16.24 7.76 2.83-2.83" />
-              </svg>
+              <Icon name="loader-circle" :size="12" spin />
               <Text variant="body" size="xs">Loading usage…</Text>
             </Flex>
             <template v-else>
@@ -431,20 +298,7 @@ async function onOpen(n: Note): Promise<void> {
                     title="Open in new window"
                     @click="onOpen(n)"
                   >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M15 3h6v6" />
-                      <path d="M10 14 21 3" />
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                    </svg>
+                    <Icon name="external-link" :size="14" />
                   </Button>
                 </Flex>
               </Flex>

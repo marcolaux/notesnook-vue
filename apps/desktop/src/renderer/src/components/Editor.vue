@@ -7,8 +7,9 @@
  *    its note's content. Wrapped in `<KeepAlive>` keyed by `tabId` so switching
  *    tabs within a pane preserves cursor/scroll/undo.
  *  - `groupId` (draft mode): the pane has no active tab, so this is an empty
- *    live editor; the first keystroke lazily creates a note in `groupId` (see
- *    `ensureDraft` → `notes.createDraft`).
+ *    live editor; typing starts a debounce and a note is created in `groupId`
+ *    once typing PAUSES (see `scheduleDraft` → `ensureDraft` →
+ *    `notes.createDraft`).
  *
  * Content is read per-note from the notes store's content cache
  * (`notes.getContent(noteId)`), NOT a global slot — so background split panes
@@ -39,7 +40,21 @@ import {
   SlashCommands,
   FindReplace,
   Underline,
-  Highlight
+  Highlight,
+  // Phase 5.5 toolbar marks/options — re-exported by editor-vue so it owns
+  // every extension the editor loads (one import surface; same hoisted
+  // 2.6.6 `@tiptap/core` as StarterKit — see the header note on schema
+  // sharing). `TextStyle` carries `color`/`fontFamily`; `Color`+`FontFamily`
+  // set them; `TextAlign` applies to paragraph + heading.
+  Subscript,
+  Superscript,
+  TextStyle,
+  Color,
+  FontFamily,
+  TextAlign,
+  // Tag-mention (Phase 5.4): inline `#tag` chip node + `#`-triggered picker.
+  TagMention,
+  TagSuggest
 } from "@notesnook-vue/editor-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorStore } from "@/stores/editor";
@@ -54,6 +69,9 @@ import {
   createImageDropPasteProps,
   wireAttachmentStorage
 } from "@/editor/attachments-bridge";
+import { wireEditorColorPicker } from "@/editor/color-bridge";
+import { wireTagMention } from "@/editor/tag-mention-bridge";
+import { goToCollection } from "@/utils/collection-nav";
 import EditorToolbar from "./EditorToolbar.vue";
 import FindBar from "./FindBar.vue";
 
@@ -82,6 +100,10 @@ const myNote = computed(() =>
 const myContentState = computed(
   () => notes.getContent(myNoteId.value ?? "")?.state ?? "idle"
 );
+/** Draft mode: this pane has no tab yet, so the editor is an empty live surface
+ *  that creates a note on the first keystroke. Drives the minimal draft UI —
+ *  no toolbar, no tags/links footer, and a "create a note" title placeholder. */
+const isDraft = computed(() => !myNoteId.value);
 /** Registry key: `tabId` in tab mode, `"draft:" + groupId` in draft mode. */
 const myKey = computed(() => props.tabId ?? "draft:" + (props.groupId ?? ""));
 
@@ -113,6 +135,16 @@ watch(
   }
 );
 
+// The editor-toolbar magnifying-glass button bumps `findToggleSignal` — it
+// TOGGLES this pane's bar (closes it when already open) rather than only
+// opening. Same focused-pane guard as the open-only signal above.
+watch(
+  () => editorStore.findToggleSignal,
+  () => {
+    if (editorStore.editor === editor.value) findOpen.value = !findOpen.value;
+  }
+);
+
 // --- Title (bound to this tab's note `title` field) ------------------------
 // Two-way bound to the store so the tab bar + notes list update live as the
 // user types; persistence is debounced per-note inside `notes.setTitle` and
@@ -122,24 +154,35 @@ const titleModel = computed<string>({
   set: (v) => {
     const id = myNoteId.value;
     if (id) notes.setTitle(id, v);
-    else void ensureDraft({ title: v });
+    else scheduleDraft({ title: v });
   }
 });
 
 // Title input element. Focused for a freshly created note: the `<input>` lives
 // under `<template v-else-if="editor">` (TipTap creates its instance lazily),
 // so the reliable signal is the template ref turning non-null — not `onMounted`.
-// The one-shot `pendingTitleFocus` flag is set by `notes.create()` and cleared
-// here once consumed, so switching to an existing note never grabs the title.
+// The one-shot `pendingTitleFocus` flag is set by `notes.create()` ("select":
+// focus + select-all over the placeholder) or `notes.createDraft()` ("end":
+// focus + caret at end, so a draft created mid-typing keeps the just-typed
+// letter) and cleared here once consumed, so switching to an existing note
+// never grabs the title.
 const titleInputEl = ref<HTMLInputElement | null>(null);
 
 watch(
   titleInputEl,
   (el) => {
-    if (!el || !notes.pendingTitleFocus) return;
-    notes.pendingTitleFocus = false;
+    const mode = notes.pendingTitleFocus;
+    if (!el || !mode) return;
+    notes.pendingTitleFocus = null;
     el.focus();
-    el.select();
+    if (mode === "select") {
+      el.select();
+    } else {
+      // "end" — place the caret after the last character so continued typing
+      // appends rather than clobbering the title typed in the draft editor.
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    }
   },
   { flush: "post" }
 );
@@ -181,6 +224,12 @@ async function addExistingTag(tagId: string): Promise<void> {
 
 async function removeAssignedTag(tagId: string): Promise<void> {
   await properties.removeTag(tagId);
+}
+
+/** Click a footer tag chip → go to that tag's note list. The current note stays
+ *  open in the editor; only the notes list is re-filtered. */
+function goToTag(tagId: string): void {
+  void goToCollection("tag", tagId);
 }
 
 /** Enter in the tag input: pick an exact existing match if there is one,
@@ -282,10 +331,20 @@ const editor = useEditor({
     EmbedNode,
     ImageNode,
     CodeBlock,
-    // Inline marks (Phase 5.3) — pure toggles, no node-view. Underline
-    // round-trips as <u>, Highlight as <mark> (plain, no colour picker yet).
+    // Inline marks (Phase 5.3/5.5) — pure toggles, no node-view. Underline
+    // round-trips as <u>. Highlight is multicolor so the toolbar colour
+    // submenu can set per-highlight colours (plain toggle still works for the
+    // default). Subscript/superscript are plain toggles. FontFamily + Color
+    // (text colour) ride on TextStyle; TextAlign applies to paragraph +
+    // heading (the node types the toolbar alignment dropdown targets).
     Underline,
-    Highlight,
+    Highlight.configure({ multicolor: true }),
+    Subscript,
+    Superscript,
+    TextStyle,
+    FontFamily,
+    Color,
+    TextAlign.configure({ types: ["heading", "paragraph"] }),
     Table.configure({ resizable: true, showResizeHandleOnSelection: true }),
     TableRow,
     TableCell,
@@ -295,7 +354,13 @@ const editor = useEditor({
     // `setFind`/`findNext`/`findPrev`/`replace`/`replaceAll`/`clearFind` commands
     // the `FindBar` below drives. State (query, match index) is per-tab here
     // (KeepAlive preserves it across tab switches).
-    FindReplace
+    FindReplace,
+    // Tag-mention (Phase 5.4): `TagMention` (inline `#tag` chip node, must
+    // register before `TagSuggest` so the schema exists when the suggestion
+    // plugin inserts chips) + `TagSuggest` (the `#`-triggered picker; its own
+    // PluginKey so it doesn't collide with `SlashCommands`).
+    TagMention,
+    TagSuggest
   ],
   // NOTE: `content` is intentionally empty. The note's content is loaded after
   // mount via `loadCurrentNote()` (see below). Initialising with the note's
@@ -314,12 +379,11 @@ const editor = useEditor({
   onUpdate: ({ editor: inst }) => {
     const html = inst.getHTML();
     if (!myNote.value) {
-      // No note open yet (draft mode) — the empty editor is a live draft. The
-      // first keystroke lazily creates a note seeded with this text (and the
-      // title typed so far) in THIS pane's group, without remounting the draft
-      // editor; the new tab's editor then mounts and reads the seeded content
-      // from the cache. Subsequent edits hit the normal autosave path.
-      void ensureDraft({ html });
+      // No note open yet (draft mode) — the empty editor is a live draft.
+      // Buffer this keystroke and defer note creation until typing pauses
+      // (see `scheduleDraft`): creating on the first keystroke would remount
+      // mid-burst and lose characters typed during the creation window.
+      scheduleDraft({ html });
       return;
     }
     scheduleSave(html);
@@ -363,37 +427,87 @@ async function flushSave(): Promise<void> {
   savedAt.value = Date.now();
 }
 
-// --- Draft creation (no note open → create on first keystroke) -------------
+/** Mirror this pane's autosave state into the shared status store so the bottom
+ *  status bar can render "Saving… / Saved" (moved off the editor toolbar). Only
+ *  the FOCUSED pane drives the bar — same guard as {@link refreshStatus}. */
+function pushSaveState(): void {
+  if (editorStore.editor !== editor.value) return;
+  status.setSaveState(saving.value, savedAt.value);
+}
+
+// Push whenever the autosave flags flip, and re-sync on focus move (handled in
+// the focused watch below, which also calls refreshStatus → pushSaveState).
+watch([saving, savedAt], pushSaveState);
+
+// --- Draft creation (no note open → create after typing pauses) ------------
 // Draft mode only: the editor surface is empty but live. The first edit (title
-// or body) lazily creates a note seeded with what's already typed, in THIS
-// pane's group. `notes.createDraft` pre-seeds the content cache with the exact
-// bytes the user typed, so the new tab's editor reads them straight from the
-// cache (no DB round-trip race). `draftInFlight` coalesces a burst of keystrokes
-// into one create; after the note is created we flush the latest buffered title
-// and re-seed the autosave pipeline with the editor's current HTML.
+// or body) starts a debounce timer; the note is created only once typing
+// PAUSES for `DRAFT_DEBOUNCE_MS`. This is essential: creating on the first
+// keystroke remounts the editor (draft → tab) mid-burst, and characters typed
+// during the creation+remount window never reach the new editor — typing
+// "asdf" fast kept only "a". By deferring creation to the pause, the draft
+// editor accumulates the whole burst, the user is no longer typing when the
+// remount runs, and the new tab's editor loads the complete text from the
+// re-seeded cache. `draftInFlight` guards the async create itself.
 let draftInFlight = false;
+let draftTimer: ReturnType<typeof setTimeout> | null = null;
+const DRAFT_DEBOUNCE_MS = 400;
 let draftTitle = "";
 let draftHtml = "";
+/** Where the user was typing at the moment creation fires — decides post-
+ *  remount focus (title input vs body caret). Updated on every keystroke so it
+ *  reflects the LAST surface, then read when the debounce fires. */
+let draftFocusBody = false;
 
-async function ensureDraft(opts: { title?: string; html?: string }): Promise<void> {
-  if (opts.title !== undefined) draftTitle = opts.title;
-  if (opts.html !== undefined) draftHtml = opts.html;
+/** Buffer a draft keystroke and (re)start the creation debounce. Called from
+ *  `titleModel.set` / `onUpdate` while in draft mode. Each call refreshes the
+ *  buffer + the focus target and pushes the create out to the pause. */
+function scheduleDraft(opts: { title?: string; html?: string }): void {
+  if (opts.title !== undefined) {
+    draftTitle = opts.title;
+    draftFocusBody = false;
+  }
+  if (opts.html !== undefined) {
+    draftHtml = opts.html;
+    draftFocusBody = true;
+  }
+  if (draftInFlight || myNote.value) return;
+  if (draftTimer) clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    draftTimer = null;
+    void ensureDraft();
+  }, DRAFT_DEBOUNCE_MS);
+}
+
+async function ensureDraft(): Promise<void> {
   if (draftInFlight || myNote.value) return;
   draftInFlight = true;
+  const focusBody = draftFocusBody;
   try {
     const html = editor.value?.getHTML() ?? draftHtml;
     const id = await notes.createDraft(
       { title: draftTitle, ...(html ? { content: html } : {}) },
-      myGroupId.value
+      myGroupId.value,
+      focusBody ? "body" : "title",
+      // Re-capture the draft editor's HTML right before the remount (inside
+      // createDraft, just before openTab) so the cache is seeded with the FULL
+      // text. With the pause-debounce the user isn't typing during the
+      // db.add/load await, so this equals the buffered content — the getter is
+      // kept as a belt-and-suspenders in case the await window overlaps a late
+      // keystroke (the editor is still alive here, before openTab runs).
+      () => editor.value?.getHTML() ?? draftHtml
     );
     if (!id) return;
-    // Flush any title typed during the await window into the new note.
+    // Flush any title typed before the pause into the new note (the body is
+    // already preserved via the getLatestContent re-seed above).
     if (draftTitle) notes.setTitle(id, draftTitle);
-    // Re-seed the autosave pipeline with the editor's current HTML so the
-    // latest typed text persists even if the user stops typing and switches
-    // notes before the 800ms debounce fires.
-    const inst = editor.value;
-    if (inst) scheduleSave(inst.getHTML());
+    // NOTE: do NOT `scheduleSave(editor.value.getHTML())` here — by the time
+    // this `await` resumes, Vue has already flushed the remount and the draft
+    // editor is destroyed, so reading it would schedule a save of a stale/
+    // empty snapshot that, after the 800ms debounce, would wipe the just-
+    // typed content. The new tab's Editor loaded the full text from the
+    // re-seeded cache and will persist it through its own autosave / the
+    // deactivate/unmount flush, exactly like any other edit.
   } finally {
     draftInFlight = false;
   }
@@ -419,16 +533,49 @@ async function loadCurrentNote(): Promise<void> {
     loadedNoteId = null;
     return;
   }
-  await notes.loadContent(id);
+  // Load content + this note's assigned tag ids in parallel. The tag ids feed
+  // the `reconcileTagMentions` call below so orphan chips (a tag removed while
+  // this note was closed, or on another device) are stripped on open. Id-aware
+  // read (not `properties.tags`, which reflects only the focused pane).
+  const [html, tagIds] = await Promise.all([
+    notes.loadContent(id).then(() => notes.getContent(id)?.html ?? ""),
+    properties.getAssignedTagIds(id)
+  ]);
   // This tab's note may have changed again while loading; bail if so.
   if (myNoteId.value !== id) return;
+  // Queue server downloads of this note's image/webclip attachments so their
+  // blobs land locally; the image node-views lazy-load via `getAttachmentData`
+  // and re-load on `EVENTS.mediaAttachmentDownloaded` (see attachments-bridge).
+  // Fire-and-forget — no blob = placeholder, matching pre-sync behaviour.
+  notes.downloadMedia(id);
   const inst = editor.value;
   if (inst) {
     // Wire the attachment-data hook BEFORE `setContent` creates image node-views
     // (see the editor-ready watch for the full rationale). Idempotent.
-    wireAttachmentStorage(inst);
-    inst.chain().setContent(notes.getContent(id)?.html ?? "", false).run();
+    wireAttachmentStorage(inst, () => myGroupId.value);
+    // Reconcile is chained onto the `setContent(…, false)` chain so the strip
+    // shares the single non-emitting transaction (no `onUpdate` → no autosave
+    // → no eager DB rewrite; the orphan chip leaves saved content only on the
+    // next real edit, matching the lazy-reconcile contract). `silent` also sets
+    // `preventUpdate` so the chip-deletion handler skips unassign for it.
+    inst
+      .chain()
+      .setContent(html, false)
+      .reconcileTagMentions(tagIds, { silent: true })
+      .run();
     loadedNoteId = id;
+    // Draft promoted by a BODY keystroke: the user was typing in the body, so
+    // after the seeded content is loaded focus the editor + place the caret at
+    // the end of the body (mirrors the empty-band-click caret idiom: `content
+    // .size - 1` lands inside the last block at its end, without inserting a new
+    // paragraph — the user is mid-typing, not starting a fresh line). Consumed
+    // here (not in a separate watch) so it runs AFTER `setContent` seeds the
+    // doc the caret resolves against.
+    if (notes.pendingBodyFocus) {
+      notes.pendingBodyFocus = false;
+      const end = inst.state.doc.content.size - 1;
+      inst.chain().focus().setTextSelection(end).run();
+    }
   }
 }
 
@@ -440,13 +587,26 @@ async function reloadIfStale(): Promise<void> {
   if (saving.value) return;
   const id = myNoteId.value;
   if (!id) return;
-  await notes.loadContent(id, { force: true });
+  const [fresh, tagIds] = await Promise.all([
+    notes.loadContent(id, { force: true }).then(
+      () => notes.getContent(id)?.html ?? ""
+    ),
+    properties.getAssignedTagIds(id)
+  ]);
   const inst = editor.value;
   if (!inst) return;
-  const fresh = notes.getContent(id)?.html ?? "";
   if (inst.getHTML() !== fresh) {
-    wireAttachmentStorage(inst);
-    inst.chain().setContent(fresh, false).run();
+    wireAttachmentStorage(inst, () => myGroupId.value);
+    // Chain the cosmetic reconcile so a stale reload of a note that still has
+    // orphan chips in saved content re-strips them (see `loadCurrentNote`).
+    inst
+      .chain()
+      .setContent(fresh, false)
+      .reconcileTagMentions(tagIds, { silent: true })
+      .run();
+    // A remote change may have introduced images whose blobs aren't local yet
+    // — queue their downloads so they don't sit on placeholders.
+    notes.downloadMedia(id);
   }
 }
 
@@ -498,6 +658,7 @@ function refreshStatus(): void {
   if (!inst) return;
   if (editorStore.editor !== inst) return; // only the focused editor pushes
   status.setEditorStats(readEditorStats(inst));
+  pushSaveState();
   // Live-stats push to the properties panel (Phase 5.1): word/char/line counts
   // from the editor's plain text, computed on every edit + caret move (same
   // `update`/`selectionUpdate` cadence as the status bar). `textStats` shares
@@ -506,6 +667,8 @@ function refreshStatus(): void {
   // pane guard above so only the focused editor drives the panel.
   properties.setStats(textStats(inst.getText({ blockSeparator: "\n" })));
 }
+
+let disposeTagMention: (() => void) | null = null;
 
 watch(
   editor,
@@ -516,9 +679,27 @@ watch(
       e.on("selectionUpdate", refreshStatus);
       // Wire the attachments storage hooks the image node-view + toolbar image
       // action expect: `getAttachmentData` (lazy blob fetch for hash-only
-      // images) + `openAttachmentPicker` (toolbar 🖼 / slash "Image"). Re-wired
-      // per editor instance (remounts on tab switch).
-      wireAttachmentStorage(e);
+      // images) + `openAttachmentPicker` (toolbar 🖼 / slash "Image"), plus
+      // `openAttachmentPreview` (double-click a chip → preview pane). `getGroupId`
+      // resolves this editor's pane so the preview splits from the right pane.
+      // Re-wired per editor instance (remounts on tab switch).
+      wireAttachmentStorage(e, () => myGroupId.value);
+      // Wire the host colour-picker hook the `textColor` / `highlight` toolbar
+      // actions (kind "color") + palette entries invoke: opens a native
+      // `<input type="color">` and applies the chosen hex to the text colour or
+      // highlight mark. Idempotent; re-wired per editor instance (see color-bridge).
+      wireEditorColorPicker(e);
+      // Wire the `#` tag picker hooks the `TagSuggest` extension reads:
+      // `getTagSuggestions` (filter the sidebar tag list) + `assignTag`
+      // (create/attach via the properties store), plus the two-way chip↔tag
+      // sync (chip-deletion detection + a `properties.tags` reconcile watcher).
+      // `getNoteId` is a getter so the bridge stays valid across draft→promote
+      // (the editor instance is stable but the note id resolves only after the
+      // first keystroke). Returns a disposer (tears down the transaction
+      // listener + the watch) captured for cleanup on the next editor swap /
+      // unmount.
+      disposeTagMention?.();
+      disposeTagMention = wireTagMention(e, () => myNoteId.value);
       refreshStatus();
       // If the id watch fired before the editor existed, the load was
       // skipped — do it now that the editor is ready.
@@ -561,12 +742,25 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onFindHotkey);
+  // Cancel any pending draft creation: if this draft editor is unmounting
+  // before the debounce fired, the user navigated away mid-burst (an explicit
+  // abandonment), so don't create a note for the half-typed text. (When
+  // creation succeeds, the timer already fired → it's null here, so this is a
+  // no-op in the normal promotion path.)
+  if (draftTimer) {
+    clearTimeout(draftTimer);
+    draftTimer = null;
+  }
   const inst = editor.value;
   if (inst) {
     inst.off("update", refreshStatus);
     inst.off("selectionUpdate", refreshStatus);
     editorStore.unregister(myKey.value, inst);
   }
+  // Tear down the tag-mention bridge (transaction listener + properties.tags
+  // watch) so a per-tab editor doesn't leak its store subscription on unmount.
+  disposeTagMention?.();
+  disposeTagMention = null;
   void flushSave();
   void notes.flushTitle(myNoteId.value ?? undefined);
 });
@@ -582,10 +776,26 @@ onBeforeUnmount(() => {
 // — the string "end" is NOT accepted and silently drops the caret at the doc
 // start, so the caret position is computed explicitly here. `setTextSelection`
 // clamps it to the valid range, so the exact value is a safety net, not a cliff.
+//
+// Track where the press STARTED. A `click` fires on the scroll container
+// whenever the mousedown and mouseup targets share it as an ancestor — so
+// dragging a text selection that starts inside `.ProseMirror` and releases on
+// the padding band (or the tags/links meta) fires this handler too. That's NOT
+// an "empty-band click": the user was selecting text and simply released past
+// the editor's edge. Acting on it would `.focus()` + `setTextSelection(end)`
+// and clobber their selection. So bail when the press began inside the editor.
+let mouseDownInEditor = false;
+function onAreaMouseDown(e: MouseEvent): void {
+  const t = e.target as HTMLElement | null;
+  mouseDownInEditor = !!(t && t.closest(".ProseMirror"));
+}
 function onEditorAreaClick(e: MouseEvent): void {
   const inst = editor.value;
   if (!inst) return;
   if (myContentState.value !== "loaded") return;
+  // Press began inside the editor (text selection released outside it) — leave
+  // the editor's selection alone.
+  if (mouseDownInEditor) return;
   // Editor handles its own clicks — only intercept the empty band around/below
   // the content (the scroll container + the `.prose` wrapper margins). The
   // title input + tag chips are interactive meta above/below the note, not
@@ -620,14 +830,14 @@ function onEditorAreaClick(e: MouseEvent): void {
 
 <template>
   <div class="relative flex h-full flex-col bg-glass-surface">
-    <EditorToolbar :editor="editor" :saving="saving" :saved-at="savedAt" />
+    <EditorToolbar v-if="!isDraft" :editor="editor" />
     <FindBar
       v-if="findOpen && editor"
       :editor="editor"
       class="titlebar-no-drag"
       @close="findOpen = false"
     />
-    <div class="min-h-0 flex-1 overflow-y-auto p-6" @click="onEditorAreaClick">
+    <div class="min-h-0 flex-1 overflow-y-auto p-6" @mousedown="onAreaMouseDown" @click="onEditorAreaClick">
       <div v-if="myContentState === 'locked'" class="text-sm text-amber-300/80">
         This note is vault-locked. Unlock arrives in Phase 6.
       </div>
@@ -639,17 +849,25 @@ function onEditorAreaClick(e: MouseEvent): void {
           ref="titleInputEl"
           v-model="titleModel"
           class="editor-title titlebar-no-drag mb-2 w-full bg-transparent text-2xl font-semibold text-text placeholder:text-text-muted focus:outline-none"
-          placeholder="Title"
+          :placeholder="isDraft ? 'Type here to create a new note...' : 'Title'"
           @keydown.enter.prevent="onTitleEnter"
         />
         <EditorContent :editor="editor" class="prose max-w-none text-sm text-text" />
-        <div class="editor-tags mt-4 flex flex-wrap items-center gap-2 border-t border-glass-border pt-3">
+        <div
+          v-if="!isDraft"
+          class="editor-tags mt-4 flex flex-wrap items-center gap-2 border-t border-glass-border pt-3"
+        >
           <span
             v-for="tag in properties.tags"
             :key="tag.id"
-            class="group inline-flex items-center gap-1 rounded-full bg-glass-active px-2.5 py-1 text-xs text-text"
+            class="group inline-flex items-center gap-1 rounded-full bg-glass-active px-2.5 py-1 text-xs text-text hover:bg-glass-hover"
           >
-            <span class="max-w-40 truncate">{{ tag.title }}</span>
+            <button
+              type="button"
+              class="max-w-40 cursor-pointer truncate hover:underline"
+              :title="`Show notes tagged #${tag.title}`"
+              @click="goToTag(tag.id)"
+            >{{ tag.title }}</button>
             <button
               class="text-text-muted hover:text-text"
               title="Remove tag"
@@ -683,7 +901,7 @@ function onEditorAreaClick(e: MouseEvent): void {
             </ul>
           </div>
         </div>
-        <div class="editor-links mt-4 border-t border-glass-border pt-3 text-xs text-text-muted">
+        <div v-if="!isDraft" class="editor-links mt-4 border-t border-glass-border pt-3 text-xs text-text-muted">
           <div class="mb-1 font-medium text-text">Links</div>
           <div class="mb-2 flex flex-wrap items-center gap-2">
             <span class="text-text-muted">Outgoing:</span>

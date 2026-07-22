@@ -1271,6 +1271,19 @@ Die Reihenfolge ist ein Vorschlag — der Nutzer steuert die Priorisierung.
     Auto-Lock flippt Status.
 - [~] **6.4 Tray** — System-Tray mit „New Note / New Notebook / Show / Quit"
 - [~] **6.5 Deep Links** — `nn://`-Protocol, `app.setAsDefaultProtocolClient`
+  - **Offen (Revisit):** Deep Links scheinen im **Dev-Modus** (`npm run dev`)
+    nicht zu funktionieren. `app.setAsDefaultProtocolClient("nn")` registriert
+    den Handler im Dev-Build evtl. nicht zuverlässig (electron-vite-Dev-Binary
+    vs. verpackte App; macOS `open-url`-Event-Verhalten im Dev). Auch relevant
+    für die neue Note-linked-Reminder-Click-to-open-Flow (Notification-Click
+    sendet `app:open-note`, das denselben Renderer-Pfad nutzt wie `nn://note/<id>`).
+    Klären: (a) wird `nn://` im Dev überhaupt registriert? (`app.isDefaultProtocolClient`
+    prüfen + Log), (b) macOS `open-url` vs. Win/Linux `second-instance` im Dev,
+    (c) Fallback für Dev: Notification-Click direkt im Renderer abfangen statt
+    über den OS-Handler, oder `app:open-note` aus dem Main `webContents.send`
+    (läuft bereits — der Click-Handler sendet `app:open-note` direkt, umgeht
+    also den `nn://`-OS-Pfad; der eigentliche Deep-Link bleibt aber für
+    externe `nn://`-Aufrufe kaputt im Dev). On-Site zu verifizieren + fixen.
 - [~] **6.6 Spell-Checker** — Electron `session.defaultSession.spellcheck`
   - **Status 2026-07-20 (headless store + main impl, UI on-site):** das
     Spell-Checker-Backend steht. Neues `contracts/spell-checker.ts` (pure,
@@ -4265,4 +4278,223 @@ gegeben → Shortcuts könnten Topics zulassen, Folge-Inkrement).
 ---
 
 _Zuletzt aktualisiert: 2026-07-20 (Phase 6.2 Auto-Updater + Phase 7.6 CI + Phase 6.4 Tray + Phase 6.5 Deep Links + Phase 3.1 Custom Titlebar + Phase 6.3/6.7/6.1/6.6 headless + Phase 7.5 electron-builder config + Phase 2.6 vue-i18n-Foundation + Reminders-Store headless + Colors-Store headless + Shortcuts-Store + Sidebar-Pin-Funktionalität + Sub-Notebooks/nested-notebooks-via-relations lazy-tree)_
+
+---
+
+## Context-Menus (Notes-Liste + Sidebar: Notebook/Tag/Shortcut-Rows, headless + on-site visual gate) (2026-07-21)
+
+Rechtsklick-Kontextmenüs für die Notes-Liste + die Sidebar-Rows landeten
+**headless** (UI-visual-Gate offen). Vue-gerendert (bewusst NICHT nativ
+`Menu.popup`): `ContextMenu.vue` + `useContextMenuStore` sind ein Klon des
+Command-Palette-Musters (Teleport→`<body>`, ↑/↓/Enter/Esc-Keyboard-Nav,
+Outside-Click/Scroll/Resize/Blur schließen, viewport-clamped-Positionierung).
+**Flache Menüs** (keine Submenüs-Verschachtelung in v1 — Split-Richtungen sind
+separate Entries). Overlays einmal in `App.vue` neben `<CommandPalette>`
+gemountet. Destruktive Entries (Delete notebook/tag) laufen über einen
+generischen `ConfirmDialog` + `useDialogStore.confirm(): Promise<boolean>`.
+
+**Entries (feasible-today-Set):**
+- **Note-Row** (`buildNoteMenu`): Open in new window · Open in split right /
+  down · Pin to top (✓ note.pinned) · Favorite (✓ note.favorite). Zustand aus
+  `NoteListItem` (pinned/favorite sind dort enthalten).
+- **Notebook-Row** (`buildNotebookMenu`): New sub-notebook · Pin/Unpin sidebar
+  (✓ shortcut) · Pinned to top/Unpin (✓ notebook.pinned) · Rename… · Delete
+  notebook (danger→confirm).
+- **Tag-Row** (`buildTagMenu`): Pin/Unpin sidebar (✓) · Rename… · Delete tag
+  (danger→confirm).
+- **Shortcut-Row** (`buildShortcutMenu`): Open · Remove from shortcuts.
+
+**Architektur (pure utils + store + component, alles getestet):**
+- `utils/context-menu.ts` — `MenuItem` (action/separator, checked/disabled/
+  danger), `clampMenuPosition`, `cycleMenuIndex`, `firstMenuIndex`, `separator()`.
+- `utils/context-menu-entries.ts` — `buildNoteMenu/buildNotebookMenu/buildTagMenu/
+  buildShortcutMenu`: nehmen typisierte Deps (Action-Callbacks) + Item-Zustand,
+  returnen `MenuItem[]` mit `onSelect`-Closures. Labels = englische Literale
+  (Codebase mid-i18n → 7.1-Sweep migriert später).
+- `stores/context-menu.ts` — open/x/y/items/activeIndex, show/close/move/
+  setActiveIndex/execute.
+- `stores/dialog.ts` + `components/ConfirmDialog.vue` — generisches
+  `confirm(opts): Promise<boolean>` + `resolveConfirm`, Esc/Enter/outside-click.
+- `components/ContextMenu.vue` — Teleport-Overlay, scoped-CSS (glass).
+- `stores/collections.ts` — neue Wrapper: `renameNotebook`/`deleteNotebook`/
+  `toggleNotebookPinned`/`notebookNoteCount` + `renameTag`/`deleteTag`/
+  `tagNoteCount` + `reloadNotebooks`/`reloadTags`-Helper + Inline-Rename-State
+  (`renaming`, `startRename`/`setRenameText`/`commitRename`/`cancelRename`).
+  Rename = `db.notebooks.add({id,title})` / `db.tags.add({id,title})` (upsert-
+  by-id ist cores Rename-Pfad — kein dediziertes `rename`). Delete =
+  `db.notebooks.remove(id)` (kaskadiert Sub-Notebooks) / `db.tags.remove(id)`
+  (unlinkt Relations). Pinned-top = `db.notebooks.pin(state,id)` (≠ ★-
+  Shortcut). Tag-Note-Count = `db.relations.to({id,type:"tag"},"note").resolve()`.
+- `stores/properties.ts` — `toggle(key, noteId?)` jetzt **id-aware** (default
+  activeNote), damit das Note-Menu auf einer Nicht-aktiven Note toggeln kann;
+  für Nicht-aktive wird der Current-State aus der vollen `db.notes.note(id)`
+  gelesen (readonly/localOnly sind nicht auf dem ListItem).
+
+**Geänderte Dateien (neu):** `utils/context-menu.ts`, `utils/context-menu-entries.ts`,
+`stores/context-menu.ts`, `stores/dialog.ts`, `components/ContextMenu.vue`,
+`components/ConfirmDialog.vue`, `tests/contract/context-menu.spec.ts`,
+`tests/contract/context-menu-entries.spec.ts`, `tests/contract/context-menu-collections.spec.ts`,
+`tests/contract/dialog.spec.ts`. **Geändert:** `App.vue` (Overlays mounten),
+`components/NotesList.vue` (`@contextmenu.prevent` auf Row-Button + Handler),
+`components/NotebookNode.vue` (`@contextmenu.prevent` + Inline-Rename-`<input>`),
+`components/Sidebar.vue` (Tag- + Shortcut-Row `@contextmenu.prevent` + Tag-
+Rename-`<input>`), `stores/collections.ts`, `stores/properties.ts`.
+
+**GOTCHAS:**
+- Builder-Delete-Dep-Typen sind **plain `=> void`** (NICHT `Promise<void>`) —
+  nur so ist ein Caller der `Promise<boolean>` returnt (die Store-Wrapper) via
+  der void-return-Regel assignbar; der builder `await`et trotzdem.
+- `confirmSpy(ok)` in Tests MUSS ein `vi.fn` sein (per-Test), sonst schlägt
+  `toHaveBeenCalledOnce` fehl.
+- `clampMenuPosition` flippt nur die überlaufende Achse; beim Underflow-Test
+  muss die ANDERE Achse fitten (kein winziges Quadrat-Viewport verwenden).
+- Sidebar Tag-Rename-Focus nutzt einen Function-Ref getypt als `unknown`
+  (VNodeRef-kompatibel, v-for-Array-Ref-Falle vermieden); NotebookNode nutzt
+  per-Instanz `renameInput`-Ref + nextTick.
+- Menu-Labels absichtlich NOCH nicht i18n'd (passt zu NotesList/CommandPalette,
+  die noch Englisch hardcoden) — Phase 7.1.
+
+**Verifiziert (headless):** **958 Contract-Tests grün über 68 Spec-Dateien**
+(+ 54 neu: 18 context-menu + 16 context-menu-entries + 14 context-menu-collections
++ 6 dialog; 904 + 54), typecheck (node+web+contracts) + `electron-vite build`
+clean. Keine neue Dep, kein Main/Preload/Contracts-Change.
+
+**Aufgeschoben / nächste Tasks (next tasks):**
+- **On-site visual gate:** Rechtsklick in laufender App → Positionierung,
+  Keyboard-Nav, Inline-Rename-Input, Confirm-Dialog render/feel prüfen.
+- **Notiz-Duplikat** (`Duplicate note`) — kein `db.notes.duplicate`-Wrapper
+  irgendwo; braucht neuen Store-Wrapper (clone content+meta via `db.notes.add`).
+- **Copy link to note** — kein Clipboard-Pfad in Stores; braucht Deep-Link-URL-
+  Builder (`nn://note/<id>` oder `monogr.ph` für Published) +
+  `navigator.clipboard.writeText`.
+- **Move to trash** — kein `db.notes.trash`/soft-delete-Wrapper in einem Store
+  (nur `db.trash.delete` für bereits-trashed); Soft-Delete-Pfad im Notes-Store
+  fehlt.
+- **Export note** — kein Export-Code im Renderer; core-Exporter prüfen + wiring.
+- **Note-Color-Zuweisung** aus dem Note-Menu — Properties-Store hat Tag+Notebook-
+  Assignment, aber Color-Assignment ist noch nicht implementiert (Memory
+  `colors-store`: "assignment belongs in PROPERTIES store"). → Properties-Store
+  um `assignColor` erweitern, dann Menu-Entry.
+- **Tags/Notebook-Picker** aus dem Note-Menu (statt nur "Edit properties…") —
+  Properties-Panel-Picker in Menu-Submenüs oder Inline-Picker; aktuell bewusst
+  weggelassen (Submenüs v1 nicht da).
+- **Multi-Select** der Notes-List + Bulk-Aktionen — keine Selection-State
+  existiert (nur single activeNote); neues `selectedIds`-Set + Bulk-Rename/
+  Delete/Tag/Move.
+- **Notebook Reparent / Move** — kein `db.relations` unlink+add-Wrapper im
+  Renderer; Move-Submenü (Ziel-Notebook-Picker) bauen.
+- **Subtags** — Tags bleiben flach (keine Upstream-Hierarchie); nur wenn core
+  eine liefert.
+- **Note/Notebook-Count-Info-Entries** (`N notes`) im Menu — `notebookNoteCount`/
+  `tagNoteCount`-Wrapper existieren + sind getestet, werden aber NICHT im Menu
+  gezeigt (async Count würde den sync-Builder blockieren); erst zeigen wenn der
+  Builder async-tauglich oder der Count vorgefetcht wird.
+- **Submenüs** in `ContextMenu.vue` (v2) — für "Open in split ▸" + "Assign color ▸"
+  Gruppierungen; v1 bewusst flach.
+- **i18n-Migration** der Menu-Labels (Phase 7.1-Sweep, nicht isoliert).
+
+## Draft-Editor-Polish (Notes-List-Auswahl + Draft-UI + Debounced-Creation; on-site verifiziert) (2026-07-22)
+
+Vier Draft-/Editor-Rand-Fixes aus on-site GUI-Tests, alle im Renderer
+(kein Main/Preload/Contracts-Change):
+
+1. **Tab-Schließen prune Notes-List-Auswahl** (`stores/notes.ts` `closeTab`):
+   Ein Plain-Click auf eine Note ruft `selectOnly` (note in `selectedNoteIds` +
+   `layout.openNote`). Während offen zeigt die Row den Active-Highlight
+   (`bg-glass-active`, weil `activeNote?.id === note.id`) — die latente Selection
+   ist unsichtbar. `closeTab` delegierte nur an `layout.closeTab` und ließ die
+   Note in `selectedNoteIds` stehen; da sie danach nicht mehr `activeNote` ist,
+   kippte die Row-Bedingung `isSelected && activeNote?.id !== note.id` auf wahr →
+   blauer Haken + grüne `note-row-selected`-Style als ob sie cmd/shift-geklickt
+   worden wäre. Fix: `closeTab` capture die closing Note vor `layout.closeTab`,
+   entferne nur sie aus dem Set (+ `anchorId` nullen falls sie der Anchor war);
+   explizit multi-selektierte andere Notes bleiben, der neu-aktivierte Nachbar
+   wird via `activeNote`-Highlight markiert.
+
+2. **Draft-UI minimiert** (`components/Editor.vue`): Neues `isDraft`-Computed
+   (`!myNoteId` — true genau wenn der Pane keinen Tab hat). Im Draft: Title-
+   Placeholder `"Type here to create a new note..."` (statt `"Title"`), Toolbar
+   (`EditorToolbar`) + Tags-/Links-Footer (`v-if="!isDraft"`) ausgeblendet. Bei
+   Promotion remountet der Tab-Editor (eigene Instanz mit `myNoteId` gesetzt) →
+   `isDraft=false` ab erstem Render → volle UI kehrt automatisch zurück.
+
+3. **Focus-Restoration nach Remount** (`stores/notes.ts` + `Editor.vue`): Draft-
+   Editor (Key `"draft:"+groupId`, außerhalb `<KeepAlive>`) unmountet, Tab-Editor
+   (Key tabId, in `<KeepAlive>`) mountet → andere `<input>`/ProseMirror-Instanz →
+   DOM-Focus geht verloren. `pendingTitleFocus` wurde von boolean zum MODE
+   (`"select" | "end" | null`): `create()` → `"select"` (select-all über
+   "New note"-Placeholder); `createDraft(focus:"title")` → `"end"` (Caret hinter
+   dem gerade getippten Buchstaben, kein select-all das den Buchstaben beim
+   nächsten Tastendruck clobbern würde). Neu `pendingBodyFocus` (boolean):
+   `createDraft(focus:"body")` → fokussiert den Editor-Body, Caret an
+   `doc.content.size - 1` (Ende des letzten Blocks, kein neuer Paragraph), konsumiert
+   in `loadCurrentNote` nach `setContent`. `focus` folgt der LASTEN Tipp-Oberfläche
+   (`draftFocusBody`). Flag MUSS vor `layout.openTab` (Remount-Trigger) gesetzt
+   sein damit die neue Instanz es sieht.
+
+4. **Debounced Draft-Creation + Content-Erhaltung** (`Editor.vue` + `notes.ts`):
+   - **Symptom A (Content weg nach Pause):** `ensureDraft` machte nach dem
+     `await createDraft` ein `scheduleSave(editor.value.getHTML())` — da aber Vue
+     den Remount schon geflusht + den Draft-Editor zerstört hatte, las das einen
+     stale/leeren Snapshot und der 800ms-Autosave wipte den Inhalt. Entfernt.
+   - **Symptom B ("asdf" schnell → nur "a" erhalten):** Creation auf dem ERSTEN
+     Tastendruck remountet mid-burst; Zeichen während/um das Creation+Remount-
+     Fenster gingen an den sterbenden Draft-Editor / im Focus-Gap verloren.
+     `createDraft` bekommt einen `getLatestContent`-Getter und re-seedet den
+     Content-Cache mit dem LIVE-Editor-HTML genau vor `layout.openTab` (Draft-
+     Editor noch am Leben) — fängt await-window-Tippen ab.
+   - **Robuste Fix:** Creation wird **auf die Tipp-Pause debounceiert**
+     (`scheduleDraft` → 400ms-Timer, called aus `onUpdate`/`titleModel.set` im
+     Draft-Modus; puffert `draftTitle`/`draftHtml` + `draftFocusBody` und restartet
+     den Timer pro Tastendruck; erst nach 400ms Stille feuert `ensureDraft`).
+     So akkumuliert der Draft-Editor den ganzen Burst, der User tippt nicht
+     während des Remounts, der neue Tab lädt den vollständigen Text aus dem
+     re-geseedeten Cache. Trade-off: Note erscheint ~400ms nach Tipp-Pause in
+     der Liste (statt beim ersten Zeichen); Editor zeigt den Text durchgehend
+     sofort. `draftTimer` wird in `onBeforeUnmount` gecleart (mid-burst-Navigation
+     = abandonment, verwerfen).
+
+**Geänderte Dateien:** `stores/notes.ts` (`closeTab`-Selection-Prune,
+`pendingTitleFocus`-Mode + `pendingBodyFocus`-Flag + Export, `createDraft`-Sig
+`focus` + `getLatestContent`-Getter + Cache-Re-seed vor `openTab`), `components/
+Editor.vue` (`isDraft`-Computed + Draft-UI-Toggle, `scheduleDraft`/`ensureDraft`
+Debounce, `titleInputEl`-Watch Mode-Branch, `pendingBodyFocus`-Konsum in
+`loadCurrentNote`, `onUpdate`/`titleModel.set`→`scheduleDraft`, `draftTimer`-Clear
+in `onBeforeUnmount`), `tests/contract/notes-draft.spec.ts` (`"select"`/`"end"`/
+`"body"`-Focus-Modes + `getLatestContent`-Cache-Re-seed-Assert).
+
+**GOTCHAS:**
+- Draft-Promotion remountet (Draft außerhalb KeepAlive, Tab innerhalb) — es ist
+  KEIN no-remount-Design mehr (altes `draftPromotedId`/`editorSessionKey`-Design
+  wurde ersetzt). Content-Transfer läuft über den Content-Cache-Seed, Focus über
+  die `pendingTitleFocus`/`pendingBodyFocus`-Flags.
+- Niemals `scheduleSave(editor.value.getHTML())` nach `await createDraft` —
+  Editor ist zerstört, snapshot stale/leer → Autosave wipt Inhalt.
+- `getLatestContent` MUSS vor `layout.openTab` aufgerufen werden (Draft-Editor
+  noch am Leben); danach ist er weg.
+- `setTextSelection` in diesem TipTap-Build nimmt NUR numerische Positionen
+  (String `"end"` wird still ignoriert → Caret landet am Doc-Start); Doc-Ende =
+  `content.size - 1` (innerhalb des letzten Blocks, kein Insert).
+
+**Verifiziert:** typecheck:web clean, 1247 Contract-Tests grün (+3 neu in
+`notes-draft.spec.ts`: `"end"`-Title-Focus, `"body"`-Body-Focus,
+`getLatestContent`-Re-seed). On-site visual gate: **PASSED** (User bestätigt —
+"asdf" schnell tippen → alle 4 Zeichen bleiben erhalten; Pause → Note entsteht).
+
+_Zuletzt aktualisiert: 2026-07-22 (Draft-Editor-Polish: Notes-List-Selection-
+Prune bei Tab-Schließen + Draft-UI minimiert + pendingTitleFocus-Mode/pendingBodyFocus
+Focus-Restoration + 400ms-debounced Draft-Creation mit getLatestContent-Cache-Re-seed;
+1247 Tests grün; on-site verifiziert) — siehe oben; davor 2026-07-21 Context-Menus
+Notes-Liste + Sidebar headless — ContextMenu.vue + useContextMenuStore + ConfirmDialog
++ collections-Rename/Delete-Wrapper + properties.toggle id-aware; 958 Tests grün)_
 _Status: Phase 1 + 2.1 TipTap-Spike + Entscheidung #9 (`@tiptap/*` 2.6.6) + 2.4a/b/c/e/h (editor-vue: attachment/task-item/task-list/embed/code-block/image/table) + 2.2 (theme-vue: Tailwind-Token-Adapter) + 2.3 (ui-vue: 7 Tailwind/Token-Primitive) + **2.5 Runtime-Check (`npm run dev` bootet end-to-end, headless verifiziert; `d381546`)** + **M2.6 Login (Notesnook-Default + Self-Hosted, optional Local-Only; `useAuthStore` + `server-config` + `LoginScreen` + App-Gate)** + **Phase 2.5 (Command-Palette Headless-Core + Slash-Commands: `useEditorStore` + `command-palette`-Store + Command-Registry + App/Editor-Commands + `useCommandPalette`-Hotkey + `SlashCommands`-TipTap-Extension via `@tiptap/suggestion` + `SlashMenu.vue` + vendored `EDITOR_ACTIONS`/`SLASH_ITEMS` mit type-only `ToolId`-Parity → 0 React-Leck)** + **Phase 3.5 (Vue Router klassische Route-Tabelle: `createAppRouter`+`createMemoryHistory`+Auth-Guard; `ShellLayout`/`NotesView`/`PlaceholderView`/`SettingsView`; `useShellStore`; Sidebar-`RouterLink` über `VIEWS`; `app:goto-*`-Palette-Commands; lazy Views → Code-Split)** + **Phase 2.5b (Command-Palette Overlay `CommandPalette.vue`: Teleport-to-body, Input→`setQuery`, Arrow/Enter/Esc, Hover/Klick→`setActiveIndex`+`execute`, Autofocus via `flush:"post"`, scoped Theme-Tokens; Store um `setActiveIndex` erweitert)** + **Phase 3.3 (Teil 1): Notes List Search + Regex + Sort — `utils/notes-list.ts` (`filterNotes` plain/regex-invalid-fallback, `sortNotes` dateEdited/dateCreated/title asc/desc pinned-first) + `notes`-Store View-State (`visibleItems` computed) + `NotesList.vue` verdrahtet (Search-Input, Regex-Toggle, Sort-`<select>`+Dir, Clear, Count, Empty-State) + `app:search-notes`-Palette-Command (`focusSearchSignal`)** + **Phase 3.3 (Teil 2): Notes List Thumbnail + Checklist-Fortschrittsbalken — `utils/note-preview.ts` (`extractNotePreview` first-img-src/DOM-Klassen-Zählung via DOMParser, never-throws) + `notes`-Store `previews`-Cache + `loadPreview(id)` (lazy/cached/idempotent/locked-safe) + `load()` fire-and-forget + `saveContent` re-deriviert Preview live + `NotesList.vue` Thumbnail-`<img>` + Fortschrittsbalken (`previewOf`/`progressWidth`-Helper)** + **Phase 3.2 (Teil 1): Sidebar echte Notebooks + Tags Collections — `utils/collections.ts` (generisches `sortCollections` pinned-first + title/dateModified/dateCreated, `dateModified` als gemeinsamer Key da `Tag` kein `dateEdited`, Mapper) + `stores/collections.ts` (load parallel/defensiv, sort/collapse/selected-State, sortedNotebooks/sortedTags) + `Sidebar.vue` expandierbare Notebooks/Tags-Sektionen mit Auswahl→`/all` (All/Monographs/Archive/Trash+Count/Settings bleiben RouterLinks) + `App.vue` lädt Collections neben Notes + `bootstrap.ts` seeedt Notebook+Tag** + **Phase 3.2 (Teil 2): Notes-Liste nach Collection filtern — `notes`-Store `collectionFilter`+`filterByCollection` (notebook→`db.notebooks.notes`, tag→`db.relations.to().resolve()`, Set-Membership) in `visibleItems` (Collection→Query→Sort) + `clearCollectionFilter` + `collections.selectedLabel` + `Sidebar` "All Notes" clear / async `selectCollection` filtert + `NotesList` "filtered by: X ×"-Chip + `bootstrap` verlinkt 2 Notes mit Tag** + **Phase 3.3 (Teil 3): Notes List Date-Grouping — `utils/notes-list.ts` `groupNotes`+`dateBucket` (kalenderbasierte Buckets Today/Yesterday/Earlier this week/month/year/Older, `now` injectable, nicht-mutierend, Sortierung im Bucket erhalten) + `notes`-Store `groupKey`/`setGroupKey` (Default none) + `NotesList.vue` sticky Gruppen-Header + Grouping-`<select>` (Notebook/Tag-Grouping aufgeschoben da Collections flach)** + **Phase 3.3 (Teil 4): Notes List Search-Highlight — `utils/notes-list.ts` `highlightSegments` (plain case-insensitive alle Vorkommen + regex `gu` invalid→plain-Fallback + Zero-Length-Loop-Guard) + `NotesList.vue` `<mark>` über Titel+Headline, nur bei laufender Suche** + **Phase 3.4 StatusBar — `utils/status.ts` (pure `countWords`/`cursorLineCol`/`readEditorStats` via TipTap-`getText({blockSeparator:"\n"})`+`doc.textBetween`, `formatSyncRelative`, `syncStatusText`) + `stores/status.ts` (`useStatusStore`: Editor-Stats via `setEditorStats`, Sync-Lifecycle via `refreshSync`=`db.lastSynced()` + idempotentes `bindSyncEvents` via `EVENTS.syncProgress`/`syncCompleted`/`syncAborted`; "Local only" im View aus `auth.isLoggedIn` deriviert → Store ohne auth-Import isoliert testbar) + `StatusBar.vue` (links Sync, rechts Wortzahl+Ln/Col) + `Editor.vue` bindet `update`/`selectionUpdate`→`setEditorStats` + `App.vue` `bindSyncEvents`+`refreshSync` nach Boot/Shell-Sichtbar** + **Phase 4.1 LayoutNode-Baum (headless core) — `utils/editor-layout.ts` (pure, upstream-`editor-store`-mirrored `LayoutNode` group/split + `EditorGroup` + `Direction` vertical=nebeneinander/horizontal=gestapelt; ops `findGroupLeaf`/`allGroupIds`/`countGroups`/`getTopRightGroupId`/`splitGroupLeaf` (immutable, neue Group rechts/unten, ids als Params)/`removeGroupLeaf` (Single-Child-Collapse, null bei Root-Entfernung)/`pushHistory`/`navBack`/`navForward` Browser-Semantik) + `stores/editor-layout.ts` (`useEditorLayoutStore`: layout-Tree + groups/tabs/sessions-Records + activeGroupId; init/splitGroup/splitGroupAt/closeGroup(letztes verweigert)/openNote(auto-init, aktive Group)/openTab(reuse-or-create)/navigateTab(push)/closeTab/closeActiveTab/activateTab/setActiveGroup/moveTab/goBack/goForward/canGo*/registerSession(idempotent); Computeds groupCount/topRightGroupId/hasSplitLayout/activeTab/activeNoteId/tabsOf; noteIds opaque → isoliert testbar; UI-Integration = Phase 4.2/4.3 on-site)** + **Phase 4.1 Tab-Backend-Migration (headless) — `notes`-Store besitzt kein Tab-State mehr (nur Note-Data): `openTabs`/`activeTabId`/`activeTab`/`activeNote` sind Computeds die auf `useEditorLayoutStore` delegieren (Titel via `titleOf` aus items gejoined); `selectNote`/`openTab`/`closeTab` Fassaden über `layout.openNote`/`closeTab`; `create()` öffnet via `layout.openNote`; `App.vue` ruft `editorLayout.init()` nach Boot; Consumers (`Editor.vue`/`NotesList.vue`/`app-commands.ts`) kompilieren unverändert — UI/Template-Swap auf direkte Layout-Store-Nutzung + Multi-Pane bleibt on-site (4.2/4.3)** + **Phase 3.4 Sync-Polish (headless) — `useStatusStore.hasUnsyncedChanges` (via `db.hasUnsyncedChanges()` in `refreshSync`) + `syncStatusText`-`hasUnsynced`-Param ("Unsynced" / "`… ago` • unsynced"); tickende relative Zeit via `useStatusStore.now` + `startClock`/`stopClock` (30s-Intervall, idempotent), `StatusBar` liest `status.now`; `App.vue` startet den Clock nach Boot** + **Phase 5.1 Properties-Daten-Modell (headless) — `utils/properties.ts` (pure `htmlToText`/`noteStats` words-chars-lines aus HTML/`formatAbsoluteDate`/`ToggleKey`+`TOGGLE_LABELS`) + `stores/properties.ts` (`usePropertiesStore`: stats aus `notes.activeContent` oder live via `setStats`; toggles aus `db.notes.note(id)`; `toggle(key)`→`db.notes.<method>` Map pinned→pin + reload + `notes.load()`; `flush:"sync"`-Watches) — begrenzt auf die 4 Core-Toggles, Tags/Notebooks/Publish/History/Lock/Archive/SpellCheck = Folge** + **Phase 5.2 ToC-Extraktion (headless) — `utils/toc.ts` (pure `extractTableOfContents` h1–h6 id+level+text, Slug-Fallback dedup, DOM-frei Regex) + `stores/toc.ts` (`useTocStore`: items computed aus `notes.activeContent`, `setItems` live, `goto`/`scrollToSignal` für Editor-Cursor-Sprung on-site; `flush:"sync"`-Watches) — MiniMap-UI + live-Push + Klick-Sprung = on-site** + **Phase 5.3 Toggle-Commands (headless) — `useShellStore`+`tocVisible`/`propertiesVisible`+`toggleToc`/`toggleProperties`; `CommandContext`+`shell`-Feld (Palette-Store reicht durch); `app:toggle-sidebar`/`app:toggle-list`/`app:toggle-toc`/`app:toggle-properties` (`when: showShell`) — Undo/Redo (`editor:undo`/`redo`) + Search (`app:search-notes`) gab es schon; Toolbar-UI = on-site** + **Phase 3.2 (Teil 3) Trash-Store (headless) — `stores/trash.ts` `useTrashStore` (`db.trash.all`→`TrashListItem` type-note/notebook, `noteItems`-Computed, `restore`/`remove`/`clear` je mit Reload, never-throws) — TrashView-UI = on-site** + **chore: `packages/contracts/tsconfig.json` → volle `npm run typecheck` grün (vorher TS1803)** + **Phase 7.0 Settings-Store (headless) — `stores/settings.ts` `useSettingsStore`: db.settings-backed (dateFormat/timeFormat/titleFormat/trashCleanupInterval/defaultNotebook/profile — getypete Accessoren des installierten Core 8.1.3; DayFormat/WeekFormat bewusst ausgeschlossen da nicht in unserer Core-Version) + ours `themeMode` light/dark/system persistiert in localStorage + `themeChangeSignal` (App → theme-vue `setTheme` on-site); Contracts re-exportiert TimeFormat/TrashCleanupInterval/Profile — SettingsView-UI = on-site** + **Vendoring-Migration: upstream wird als git-submodule (`vendor/notesnook`, streetwriters/notesnook d4658aa, sparse-checkout packages/{core,intl,crypto,logger,sodium,streamable-fs,common}+scripts) eingebunden + `scripts/build-vendor.mjs` kopiert pre-built `dist` → `vendor-dist/@notesnook/<pkg>/` (core/crypto/logger/sodium/streamable-fs full-runtime; editor/theme types-only da `import type`-only konsumiert) + minimales `package.json` pro Paket; npm-`@notesnook/*`-Packages komplett geditcht (workspaces zeigen auf `vendor-dist/@notesnook/*`); `vendor-dist` committed als kanonisches Artefakt (`.gitignore`-Negation `!vendor-dist/@notesnook/*/dist/**` da sonst `dist/`-Rule ausschluckt); platform reconciled (IStorage/IFileStorage/ICompressor/Options neue Pflichtmember: `compressor` jetzt Factory `() => Promise<ICompressor>`, `maxNoteVersions`, `generateCryptoKeyFallback`/`deriveCryptoKeyFallback`/PGP-Methoden, `bulkDeleteFiles`); 2 Kompat-Shims patchen den vendored Core-dist: `better_trigram`→`trigram` (unser better-sqlite3@12.11.1 hat den Custom-Tokenizer nicht, nur upstreams 11.5.0 — der nicht auf node 26 baut) + `html`-Tokenizer drop (`"html","trigram"`→`"trigram"`); vitest `@notesnook/sodium`-Alias → CJS `browser.js` (self-contained libsodium; ESM `browser.mjs` importiert nie-gehipptes `libsodium-sumo.mjs`); sodium-CJS/ESM-Interop-Fix: build-vendor defaultet `type` NICHT mehr auf `module` (source hat kein `type` → `.js`=CJS, sonst `exports is not defined in ES module scope`); `server-config` HOST_KEYS jetzt dynamisch aus `Object.keys(hosts)` (Core wuchs 5→7 Hosts: +MONOGRAPH_HOST/+NOTESNOOK_HOST); DayFormat/WeekFormat jetzt in Contracts + Settings-Store gewired (vendored Core hat sie) + **Phase 6.3 Vault-Store (headless) — `utils/vault.ts` (pure `classifyVaultError`→`VaultErrorCode` via `VAULT_ERRORS`-Match + `VAULT_ERROR_MESSAGES`) + `stores/vault.ts` `useVaultStore` (`exists`/`unlocked`/`busy`/`lastError`/`lastErrorCode` + `locked`/`ready`-Computeds; `refresh`/`create`/`unlock`/`lock`/`changePassword`/`clear`/`deleteVault`/`lockNote`/`unlockNotePermanently`/`openNote`/`saveNote` alle never-throws, mutierende return boolean, `openNote`/`saveNote` data-returning; `lockNote`/`unlockNotePermanently`/`deleteVault` → `notes.load()`; `bindVaultEvents` idempotent via `EV.subscribe(vaultLocked/vaultAutoLocked/vaultUnlocked)` da Upstream nach Erasure-Timeout auto-locked; Passwort wird NICHT persistiert, OS-Keychain = on-site-Folge) + `App.vue` bindet `bindVaultEvents`+`refresh` im Boot + `refresh` im showShell-Watch — Vault-UI = on-site** + **Phase 6.7 Backup-Store (headless) — `utils/backup.ts` (pure `collectBackupExport` draint `db.backup.export`-AsyncGenerator → sammelt file-Chunks + forwarded attachment-Progress via Callback; `formatBackupTime`) + `stores/backup.ts` `useBackupsStore` (`lastBackup`/`busy`/`progress`/`lastError` + `hasBackup`-Computed; `refresh`/`exportBackup` (fixed `type:"node"`, returned `BackupExportResult|undefined`, View schreibt auf Disk on-site)/`importBackup` (→ boolean) alle never-throws; `mode:"partial"` offline-safe, `mode:"full"` auth-gated) + `App.vue` `refresh` im Boot + showShell-Watch — Backup/Restore-UI + Disk-Write + Sandboxed-Path-Checks = on-site** + **Phase 6.1 Sync-Control-Store (headless) — `utils/sync.ts` (pure `buildSyncOptions` default `type:"full"`, `force`/`offlineMode` nur-if-defined für `exactOptionalPropertyTypes`; `SYNC_TYPE_LABELS`) + `stores/sync.ts` `useSyncStore` (`busy`/`lastError`/`lastResult`; `startSync`→`db.sync` boolean, `stopSync`→`db.syncer.stop`, `cancelSync`→`db.syncer.sync.cancel`; never-throws; bewusst separat vom Status-Store = Event-Anzeige) + `CommandContext`+`sync`-Feld + Palette-Command `app:sync-now` (`when: showShell`) — Sync-Button/Stop/Cancel/Error-Toast = on-site; `db.sync()` auth-gated** + **Phase 3.1 Custom Titlebar (headless backend) — `contracts/titlebar.ts` (pure `detectPlatform` `process.platform`→macos/windows/linux/other + `TRAFFIC_LIGHT_INSET` 78 + `WINDOW_CONTROLS_FALLBACK_WIDTH` 138 + `titlebarPadding(platform,controlsWidth)` → {left,right}; macOS links Traffic-Light-Inset, Win/Linux rechts WCO-Breite sonst Fallback) + `main/titlebar.ts` (`buildBrowserWindowOptions(platform,preloadPath)` pro Plattform: macOS `hiddenInset`+`frame:false`+`vibrancy:"under-window"`; Windows `hidden`+`titleBarOverlay`+`backgroundMaterial:"acrylic"`; Linux `hidden`+`titleBarOverlay`+`frame:false`; `other` framed; transparenter bg + zentrale webPreferences; `import type` electron) + `main/index.ts` nutzt es + `stores/titlebar.ts` `useTitleBarStore` (`platform` aus `window.os` guardiert, `isMacos`/`isWindows`/`isLinux`/`isDesktop`-Computeds, `controlsWidth`+`setControlsWidth`, `padding`-Computed, `setPlatform`-Test-Hook; bewusst KEIN IPC/Events → node-testbar) + `TitleBar.vue` bindet padding via Inline-Style + misst WCO aus `navigator.windowControlsOverlay.getTitlebarArea()` auf Mount/`geometrychange` + `env.d.ts` ambient WCO-Typ — native Controls bleiben OS-gezeichnet, Renderer reserviert nur Platz; `window`-Router-Stubs unangetastet** + **Phase 6.5 Deep Links `nn://` (headless backend) — `contracts/deep-link.ts` (pure `parseDeepLink` `nn://note|notebook|monograph/<id>`→`DeepLinkTarget|null` via URL-API, never-throws, trailing-slash/query/hash toleriert, leere/multi-segment id rejected; `buildDeepLink` round-trip) + `main/deep-link.ts` (`registerDeepLinkListeners` VOR `app.whenReady` für macOS-`open-url`-Cold-Start + queue, `enableDeepLinkProtocol`=`setAsDefaultProtocolClient("nn")`, `findDeepLinkInArgv` Win/Linux, `setDeepLinkWindow` flusht Queue auf `did-finish-load` da `webContents.send` vor Page-Load gedroppt wird; dispatch `note`→`app:open-note`, notebook/monograph deferred) + `main/index.ts` wired + `App.vue` subscribed `onOpenNote`→`router.push("/all")`+`notes.selectNote` (Editor nur auf /all) mit pre-login-Queue+flush — Parser generisch, Dispatch selektiv, kein neuer Preload-Event** + **Phase 6.4 System-Tray (headless backend) — `contracts/tray.ts` (pure `TrayActionId` new-note|new-notebook|show|quit + `TrayMenuItemSpec` + `buildTrayMenuSpec` in Roadmap-Reihenfolge) + `main/tray.ts` (`registerTray(window)` baut `Tray`+`Menu` aus Spec, show/quit in Main, new-note/new-notebook→`app:tray-action`-IPC; eingebettete 16x16 base64-PNG als `templateImage`, Klick=Show) + `main/index.ts` wired + `preload` `onTrayAction` (ein Channel für beide Renderer-Aktionen) + `env.d.ts` + `stores/collections.ts` `createNotebook` (`db.notebooks.add({title})`+load, never-throws→`string|null`) + `App.vue` subscribed `onTrayAction`→`notes.create`/`collections.createNotebook` (showShell-gated)** + **Phase 6.2 Auto-Updater (headless backend) — `electron-updater@^6.8.9` hinter `UpdaterServer`-tRPC-Vertrag (`check`/`download`/`install`/`status`→`UpdateStatus`); `main/updater.ts` lazy-import nur wenn `app.isPackaged` (dev/Tests No-Op), `autoDownload=false`/`autoInstallOnAppQuit=false`, Event-Spiegelung in lokalen Snapshot; `utils/updater.ts` (pure `classifyUpdatePhase`/`updateStatusText`/`isUpdateAvailable`/`isReadyToInstall`) + `stores/updater.ts` `useUpdaterStore` (`busy`/`status`/`lastError` + Computeds, never-throws über `desktop.updater.*`); `CommandContext.updater` (viral — 4 ctx-stub-Specs) + 3 Palette-Cmds `app:check-updates`/`app:download-update`/`app:install-update` (download+install gated); `main/index.ts` dieses Commits landete auch `registerTray(window)` → aktiviert M6.4 — 25 Tests in `updater.spec.ts`** + **Phase 6.6 Spell-Checker (headless backend) — `contracts/spell-checker.ts` (pure `Language`+`LANGUAGES`-Tabelle 60+ Codes verbatim + `LANGUAGE_REDIRECT_MAP` + `resolveLanguage`/`resolveEnabledCodes`/`languageName`/`toLanguage`/`sortLanguages` + `SPELLCHECKER_ENABLED_DEFAULT=true`, dep-frei von Main+Renderer+Tests geteilt) + `contracts/router.ts` `SpellCheckerServer` (`isEnabled`/`languages`/`enabledLanguages`/`setLanguages`/`toggle`/`words`/`deleteWord`) + `spellChecker`-tRPC-Router (zod-Inputs) + `main/spell-checker.ts` (an `window.webContents.session` gebunden, Fallback `defaultSession`, `enabled` persistiert nach `spellchecker.json` in userData) + `main/index.ts` wired + `stores/spell-checker.ts` `useSpellCheckerStore` (`busy`/`enabled`/`availableLanguages`/`enabledLanguages`/`dictionaryWords`/`lastError`+`enabledCodes`-Computed; `refresh`/`toggleSpellCheck`/`setLanguages`/`deleteWord` never-throws über `desktop.spellChecker.*`; bewusst KEIN Event-Subscribe = request/response wie sync-Control-Store) + `CommandContext.spellChecker` (viral — 5 ctx-stub-Specs) + `app:toggle-spell-check`-Palette-Cmd + `App.vue` refresh im Boot+showShell — 26 Tests in `spell-checker.spec.ts`; per-Note-`spellcheck`-Toggle (Core Note-Spalte) = Properties-Panel-Folge on-site** + **Phase 7.6 CI (headless, done) — `.github/workflows/ci.yml`: Matrix `ubuntu/macos/windows` × `Node 20/22`, `fail-fast:false`, `concurrency`-Cancel; `npm ci` (kompiliert `better-sqlite3-multiple-ciphers` pro OS/ABI, kein Electron-ABI-Rebuild) → typecheck → test:contract → build; kein Submodule nötig (`vendor-dist` committed)** + **Phase 7.5 electron-builder (config + `--dir`-Build verifiziert, installer/sign/icons on-site/release) — `apps/desktop/electron-builder.yml` (adaptiert vom Upstream: `appId org.notesnookvue.desktop`+`productName "Notesnook Vue"`, `asar`+`asarUnpack: better-sqlite3-multiple-ciphers` (einziges native Modul), `files:[out/**,package.json]`, `protocols:[nn]` (6.5), mac dmg+zip arm64/x64, win nsis+portable x64, linux AppImage+snap x64, `publish:github` (treibt 6.2-Updater → auto-`app-update.yml`)) + `package`/`package:dir`/`package:mac`/`package:win`/`package:linux`-Scripts + `electron` exact `37.10.3` gepinnt + **Workspace-Dep-Split** (renderer-only `@notesnook-vue/*`+`@notesnook/*`+`@tiptap/*`+`pinia`+`vue`+`vue-router`+`@trpc/client` → devDeps, da Main/Preload/Contracts sie nicht importieren; in `dependencies` bleiben nur die 6 Main-Runtime-Deps `better-sqlite3-multiple-ciphers`/`electron-updater`/`electron-trpc`/`@trpc/server`/`zod`/`@streetwriters/kysely`) — `npm run package:dir` baut unsigned `Notesnook Vue.app` (mac arm64), `app.asar` 14 MB mit nur den 6 Runtime-Deps + 0 renderer-only Bloat, `better_sqlite3.node` asar-unpacked; Lockfile via `npm install --package-lock-only` reconciled für `npm ci`** + **Phase 2.6 vue-i18n-Foundation (headless, volle Migration = 7.1) — Entscheidung #1 pro vue-i18n (Upstream `@notesnook/intl` ist Lingui+`@lingui/macro`+React-gekoppelt mit `generated/`-Codegen + `react`-peerDep + nur en/pseudo-Locales; `core` bundlet `intl` in dist → Renderer konsumiert es nicht; Vue-Renderer spiegelt Upstream-React-Struktur nicht 1:1) → `i18n/index.ts` `createI18n({legacy:false, locale:readLocale(), fallbackLocale:"en", messages:{en,pseudo}})` + `setLocale` (switcht ref + persistiert localStorage best-effort) + `LOCALES`/`PSEUDO_LOCALE` + `locales/en.ts` (eigener Katalog nested by feature, seeded sidebar.*/common.greeting) + `locales/pseudo.ts` `toPseudo` (wrappt String-Leafs in `⟪…⟫`, Voll-Copy von en → driftet nicht) + `main.ts` `app.use(i18n)` + Sidebar-Slice (`useI18n`+4 Strings→`t("sidebar.*")`, bewusst keine Komponente mit Mount-Test) + `vue-i18n@^11.4.6` devDep (renderer-only, Vite-inline-bundled) — 16 Tests in `i18n.spec.ts` (toPseudo rein, Instance en/pseudo/fallback/total-safe, setLocale switcht+persistiert+never-throws, Initial-Read via vi.resetModules+dyn.Import, Komponenten-Integration reaktiv)** + **Reminders-Store (headless) — `utils/reminders.ts` (rein: `REMINDER_PRIORITIES`/`REMINDER_MODES`/`RECURRING_MODES`-Const-Arrays + `ReminderInput` + `buildReminderInput` exactOptional-undefined-Stripper, keine Defaults (Core owned sie) + `sortRemindersByCreatedDesc`) + `stores/reminders.ts` `useRemindersStore` (`items`/`loading`/`busy`/`lastError` + `count`/`activeItems` via contracts-`isReminderActive`; `refresh`=`db.reminders.all.items()`+sort; `add`→`db.reminders.add(buildReminderInput)`→reload→id|null; `remove`; `snooze`; `toggleDisabled` (read→flip→add); `update` generisch; alle never-throws, request/response kein Event-Subscribe) + Contracts re-exportiert `isReminderActive` + `bootstrap.ts` seeedt eine "once"-Erinnerung (local-only) — RemindersView + OS-Notification-Scheduling + `formatReminderTime`-Anzeige + Picker-UIs = on-site; 18 Tests in `reminders.spec.ts`** + **Colors-Store (headless) — `utils/colors.ts` (rein: `ColorInput` + `buildColorInput` exactOptional-undefined-Stripper, keine Defaults (Core throwt bei fehlendem title/colorCode) + `ColorListItem`/`toColorListItem` Untitled-Fallback + `sortColorsByTitle` case-insensitive) + `stores/colors.ts` `useColorsStore` (`items`/`loading`/`busy`/`lastError` + `count`-Computed; `refresh`=`db.colors.all.items()`+sort; `add`→`db.colors.add(buildColorInput)`→reload→id|null (upsert by id-oder-colorCode); `remove`; `noteCount(id)`=`db.colors.count(id)`→0-on-miss; alle never-throws, request/response kein Event-Subscribe) + Contracts KEINE Änderung (`Color`+`DefaultColors` bereits re-exportiert) + `bootstrap.ts` seeedt eine Custom-Color (local-only) — Sidebar "colors"-Sektion + Note-Color-Picker + Note↔Color-Zuweisung (via `db.relations` color→note, Properties-Panel-Folge) + Note-List-Color-Grouping = on-site; 15 Tests in `colors.spec.ts`** + **Shortcuts-Store + Sidebar-Pin-Funktionalität (headless store + UI, on-site visual gate) — `utils/shortcuts.ts` (rein: `SHORTCUT_ITEM_TYPES`=["notebook","tag"] + `ShortcutItemType`/`ShortcutInput`/`buildShortcutInput` exactOptional + `ResolvedShortcut`/`toResolvedShortcut` + `sortShortcutsByCreated`) + `stores/shortcuts.ts` `useShortcutsStore` (`items`/`resolved`/`shortcutIds`-Set-Computed; `refresh`=sync `db.shortcuts.all`+async `db.shortcuts.resolved()`; `add`/`remove`/`toggle`/`isShortcut` never-throws, request/response) + `Sidebar.vue` Shortcuts-Sektion (render-if non-empty, ✕-Unpin) + ★/☆ Pin-Toggle auf Notebook/Tag-Rows (`@click.stop`, group-hover) + `App.vue` refresh im Boot/showShell/syncCompleted + `bootstrap.ts` seeedt Notebook+Tag-Shortcuts + i18n `sidebar.shortcuts`/`noShortcuts`/`addTo*`/`removeFrom*` + Contracts KEINE Änderung — Upstream erlaubt nur notebook/topic/tag (NICHT notes), `sortIndex` tot (sortiert nach dateCreated, kein Reorder); 14 Tests in `shortcuts.spec.ts`** + **Sub-Notebooks (nested notebooks via `db.relations`, lazy tree + UI, on-site visual gate) — `utils/collections.ts` rein `NotebookTreeNode`+`buildNotebookTree` (rekursiv nesten, `sortCollections` wiederverwendet) + `stores/collections.ts` `roots`/`children`/`expanded`/`notebookCount`/`treeNotebooks`-Computed; `load` lädt all+roots; `loadChildren` via `db.relations.from({type:"notebook",id},"notebook").resolve()`; `toggleExpand` lazy-load-then-flip; `createSubNotebook(parentId)`=add+parent→child-Relation+reload+auto-expand, never-throws; `notebooks` bleibt all (Lookup/Count) + rekursive `NotebookNode.vue` (`defineOptions name`, depth-Indentation, Chevron/📓/📌/＋-create-sub/★-shortcut) + `Sidebar.vue` flat→`<NotebookNode>`-Tree + i18n `sidebar.createSubNotebook` + `bootstrap.ts` seeedt Sub-Notebook — `db.notebooks.notes(id)` rekursiert Descendants → keine Notes-Store-Änderung; `Topic` ist `@deprecated` (kein `topics()` upstream); parent→child-Richtung via `roots`/`breadcrumbs` verifiziert; Tags flach; 7 neue Tests in `collections.spec.ts` (904 total)**. **578 Contract-Tests grün über 40 Spec-Dateien (core-surface 7 + editor-html 27 + theme 11 + ui-primitives 41 + command-registry 6 + command-palette 9 + editor-store 4 + tool-definitions 10 + slash-commands 7 + router 11 + command-palette-overlay 9 + notes-list 48 + note-preview 20 + collections 18 + notes-collection-filter 7 + auth 15 + bridge-dialect 2 + data 4 + filestorage 4 + sqlite-engine 5 + database-encryption 2 + nnstorage 5 + bridge-router 2 + status 29 + editor-layout 36 + notes-tabs-facade 8 + properties 31 + toc 14 + toggle-commands 8 + trash 8 + settings 15 + vault 23 + backup 16 + sync 18 + titlebar 15 + deep-link 10 + tray 6 + updater 25 + spell-checker 26 + i18n 16)**, typecheck (node+web+contracts) + build clean. Dual-ABI native Module via Pre-Script-Rebuild-Swap (`a0f7f74`). Editor nutzt `@notesnook-vue/editor-vue`-Nodes (7/9; audio + web-clip Phase-6-gated) + `SlashCommands`; Theme via `@notesnook-vue/theme-vue` (0 React/theme-ui-Leck); UI-Primitive via `@notesnook-vue/ui-vue`; Routing via `vue-router@4` (Memory-History, Auth-Guard, `VIEWS`-getrieben); Command-Palette Overlay via `CommandPalette.vue` (Store/Registry/Hotkey aus Phase 2.5 = Backend). **Runtime-Check bootet bis `bootState ready`; visuelle/Interaktions-Gates (Theme-First-Paint, Editor-Mount, Checklist-Toggle, Edit-Persistenz, image-Render/Resize, Slash-Menu-Visual, Ctrl+Shift+P-Palette-Overlay-Render, Sidebar-Nav-Active/View-Wechsel/login↔shell-Übergang/Go-to-Commands, + Notes-Search/Regex/Sort/Clear/Search-notes-Focus, + List-Thumbnail-Render/Checklist-Fortschrittsbalken-Render/live-Update-bei-Edit, + Sidebar-Notebooks/Tags-Sektionen-expand-collapse/Listen-Render/Auswahl-Highlight+Route/Trash-Count, + Notes-Liste-filtert-nach-Collection/Filter-Chip-×-Clear, + Notes-Liste-Date-Grouping/Gruppen-Header/Search-Highlight-`<mark>`, + StatusBar-Local-only/Never-synced/Wortzahl/Ln-Col-live/Syncing, + Vault-Create/Unlock/Lock-Note/Locked-Note-Open/Auto-Lock-Status, + Backup-Export/Import/Disk-Write/Last-Backup-Anzeige, + Sync-Now/Stop/Cancel-Button/Error-Toast, + Titlebar-macOS-Traffic-Lights-frei-vom-Sidebar-Toggle/Win-acrylic-Blur+native-Caption-Buttons/Linux-WCO-Buttons+frameless-Resize/Titlebar-Drag+Sidebar-Toggle-klickbar, + nn://-Deep-Link-öffnet-Note-auf-/all/bringt-App-nach-vorn, + Tray-Icon+Menu-New-Note/New-Notebook/Show/Quit-Render+Klick-Aktionen, + Updater-Check/Download/Install-Buttons+Live-Update-(braucht published+signed-Build), + Spell-Check-Enable-Toggle/Sprach-Picker/Dictionary-Delete-Wort+Tippfehler-Underline, + Packaged-`Notesnook-Vue.app`-launchen+(installer/sign/icons/cross-arch = release), + Sidebar-i18n-Labels-`Notebooks`/`Tags`+Pseudo-Locale-`⟪…⟫`-Wrap) brauchen physische Anwesenheit.**_
+## TODO: strip cross-app image-sync temp diagnostics (reminder)
+
+The cross-app attachment-sync fix landed in two stages and is **verified on-site** (image uploaded in our app appears in the upstream web app, both directions). Stage 1 (`platform/fs.ts` upload/download HTTP transfers + `stores/sync.ts` `scheduleAutoSync` + `Editor.vue` download-on-open + `ImageComponent.vue` reactive reload) is permanent. Stage 2 (`scripts/build-vendor-from-source.mjs` — build the 5 runtime `@notesnook/*` from source with zero patches; the stale-dist `Attachments` `db.eventManager` fix is now picked up directly) retired the runtime `fileUploaded`/`fileDownloaded` event-bus bridge (`event-bridge.ts`) + reverted `attachments-bridge.ts` `subscribeAttachmentDownloaded` to `db.eventManager.subscribe`.
+
+**Still to strip (temp diagnostics kept deliberately for now):**
+- `apps/desktop/src/renderer/src/platform/fs.ts`: `verifyServerRoundTrip()` + its fire-and-forget call in `uploadFileImpl`; the `[fs] DIAG round-trip` / `[fs] uploading` / `[fs] downloaded` console.logs.
+- `apps/desktop/src/renderer/src/stores/sync.ts`: `probeFileEvents()` + `let probed` + the `probeFileEvents()` call in `startSync`; the `[sync] probe file:*` / `[sync] probe post-event` / `[sync] db.sync returned` / `[sync] diag: N local attachment(s)` / `[sync] scheduleAutoSync` / `[sync] autoSync timer fired` logs.
+- `apps/desktop/src/renderer/src/stores/notes.ts`: the `[notes] saveContent diag` IIFE block in `saveContent`.
+
+Strip once cross-app image sync is re-confirmed stable over a few sessions; keep `scheduleAutoSync` itself (permanent). See memory `drag-drop-images-attachments-bridge` + `vendoring-upstream-submodule`.

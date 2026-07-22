@@ -8,12 +8,6 @@ export declare class Tags implements ICollection {
     readonly collection: SQLCollection<"tags", Tag>;
     constructor(db: Database);
     init(): Promise<void>;
-    /**
-     * Required to satisfy the ICollection interface.
-     * This collection does not currently maintain a local cache that needs invalidation,
-     * but the method must exist for type safety when iterating over all collections.
-     */
-    invalidateCache(): void;
     tag(id: string): Promise<Tag | undefined>;
     find(title: string): Promise<Tag | undefined>;
     add(item: Partial<Tag> & {

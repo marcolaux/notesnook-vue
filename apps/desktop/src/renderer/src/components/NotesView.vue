@@ -18,6 +18,8 @@ import { useEditorStore } from "@/stores/editor";
 import NotesList from "@/components/NotesList.vue";
 import SplitLayout from "@/components/SplitLayout.vue";
 import StatusBar from "@/components/StatusBar.vue";
+import Resizer from "@/components/Resizer.vue";
+import { LIST_MIN, LIST_MAX } from "@/utils/resizer";
 
 const shell = useShellStore();
 const layout = useEditorLayoutStore();
@@ -37,7 +39,15 @@ watch(
     <div class="flex min-h-0 min-w-0 flex-1">
       <NotesList
         v-show="!shell.listCollapsed && !shell.focusMode"
-        class="w-80 shrink-0 border-r border-glass-border backdrop-blur-xl"
+        class="shrink-0 backdrop-blur-xl"
+        :style="{ width: shell.listWidth + 'px' }"
+      />
+      <Resizer
+        v-show="!shell.listCollapsed && !shell.focusMode"
+        :width="shell.listWidth"
+        :min="LIST_MIN"
+        :max="LIST_MAX"
+        @resize="shell.setListWidth"
       />
       <!-- The editor surface renders the layout tree: one EditorPane for a
            single group, or resizable split panes with a sash. Each pane owns

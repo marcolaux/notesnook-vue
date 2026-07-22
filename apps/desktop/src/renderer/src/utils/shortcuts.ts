@@ -74,3 +74,51 @@ export function toResolvedShortcut(item: Notebook | Tag): ResolvedShortcut {
 export function sortShortcutsByCreated(shortcuts: readonly Shortcut[]): Shortcut[] {
   return [...shortcuts].sort((a, b) => a.dateCreated - b.dateCreated);
 }
+
+// --- shortcuts manual order (local-only, localStorage) ----------------------
+/**
+ * localStorage key for the sidebar's manual Shortcuts-section order. A JSON
+ * array of row ids — a mix of notebook/tag ids (the `db.shortcuts` items) AND
+ * note ids (the favourite-note rows the view merges into the section, since
+ * upstream disallows notes as real shortcuts). Local-only: although
+ * `sideBarOrder:shortcuts` IS an upstream-synced `SideBarSection`, it would
+ * only round-trip the shortcut-item ids meaningfully; the foreign note ids make
+ * a synced key divergent, so the whole merged section stays local (like the
+ * notebooks order). `[]`/missing → no manual order (dateCreated + favourites
+ * dateEdited-desc base order wins).
+ */
+export const SHORTCUT_ORDER_KEY = "notesnook.shortcutOrder";
+
+/** Read the stored manual shortcut-section order, or `[]` on a miss/parse
+ *  failure/missing localStorage. Never throws. */
+export function readShortcutOrder(): string[] {
+  try {
+    const raw = localStorage.getItem(SHORTCUT_ORDER_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+      return parsed as string[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+/** Persist the manual shortcut-section order (a JSON id array). Best-effort. */
+export function writeShortcutOrder(ids: string[]): void {
+  try {
+    localStorage.setItem(SHORTCUT_ORDER_KEY, JSON.stringify(ids));
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Clear the stored manual shortcut-section order. */
+export function clearShortcutOrder(): void {
+  try {
+    localStorage.removeItem(SHORTCUT_ORDER_KEY);
+  } catch {
+    /* best-effort */
+  }
+}

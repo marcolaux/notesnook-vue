@@ -9,12 +9,6 @@ export declare class Content implements ICollection {
     readonly collection: SQLCollection<"content", ContentItem>;
     constructor(db: Database);
     init(): Promise<void>;
-    /**
-     * Required to satisfy the ICollection interface.
-     * This collection does not currently maintain a local cache that needs invalidation,
-     * but the method must exist for type safety when iterating over all collections.
-     */
-    invalidateCache(): void;
     add(content: Partial<ContentItem>): Promise<string | undefined>;
     get(id: string): Promise<import("../types.js").EncryptedContentItem | UnencryptedContentItem | undefined>;
     remove(...ids: string[]): Promise<void>;

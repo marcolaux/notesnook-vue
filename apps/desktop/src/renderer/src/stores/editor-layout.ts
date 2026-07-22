@@ -14,6 +14,7 @@ import {
   type LayoutNode,
   type EditorGroup
 } from "@/utils/editor-layout";
+import type { LayoutSnapshot } from "@contracts/session-state";
 
 /**
  * Editor-layout store (Phase 4.1) — the recursive split/group layout tree,
@@ -41,25 +42,54 @@ import {
  * store, so it is unit-testable in isolation.
  */
 
-export type SessionType = "default" | "locked" | "readonly" | "deleted" | "conflicted" | "diff";
+export type SessionType =
+  | "default"
+  | "locked"
+  | "readonly"
+  | "deleted"
+  | "conflicted"
+  | "diff"
+  | "attachment";
+
+/**
+ * Payload carried by an attachment-preview tab. The `hash` is the durable link
+ * to the stored blob (same key used by `db.attachments.read`); the rest is
+ * cached metadata for the tab title + preview header.
+ */
+export interface AttachmentTabAttrs {
+  hash: string;
+  filename: string;
+  mime: string;
+  size: number;
+}
 
 export interface EditorSession {
   id: string;
   tabId: string;
   type: SessionType;
-  noteId: string;
+  /** Undefined for attachment sessions (no note). */
+  noteId?: string;
   title?: string;
 }
 
 export interface EditorTab {
   id: string;
   groupId: string;
-  noteId: string;
+  /** Discriminates note tabs (the default, pre-existing kind) from attachment
+   *  preview tabs. Note tabs carry `noteId`; attachment tabs carry
+   *  `attachment`. */
+  kind: "note" | "attachment";
+  /** Present on note tabs; undefined on attachment tabs. */
+  noteId?: string;
+  /** Present on attachment tabs; undefined on note tabs. */
+  attachment?: AttachmentTabAttrs;
   sessionId: string;
-  /** Visited note ids (back/forward stack). */
+  /** Visited note ids (back/forward stack). Empty for attachment tabs. */
   history: string[];
   historyIndex: number;
   pinned?: boolean;
+  /** Per-tab note-history timeline sidebar visibility (note tabs only). */
+  historyVisible?: boolean;
 }
 
 function genId(): string {
@@ -84,6 +114,36 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     activeGroupId.value = rootId;
   }
 
+  /**
+   * Restore a persisted layout snapshot (session restore). Directly assigns
+   * the five refs rather than replaying `openTab`/`splitGroupAt` — replay would
+   * regenerate tab/session ids, drop sash `size` ratios, and fire focus churn.
+   * The snapshot's note ids MUST already be validated against the current
+   * account's DB by the caller (see `platform/session-restore.ts` →
+   * `filterLayoutSnapshot`) — the store stays note-id-agnostic (opaque
+   * strings) and never imports the notes store.
+   *
+   * An empty/invalid snapshot (`layout: null` or no groups) falls through to
+   * `init()` so a fresh boot or an "everything-was-deleted" restore lands on a
+   * clean empty root pane.
+   */
+  function hydrate(snapshot: LayoutSnapshot): void {
+    if (
+      !snapshot ||
+      snapshot.layout === null ||
+      Object.keys(snapshot.groups).length === 0
+    ) {
+      layout.value = null;
+      init();
+      return;
+    }
+    layout.value = snapshot.layout;
+    groups.value = { ...snapshot.groups };
+    tabs.value = { ...snapshot.tabs };
+    sessions.value = { ...snapshot.sessions };
+    activeGroupId.value = snapshot.activeGroupId;
+  }
+
   // --- sessions -------------------------------------------------------------
 
   /**
@@ -93,7 +153,8 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
    */
   function registerSession(args: {
     tabId: string;
-    noteId: string;
+    /** Undefined for attachment sessions. */
+    noteId?: string;
     type?: SessionType;
     title?: string;
     force?: boolean;
@@ -110,7 +171,7 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
         id,
         tabId: args.tabId,
         type,
-        noteId: args.noteId,
+        ...(args.noteId !== undefined ? { noteId: args.noteId } : {}),
         ...(args.title !== undefined ? { title: args.title } : {})
       }
     };
@@ -298,9 +359,17 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
 
   // --- tabs -----------------------------------------------------------------
 
-  /** Existing tab (in any group) showing `noteId`, or undefined. */
+  /** Existing note tab (in any group) showing `noteId`, or undefined.
+   *  Scoped to `kind === "note"` so attachment tabs never collide. */
   function tabForNote(noteId: string): EditorTab | undefined {
-    return Object.values(tabs.value).find((t) => t.noteId === noteId);
+    return Object.values(tabs.value).find((t) => t.kind === "note" && t.noteId === noteId);
+  }
+
+  /** Existing attachment tab (in any group) previewing `hash`, or undefined. */
+  function tabForAttachment(hash: string): EditorTab | undefined {
+    return Object.values(tabs.value).find(
+      (t) => t.kind === "attachment" && t.attachment?.hash === hash
+    );
   }
 
   /**
@@ -320,17 +389,88 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     const sessionId = registerSession({ tabId, noteId });
     tabs.value = {
       ...tabs.value,
-      [tabId]: { id: tabId, groupId, noteId, sessionId, history: [noteId], historyIndex: 0 }
+      [tabId]: { id: tabId, groupId, kind: "note", noteId, sessionId, history: [noteId], historyIndex: 0 }
     };
     groups.value = { ...groups.value, [groupId]: { ...groups.value[groupId], activeTabId: tabId } };
     activeGroupId.value = groupId;
     return tabId;
   }
 
-  /** Navigate an existing tab to `noteId`, pushing onto its back/forward history. */
+  /**
+   * Open an attachment-preview tab in a group: reuse an existing tab for the
+   * attachment hash (activating its group) if one exists; otherwise create a
+   * new tab in `groupId`. Returns the tab id. Mirrors {@link openTab} for
+   * attachment previews.
+   */
+  function openAttachmentTab(groupId: string, attrs: AttachmentTabAttrs): string {
+    if (!groups.value[groupId]) return "";
+    const existing = tabForAttachment(attrs.hash);
+    if (existing) {
+      activateTab(existing.id);
+      return existing.id;
+    }
+    const tabId = genId();
+    const sessionId = registerSession({
+      tabId,
+      type: "attachment",
+      title: attrs.filename
+    });
+    tabs.value = {
+      ...tabs.value,
+      [tabId]: {
+        id: tabId,
+        groupId,
+        kind: "attachment",
+        attachment: attrs,
+        sessionId,
+        history: [],
+        historyIndex: 0
+      }
+    };
+    groups.value = { ...groups.value, [groupId]: { ...groups.value[groupId], activeTabId: tabId } };
+    activeGroupId.value = groupId;
+    return tabId;
+  }
+
+  /**
+   * Open an attachment preview split off from `targetGroupId` in `zone`'s
+   * direction — the attachment-preview counterpart to {@link openNoteSplit}:
+   * split the target group (new sibling on the zone's side) and open the
+   * attachment as a new tab in that sibling. If the attachment is already a tab
+   * in this window, just activate it (no split). Falls back to opening in the
+   * active group when the target group can't be split.
+   */
+  function openAttachmentSplit(
+    targetGroupId: string,
+    attrs: AttachmentTabAttrs,
+    zone: "left" | "right" | "top" | "bottom"
+  ): string {
+    if (layout.value === null) return "";
+    const existing = tabForAttachment(attrs.hash);
+    if (existing) {
+      activateTab(existing.id);
+      return existing.id;
+    }
+    if (!groups.value[targetGroupId]) {
+      if (layout.value === null) init();
+      return openAttachmentTab(activeGroupId.value, attrs);
+    }
+    const vertical = zone === "left" || zone === "right";
+    const position: "before" | "after" = zone === "right" || zone === "bottom" ? "after" : "before";
+    const newGroupId = splitGroupAt(
+      targetGroupId,
+      vertical ? "vertical" : "horizontal",
+      position
+    );
+    if (!newGroupId) return openAttachmentTab(activeGroupId.value, attrs);
+    return openAttachmentTab(newGroupId, attrs);
+  }
+
+  /** Navigate an existing note tab to `noteId`, pushing onto its back/forward
+   *  history. No-op for attachment tabs (they have no note history). */
   function navigateTab(tabId: string, noteId: string): void {
     const tab = tabs.value[tabId];
-    if (!tab) return;
+    if (!tab || tab.kind !== "note") return;
     const { history, index } = pushHistory(tab.history, tab.historyIndex, noteId);
     const sessionId = registerSession({ tabId, noteId });
     tabs.value = {
@@ -409,6 +549,14 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
   /** Focus a group (no tab change). */
   function setActiveGroup(groupId: string): void {
     if (groups.value[groupId]) activeGroupId.value = groupId;
+  }
+
+  /** Toggle the per-tab note-history timeline sidebar on a note tab. No-op for
+   *  attachment tabs or unknown ids. */
+  function toggleHistory(tabId: string): void {
+    const tab = tabs.value[tabId];
+    if (!tab || tab.kind !== "note") return;
+    tabs.value = { ...tabs.value, [tabId]: { ...tab, historyVisible: !tab.historyVisible } };
   }
 
   /** Focus the next group in tree (pre-order) order, wrapping. No-op with <2
@@ -576,15 +724,20 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     activeTab,
     activeNoteId,
     init,
+    hydrate,
     registerSession,
     splitGroup,
     splitGroupAt,
     dropTabToSplit,
     openNoteSplit,
+    tabForNote,
+    tabForAttachment,
     closeGroup,
     resizeSplitChildren,
     openNote,
     openTab,
+    openAttachmentTab,
+    openAttachmentSplit,
     navigateTab,
     closeTab,
     closeAllTabs,
@@ -592,6 +745,7 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     cycleTab,
     activateTab,
     setActiveGroup,
+    toggleHistory,
     focusNextGroup,
     moveTab,
     reorderTab,

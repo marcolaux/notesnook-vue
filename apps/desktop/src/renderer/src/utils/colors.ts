@@ -77,3 +77,41 @@ export function sortColorsByTitle(colors: readonly Color[]): Color[] {
     return 0;
   });
 }
+
+// --- color favorites (local-only, localStorage) ------------------------------
+// Colors are NOT a `db.shortcuts` itemType upstream (`ALLOWED_SHORTCUT_TYPES`
+// is notebook/topic/tag), and this project keeps the vendored core patch-free,
+// so "favoriting" a color is a local-only concept — a `localStorage` set of
+// color ids merged into the Shortcuts section at the view layer, exactly the way
+// favourite notes (`notes.favorites`, merged though derived from a synced
+// field) and the manual shortcut order are. NOT synced across devices.
+/**
+ * localStorage key for the set of favorited color ids. A JSON string array.
+ * `[]`/missing → no favorited colors.
+ */
+export const COLOR_FAVORITES_KEY = "notesnook.colorFavorites";
+
+/** Read the favorited color ids, or `[]` on a miss/parse failure/missing
+ *  localStorage. Never throws. */
+export function readColorFavorites(): string[] {
+  try {
+    const raw = localStorage.getItem(COLOR_FAVORITES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+      return parsed as string[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+/** Persist the favorited color ids (a JSON id array). Best-effort. */
+export function writeColorFavorites(ids: string[]): void {
+  try {
+    localStorage.setItem(COLOR_FAVORITES_KEY, JSON.stringify(ids));
+  } catch {
+    /* best-effort */
+  }
+}

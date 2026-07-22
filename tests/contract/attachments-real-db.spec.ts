@@ -11,6 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { SqliteDialect } from "@streetwriters/kysely";
 import BetterSqlite from "better-sqlite3-multiple-ciphers";
+import { loadFts5Extensions } from "./helpers/fts5-extensions";
 import { gzipSync, gunzipSync } from "node:zlib";
 import type {
   ICompressor,
@@ -83,6 +84,7 @@ class InProcessCompressor implements ICompressor {
 
 async function setupDb(): Promise<Database> {
   const dbInstance = new BetterSqlite(":memory:");
+  loadFts5Extensions(dbInstance);
   const keyStore = new InMemoryKeyStore();
   const storage = new NNStorage("test", () => keyStore, "memory");
   const fs: IFileStorage = createFileStorage({ chunkStore: new MemoryFileStore() });

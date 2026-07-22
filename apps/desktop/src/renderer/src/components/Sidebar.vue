@@ -2,26 +2,85 @@
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { Icon } from "@notesnook-vue/ui-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
 import { useCollectionsStore } from "@/stores/collections";
 import { useShortcutsStore } from "@/stores/shortcuts";
+import { useColorsStore } from "@/stores/colors";
+import { useRemindersStore } from "@/stores/reminders";
+import { usePropertiesStore } from "@/stores/properties";
+import { useContextMenuStore } from "@/stores/context-menu";
+import { useDialogStore } from "@/stores/dialog";
 import { topViews, bottomViews } from "@/router/routes";
 import { desktop } from "@/platform/desktop-bridge";
 import NotebookNode from "@/components/NotebookNode.vue";
+import {
+  buildTagMenu,
+  buildShortcutMenu,
+  buildColorRowMenu,
+  buildSidebarSectionMenu,
+  type ShortcutMenuTarget
+} from "@/utils/context-menu-entries";
+import {
+  isSidebarDrag,
+  readSidebarPayload,
+  writeSidebarPayload,
+  applyManualOrder,
+  moveIdTo
+} from "@/utils/sidebar-order";
+import { isNoteDrag, readNotePayload, markNoteDropHandled } from "@/utils/note-dnd";
+import { goToCollection } from "@/utils/collection-nav";
 import type { CollectionType } from "@/stores/collections";
 
 const notes = useNotesStore();
 const auth = useAuthStore();
 const collections = useCollectionsStore();
 const shortcuts = useShortcutsStore();
+const colors = useColorsStore();
+const reminders = useRemindersStore();
+const properties = usePropertiesStore();
+const contextMenu = useContextMenuStore();
+const dialog = useDialogStore();
+
+// The color collection is loaded in `App.vue` alongside `collections.load()`
+// (after `bootstrap()`) — NOT here: the Sidebar mounts before the db is ready,
+// so a `colors.refresh()` in `onMounted` would race the db and silently no-op,
+// leaving the Colors section empty after reload. `colors.add`/`remove` refresh
+// the store internally; `App.vue`'s post-bootstrap call seeds the initial list.
 const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
 
+/** Function ref for the tag rename `<input>`: focus it as soon as it mounts
+ *  (avoids the v-for array-ref trap — only the renaming row renders an input).
+ *  Typed `any` because Vue's VNodeRef passes either an Element or a component
+ *  instance; we narrow at runtime. */
+function focusTagRename(el: unknown): void {
+  const node = el as HTMLElement | null;
+  if (node && typeof node.focus === "function") node.focus();
+}
+
 /** Local collapse for the Shortcuts section (the collections store only owns
  *  notebooks/tags collapse). Expanded by default. */
 const shortcutsCollapsed = ref(false);
+const colorsCollapsed = ref(false);
+
+/** Drop indicators for the colors + shortcuts sections: which row the dragged
+ *  item would insert before/after (a 2px blue line at the top/bottom of the
+ *  row). Cleared on `dragleave`/`drop`. Mirrors `NoteTabs.vue`'s tab indicator. */
+const colorDropTarget = ref<{ id: string; position: "before" | "after" } | null>(null);
+const shortcutDropTarget = ref<{ id: string; position: "before" | "after" } | null>(null);
+
+/** Note-drag drop indicator for the inline sidebar targets: tag rows, color
+ *  rows, and the Archive / Trash links. A note drop is an assignment (not a
+ *  positional insert), so this drives a whole-row ring highlight (not the
+ *  reorder insertion line). Notebook rows manage their own per-instance
+ *  indicator in `NotebookNode.vue`. Cleared on `dragleave`/`drop`. */
+const noteDropOver = ref<
+  | { kind: "tag" | "color" | "archive" | "trash"; id?: string }
+  | null
+>(null);
 
 /** Plain-link top views (All Notes / Monographs / Archive) — Notebooks &
  * Tags render as expandable collection sections below. */
@@ -57,17 +116,354 @@ function showAllNotes(): void {
 }
 
 /** Select a collection, restrict the notes list to it, and show the notes
- * view. */
+ * view. Delegates to the shared `goToCollection` so the sidebar, the editor
+ * footer tag chips, and the inline `#tag` chip click all share one flow. */
 async function selectCollection(type: CollectionType, id: string): Promise<void> {
-  collections.select(type, id);
-  await notes.filterByCollection(type, id);
-  void router.push("/all");
+  await goToCollection(type, id);
 }
 
-/** Pin/unpin a notebook or tag as a sidebar shortcut (db.shortcuts). The
- *  `type` matches both `CollectionType` and the shortcut's `itemType`. */
-function toggleShortcut(type: CollectionType, id: string): void {
+/** Pin/unpin a notebook or tag as a sidebar shortcut (`db.shortcuts`). The
+ *  `type` matches the shortcut's `itemType`; colors are NOT `db.shortcuts`
+ *  items (upstream allows notebook/topic/tag only), so a color's fav star
+ *  toggles a local-only favorite via `colors.toggleFavoriteColor` instead —
+ *  hence this is narrower than `CollectionType` (which also includes "color"). */
+function toggleShortcut(type: "notebook" | "tag", id: string): void {
   void shortcuts.toggle(id, type);
+}
+
+/** The rows rendered in the Shortcuts section: pinned notebooks/tags
+ *  (`db.shortcuts`, dateCreated order), favourite notes (`notes.favorites`,
+ *  dateEdited-desc — derived from `note.favorite`, NOT `db.shortcuts` since
+ *  upstream disallows notes), and favorited colors (`colors.favorites` —
+ *  local-only favorites, since upstream disallows colors as shortcuts) — then
+ *  the local-only manual order overlay (`shortcuts.order`). */
+const shortcutRows = computed<ShortcutMenuTarget[]>(() =>
+  applyManualOrder(
+    [...shortcuts.resolved, ...notes.favorites, ...colors.favorites],
+    shortcuts.order
+  )
+);
+
+/** Open a shortcut row. Notebook/tag → filter the notes list to it (existing
+ *  `selectCollection`). A favourite note → open the note in the editor: drop
+ *  any active collection filter/selection, open the note tab, route to /all. */
+function openShortcut(sc: ShortcutMenuTarget): void {
+  if (sc.type === "note") {
+    notes.clearCollectionFilter();
+    collections.clearSelection();
+    notes.selectNote(sc.id);
+    void router.push("/all");
+    return;
+  }
+  void selectCollection(sc.type, sc.id);
+}
+
+/** Remove a shortcut row. Notebook/tag → unpin via `db.shortcuts`. A favourite
+ *  note → unfavourite via the properties store (toggles `note.favorite` +
+ *  reloads the list, so the row drops out reactively). A favorited color →
+ *  unfavorite via the colors store (local-only toggle; drops out reactively). */
+function removeShortcut(sc: ShortcutMenuTarget): void {
+  if (sc.type === "note") {
+    void properties.toggle("favorite", sc.id);
+    return;
+  }
+  if (sc.type === "color") {
+    colors.toggleFavoriteColor(sc.id);
+    return;
+  }
+  void shortcuts.remove(sc.id);
+}
+
+/** Active-state for a shortcut row: a notebook/tag matches the selected
+ *  collection; a favourite note matches the active (open) note. */
+function isShortcutActive(sc: ShortcutMenuTarget): boolean {
+  return sc.type === "note"
+    ? notes.activeNote?.id === sc.id
+    : isSelected(sc.type, sc.id);
+}
+
+/** Row glyph: notebook → book, tag → hash, favourite note → file-text. Color
+ *  rows render a swatch (not an icon) in the template, so the `"color"` branch
+ *  is a harmless fallback never rendered. */
+function shortcutGlyph(type: ShortcutMenuTarget["type"]): string {
+  if (type === "notebook") return "book";
+  if (type === "tag") return "hash";
+  if (type === "color") return "circle";
+  return "file-text";
+}
+
+/** Is a tag row currently in inline-rename mode? */
+function isTagRenaming(id: string): boolean {
+  return collections.renaming?.kind === "tag" && collections.renaming.id === id;
+}
+
+/** Right-click a tag row → tag context menu at the cursor. */
+function onTagContext(tag: { id: string; title: string }, e: MouseEvent): void {
+  if (isTagRenaming(tag.id)) return;
+  const entries = buildTagMenu(tag, {
+    toggleShortcut: (id) => void shortcuts.toggle(id, "tag"),
+    isShortcut: (id) => shortcuts.isShortcut(id),
+    rename: (id, title) => {
+      collections.startRename("tag", id, title);
+    },
+    confirm: (opts) => dialog.confirm(opts),
+    deleteTag: (id) => collections.deleteTag(id)
+  });
+  contextMenu.show(entries, e.clientX, e.clientY);
+}
+
+/** Right-click a color row → color-row context menu (Rename… / Delete color)
+ *  at the cursor. Rename enters inline-rename mode for the row (same UX as the
+ *  tag row): the label swaps to an `<input>`; Enter/blur commits via
+ *  `colors.renameColor` (upserts by id, preserving colorCode), Esc cancels. */
+function onColorContext(
+  color: { id: string; title: string; colorCode: string },
+  e: MouseEvent
+): void {
+  const entries = buildColorRowMenu(color, {
+    rename: (id, title) => collections.startRename("color", id, title),
+    confirm: (opts) => dialog.confirm(opts),
+    deleteColor: (id) => colors.remove([id]),
+    toggleShortcut: (id) => colors.toggleFavoriteColor(id),
+    isShortcut: (id) => colors.isFavoriteColor(id)
+  });
+  contextMenu.show(entries, e.clientX, e.clientY);
+}
+
+/** Right-click a shortcut row → shortcut context menu at the cursor. */
+function onShortcutContext(sc: ShortcutMenuTarget, e: MouseEvent): void {
+  const entries = buildShortcutMenu(sc, {
+    open: (target) => openShortcut(target),
+    removeShortcut: (id) => removeShortcut(sc)
+  });
+  contextMenu.show(entries, e.clientX, e.clientY);
+}
+
+/** Bound to a tag rename `<input>`. */
+function onTagRenameInput(e: Event): void {
+  collections.setRenameText((e.target as HTMLInputElement).value);
+}
+function onTagRenameCommit(): void {
+  void collections.commitRename();
+}
+function onTagRenameCancel(): void {
+  collections.cancelRename();
+}
+
+/** Is a color row currently in inline-rename mode? (The collections store owns
+ *  the shared `renaming` UI state — `kind` discriminates notebook/tag/color.) */
+function isColorRenaming(id: string): boolean {
+  return collections.renaming?.kind === "color" && collections.renaming.id === id;
+}
+
+/** Bound to a color rename `<input>`. */
+function onColorRenameInput(e: Event): void {
+  collections.setRenameText((e.target as HTMLInputElement).value);
+}
+/** Commit a color rename: upsert the new title via the colors store (preserves
+ *  the colorCode), then clear the editing state. No-op when nothing is being
+ *  renamed. */
+async function onColorRenameCommit(): Promise<void> {
+  const r = collections.renaming;
+  if (!r) return;
+  const trimmed = r.text.trim();
+  if (trimmed) await colors.renameColor(r.id, trimmed);
+  collections.cancelRename();
+}
+function onColorRenameCancel(): void {
+  collections.cancelRename();
+}
+
+// --- Colors manual drag-reorder (synced via db.settings.setSideBarOrder) ----
+/** Begin a sidebar drag of a color row (carries `{section:"colors", id}`). */
+function onColorDragStart(color: { id: string }, e: DragEvent): void {
+  writeSidebarPayload(e, { section: "colors", id: color.id });
+}
+/** Allow a sidebar-row drop on a color row + show the insertion indicator at
+ *  the cursor's half (top = before, bottom = after). A note drag is accepted
+ *  too and shows the whole-row note-drop highlight (assigns the color). */
+function onColorDragOver(color: { id: string }, e: DragEvent): void {
+  if (isNoteDrag(e)) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    noteDropOver.value = { kind: "color", id: color.id };
+    return;
+  }
+  if (!isSidebarDrag(e)) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  colorDropTarget.value = {
+    id: color.id,
+    position: e.clientY - rect.top < rect.height / 2 ? "before" : "after"
+  };
+}
+/** Clear the color-row indicators when the pointer leaves it (guarded so a late
+ *  `dragleave` from the previous row doesn't clear the newly-hovered row). */
+function onColorDragLeave(color: { id: string }): void {
+  if (noteDropOver.value?.kind === "color" && noteDropOver.value.id === color.id)
+    noteDropOver.value = null;
+  if (colorDropTarget.value?.id === color.id) colorDropTarget.value = null;
+}
+/** Drop another color onto this row: insert the dragged id before/after this
+ *  row (top half = before, bottom half = after) — persists the full new id
+ *  sequence via the colors store. A note drop sets this color on every dragged
+ *  note (idempotent — a note keeps at most one color). Ignored for cross-section
+ *  / same-row color drops. */
+function onColorDrop(color: { id: string }, e: DragEvent): void {
+  if (isNoteDrag(e)) {
+    const payload = readNotePayload(e);
+    noteDropOver.value = null;
+    if (!payload) return;
+    e.preventDefault();
+    markNoteDropHandled();
+    void properties.setColorMany(color.id, payload.ids).then(() => void collections.load());
+    return;
+  }
+  const payload = readSidebarPayload(e);
+  if (!payload || payload.section !== "colors" || payload.id === color.id) {
+    if (colorDropTarget.value?.id === color.id) colorDropTarget.value = null;
+    return;
+  }
+  e.preventDefault();
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const before = e.clientY - rect.top < rect.height / 2;
+  colorDropTarget.value = null;
+  void colors.moveBefore(payload.id, color.id, before);
+}
+
+// --- Note drag targets (tag rows + Archive/Trash links) ---------------------
+/** Shared `dragover` for the inline note-drop targets: allow the drop + show
+ *  the whole-row highlight. `kind` selects the target, `id` disambiguates rows
+ *  within the tag/color sections. */
+function onNoteTargetDragOver(
+  kind: "tag" | "color" | "archive" | "trash",
+  id: string | undefined,
+  e: DragEvent
+): void {
+  if (!isNoteDrag(e)) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  noteDropOver.value = id ? { kind, id } : { kind };
+}
+
+/** Shared `dragleave`: clear the highlight only when it matches the row that
+ *  was just left (so a late `dragleave` from the previous row doesn't wipe the
+ *  newly-hovered one — same guard as the color/shortcut reorder handlers). */
+function onNoteTargetDragLeave(
+  kind: "tag" | "color" | "archive" | "trash",
+  id: string | undefined
+): void {
+  const cur = noteDropOver.value;
+  if (cur && cur.kind === kind && (id === undefined || cur.id === id))
+    noteDropOver.value = null;
+}
+
+/** Drop notes on a tag row → assign the tag to every dragged note (idempotent
+ *  on a tag a note already has). */
+function onTagNoteDrop(tag: { id: string }, e: DragEvent): void {
+  if (!isNoteDrag(e)) return;
+  const payload = readNotePayload(e);
+  noteDropOver.value = null;
+  if (!payload) return;
+  e.preventDefault();
+  markNoteDropHandled();
+  void properties.addTagToMany(tag.id, payload.ids).then(() => void collections.load());
+}
+
+/** Drop notes on the Archive link → archive every dragged note. */
+function onArchiveNoteDrop(e: DragEvent): void {
+  if (!isNoteDrag(e)) return;
+  const payload = readNotePayload(e);
+  noteDropOver.value = null;
+  if (!payload) return;
+  e.preventDefault();
+  markNoteDropHandled();
+  void notes.archiveMany(payload.ids).then(() => void collections.load());
+}
+
+/** Drop notes on the Trash link → move every dragged note to trash. */
+function onTrashNoteDrop(e: DragEvent): void {
+  if (!isNoteDrag(e)) return;
+  const payload = readNotePayload(e);
+  noteDropOver.value = null;
+  if (!payload) return;
+  e.preventDefault();
+  markNoteDropHandled();
+  void notes.moveToTrashMany(payload.ids).then(() => void collections.load());
+}
+
+// --- Shortcuts manual drag-reorder (local-only via localStorage) -----------
+/** Begin a sidebar drag of a shortcut/favourite row (carries `{section:
+ *  "shortcuts", id}`). The id is the row id (notebook/tag id for shortcuts,
+ *  note id for favourites). */
+function onShortcutDragStart(sc: ShortcutMenuTarget, e: DragEvent): void {
+  writeSidebarPayload(e, { section: "shortcuts", id: sc.id });
+}
+/** Allow a sidebar-row drop on a shortcut row + show the insertion indicator. */
+function onShortcutDragOver(sc: ShortcutMenuTarget, e: DragEvent): void {
+  if (!isSidebarDrag(e)) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  shortcutDropTarget.value = {
+    id: sc.id,
+    position: e.clientY - rect.top < rect.height / 2 ? "before" : "after"
+  };
+}
+/** Clear the shortcut-row indicator when the pointer leaves it. */
+function onShortcutDragLeave(sc: ShortcutMenuTarget): void {
+  if (shortcutDropTarget.value?.id === sc.id) shortcutDropTarget.value = null;
+}
+/** Drop another shortcut/favourite onto this row: insert the dragged id
+ *  before/after this row, persisting the full new id sequence via the shortcuts
+ *  store (local-only). Ignored for cross-section / same-row drops. */
+function onShortcutDrop(sc: ShortcutMenuTarget, e: DragEvent): void {
+  const payload = readSidebarPayload(e);
+  if (!payload || payload.section !== "shortcuts" || payload.id === sc.id) {
+    if (shortcutDropTarget.value?.id === sc.id) shortcutDropTarget.value = null;
+    return;
+  }
+  e.preventDefault();
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const before = e.clientY - rect.top < rect.height / 2;
+  shortcutDropTarget.value = null;
+  const next = moveIdTo(
+    shortcutRows.value.map((r) => r.id),
+    payload.id,
+    sc.id,
+    before
+  );
+  shortcuts.setOrder(next);
+}
+
+// --- section-header context menus (Reset manual order) ---------------------
+/** Right-click the Notebooks header → a "Reset manual order" entry (disabled
+ *  when no local manual order is stored). */
+function onNotebooksHeaderContext(e: MouseEvent): void {
+  const entries = buildSidebarSectionMenu("notebooks", {
+    hasManualOrder: collections.notebookOrder.length > 0,
+    resetOrder: () => collections.resetNotebookOrder()
+  });
+  contextMenu.show(entries, e.clientX, e.clientY);
+}
+/** Right-click the Colors header → a "Reset manual order" entry (disabled when
+ *  no synced `sideBarOrder:colors` is stored). */
+function onColorsHeaderContext(e: MouseEvent): void {
+  const entries = buildSidebarSectionMenu("colors", {
+    hasManualOrder: colors.order.length > 0,
+    resetOrder: () => void colors.setOrder([])
+  });
+  contextMenu.show(entries, e.clientX, e.clientY);
+}
+/** Right-click the Shortcuts header → a "Reset manual order" entry (disabled
+ *  when no local manual order is stored). */
+function onShortcutsHeaderContext(e: MouseEvent): void {
+  const entries = buildSidebarSectionMenu("shortcuts", {
+    hasManualOrder: shortcuts.order.length > 0,
+    resetOrder: () => shortcuts.resetOrder()
+  });
+  contextMenu.show(entries, e.clientX, e.clientY);
 }
 </script>
 
@@ -78,63 +474,91 @@ function toggleShortcut(type: CollectionType, id: string): void {
       v-for="v in linkTopViews"
       :key="v.name"
       :to="v.path"
-      class="titlebar-no-drag rounded-md px-2 py-1.5 text-left transition-colors"
-      :class="
+      class="titlebar-no-drag flex w-full items-center rounded-md px-2 py-1.5 text-left transition-colors"
+      :class="[
         isActive(v.path)
           ? 'bg-glass-active text-text'
-          : 'text-text hover:bg-glass-hover'
-      "
+          : 'text-text hover:bg-glass-hover',
+        v.name === 'archive' && noteDropOver?.kind === 'archive'
+          ? 'ring-2 ring-blue-400 bg-blue-400/10'
+          : ''
+      ]"
       @click="v.name === 'all' ? showAllNotes() : undefined"
+      @dragover="v.name === 'archive' && onNoteTargetDragOver('archive', undefined, $event)"
+      @dragleave="v.name === 'archive' && onNoteTargetDragLeave('archive', undefined)"
+      @drop="v.name === 'archive' && onArchiveNoteDrop($event)"
     >
-      {{ v.label }}
+      <span class="shrink-0">{{ v.label }}</span>
+      <span
+        v-if="v.name === 'archive' && collections.archiveCount > 0"
+        class="ml-auto shrink-0 text-[10px] text-text-muted"
+      >{{ collections.archiveCount }}</span>
+      <span
+        v-if="v.name === 'reminders' && reminders.activeItems.length > 0"
+        class="ml-auto shrink-0 text-[10px] text-text-muted"
+      >{{ reminders.activeItems.length }}</span>
     </RouterLink>
 
-    <!-- Shortcuts section (expandable; pinned notebooks/tags) -->
-    <div v-if="shortcuts.resolved.length > 0" class="mt-1">
+    <!-- Shortcuts section (expandable; pinned notebooks/tags + favourite
+         notes). Favourite notes are merged in at the view layer — they're not
+         `db.shortcuts` items (upstream disallows notes). -->
+    <div v-if="shortcutRows.length > 0" class="mt-1">
       <button
         class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
         @click="shortcutsCollapsed = !shortcutsCollapsed"
+        @contextmenu.prevent="onShortcutsHeaderContext"
       >
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
+        <Icon
+          name="chevron-right"
+          :size="10"
           class="transition-transform"
           :class="shortcutsCollapsed ? '' : 'rotate-90'"
-        >
-          <path d="M9 18l6-6-6-6" />
-        </svg>
+        />
         <span>{{ t("sidebar.shortcuts") }}</span>
-        <span class="ml-auto text-[10px] text-text-muted">{{ shortcuts.resolved.length }}</span>
+        <span class="ml-auto text-[10px] text-text-muted">{{ shortcutRows.length }}</span>
       </button>
       <div v-if="!shortcutsCollapsed" class="mt-0.5 flex flex-col gap-0.5 pl-3">
         <div
-          v-for="sc in shortcuts.resolved"
+          v-for="sc in shortcutRows"
           :key="sc.id"
-          class="group flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
+          class="group relative flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
           :class="
-            isSelected(sc.type, sc.id)
+            isShortcutActive(sc)
               ? 'bg-glass-active text-text'
               : 'text-text hover:bg-glass-hover'
           "
+          draggable="true"
+          @contextmenu.prevent="onShortcutContext(sc, $event)"
+          @dragstart="onShortcutDragStart(sc, $event)"
+          @dragover="onShortcutDragOver(sc, $event)"
+          @dragleave="onShortcutDragLeave(sc)"
+          @drop="onShortcutDrop(sc, $event)"
         >
+          <!-- Drop indicator: a 2px accent line at the top (before) / bottom (after). -->
+          <span
+            v-if="shortcutDropTarget?.id === sc.id"
+            class="pointer-events-none absolute inset-x-0 h-0.5 bg-blue-400"
+            :class="shortcutDropTarget.position === 'before' ? '-top-px' : '-bottom-px'"
+          />
           <button
             class="flex flex-1 items-center gap-1 truncate text-left"
             :title="sc.title"
-            @click="selectCollection(sc.type, sc.id)"
+            @click="openShortcut(sc)"
           >
-            <span class="text-text-muted">{{ sc.type === "notebook" ? "📓" : "#" }}</span>
+            <span
+              v-if="sc.type === 'color'"
+              class="inline-block h-2.5 w-2.5 shrink-0 rounded-full thin-outline"
+              :style="{ background: sc.colorCode }"
+            />
+            <Icon v-else :name="shortcutGlyph(sc.type)" :size="12" class="text-text-muted" />
             <span class="truncate">{{ sc.title }}</span>
           </button>
           <button
             class="titlebar-no-drag shrink-0 text-[10px] text-text-muted opacity-0 transition-opacity hover:text-text group-hover:opacity-100"
-            :title="t('sidebar.removeFromShortcuts')"
-            @click="toggleShortcut(sc.type, sc.id)"
+            :title="sc.type === 'note' ? t('sidebar.removeFromFavourites') : t('sidebar.removeFromShortcuts')"
+            @click="removeShortcut(sc)"
           >
-            ✕
+            <Icon name="x" :size="10" />
           </button>
         </div>
       </div>
@@ -145,19 +569,14 @@ function toggleShortcut(type: CollectionType, id: string): void {
       <button
         class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
         @click="collections.toggleSection('notebooks')"
+        @contextmenu.prevent="onNotebooksHeaderContext"
       >
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
+        <Icon
+          name="chevron-right"
+          :size="10"
           class="transition-transform"
           :class="collections.collapsed.notebooks ? '' : 'rotate-90'"
-        >
-          <path d="M9 18l6-6-6-6" />
-        </svg>
+        />
         <span>{{ t("sidebar.notebooks") }}</span>
         <span class="ml-auto text-[10px] text-text-muted">{{ collections.notebookCount }}</span>
       </button>
@@ -183,18 +602,12 @@ function toggleShortcut(type: CollectionType, id: string): void {
         class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
         @click="collections.toggleSection('tags')"
       >
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
+        <Icon
+          name="chevron-right"
+          :size="10"
           class="transition-transform"
           :class="collections.collapsed.tags ? '' : 'rotate-90'"
-        >
-          <path d="M9 18l6-6-6-6" />
-        </svg>
+        />
         <span>{{ t("sidebar.tags") }}</span>
         <span class="ml-auto text-[10px] text-text-muted">{{ collections.tags.length }}</span>
       </button>
@@ -203,27 +616,125 @@ function toggleShortcut(type: CollectionType, id: string): void {
           v-for="tag in collections.sortedTags"
           :key="tag.id"
           class="titlebar-no-drag group flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
-          :class="
+          :class="[
             isSelected('tag', tag.id)
               ? 'bg-glass-active text-text'
-              : 'text-text hover:bg-glass-hover'
-          "
-          @click="selectCollection('tag', tag.id)"
+              : 'text-text hover:bg-glass-hover',
+            noteDropOver && noteDropOver.kind === 'tag' && noteDropOver.id === tag.id
+              ? 'ring-2 ring-blue-400 bg-blue-400/10'
+              : ''
+          ]"
+          @click="!isTagRenaming(tag.id) && selectCollection('tag', tag.id)"
+          @contextmenu.prevent="onTagContext(tag, $event)"
+          @dragover="onNoteTargetDragOver('tag', tag.id, $event)"
+          @dragleave="onNoteTargetDragLeave('tag', tag.id)"
+          @drop="onTagNoteDrop(tag, $event)"
         >
           <span class="text-text-muted">#</span>
-          <span class="truncate">{{ tag.title }}</span>
-          <span
-            class="ml-auto shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
-            :class="shortcuts.isShortcut(tag.id) ? 'text-amber-300/80 opacity-100' : 'text-text-muted'"
-            :title="shortcuts.isShortcut(tag.id) ? t('sidebar.removeFromShortcuts') : t('sidebar.addToShortcuts')"
-            @click.stop="toggleShortcut('tag', tag.id)"
-          >{{ shortcuts.isShortcut(tag.id) ? "★" : "☆" }}</span>
+          <input
+            v-if="isTagRenaming(tag.id)"
+            :ref="focusTagRename"
+            :value="collections.renaming?.text ?? tag.title"
+            class="titlebar-no-drag min-w-0 flex-1 rounded-sm border border-glass-active bg-glass-surface px-1 py-0 text-[12px] text-text focus:outline-none"
+            @input="onTagRenameInput"
+            @click.stop
+            @keydown.enter.prevent="onTagRenameCommit"
+            @keydown.esc.prevent="onTagRenameCancel"
+            @blur="onTagRenameCommit"
+          />
+          <template v-else>
+            <span class="truncate">{{ tag.title }}</span>
+            <span
+              class="ml-auto shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
+              :class="shortcuts.isShortcut(tag.id) ? 'text-amber-300/80 opacity-100' : 'text-text-muted'"
+              :title="shortcuts.isShortcut(tag.id) ? t('sidebar.removeFromShortcuts') : t('sidebar.addToShortcuts')"
+              @click.stop="toggleShortcut('tag', tag.id)"
+            ><Icon name="star" :size="10" :class="shortcuts.isShortcut(tag.id) ? 'thin-outline' : ''" :fill="shortcuts.isShortcut(tag.id) ? 'currentColor' : 'none'" /></span>
+          </template>
         </button>
         <div
           v-if="collections.tags.length === 0"
           class="px-2 py-1 text-[10px] text-text-muted"
         >
           {{ t("sidebar.noTags") }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Colors section (expandable; flat). Each row is a swatch + title;
+         clicking filters the notes list to that color's notes. Always shown
+         (like Notebooks/Tags) with a "No colors" empty state, so the section
+         is visible even before any color is created via the note-row menu. -->
+    <div class="mt-1">
+      <button
+        class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
+        @click="colorsCollapsed = !colorsCollapsed"
+        @contextmenu.prevent="onColorsHeaderContext"
+      >
+        <Icon
+          name="chevron-right"
+          :size="10"
+          class="transition-transform"
+          :class="colorsCollapsed ? '' : 'rotate-90'"
+        />
+        <span>{{ t("sidebar.colors") }}</span>
+        <span class="ml-auto text-[10px] text-text-muted">{{ colors.items.length }}</span>
+      </button>
+      <div v-if="!colorsCollapsed" class="mt-0.5 flex flex-col gap-0.5 pl-3">
+        <button
+          v-for="color in colors.items"
+          :key="color.id"
+          class="titlebar-no-drag group relative flex items-center gap-1.5 rounded px-2 py-1 text-left text-[12px] transition-colors"
+          :class="[
+            isSelected('color', color.id)
+              ? 'bg-glass-active text-text'
+              : 'text-text hover:bg-glass-hover',
+            noteDropOver && noteDropOver.kind === 'color' && noteDropOver.id === color.id
+              ? 'ring-2 ring-blue-400 bg-blue-400/10'
+              : ''
+          ]"
+          draggable="true"
+          @click="!isColorRenaming(color.id) && selectCollection('color', color.id)"
+          @contextmenu.prevent="onColorContext(color, $event)"
+          @dragstart="onColorDragStart(color, $event)"
+          @dragover="onColorDragOver(color, $event)"
+          @dragleave="onColorDragLeave(color)"
+          @drop="onColorDrop(color, $event)"
+        >
+          <!-- Drop indicator: a 2px accent line at the top (before) / bottom (after). -->
+          <span
+            v-if="colorDropTarget?.id === color.id"
+            class="pointer-events-none absolute inset-x-0 h-0.5 bg-blue-400"
+            :class="colorDropTarget.position === 'before' ? '-top-px' : '-bottom-px'"
+          />
+          <span
+            class="inline-block h-2.5 w-2.5 shrink-0 rounded-full thin-outline transition-opacity"
+            :class="isSelected('color', color.id) ? '' : 'opacity-60'"
+            :style="{ background: color.colorCode }"
+          />
+          <input
+            v-if="isColorRenaming(color.id)"
+            :ref="focusTagRename"
+            :value="collections.renaming?.text ?? color.title"
+            class="titlebar-no-drag min-w-0 flex-1 rounded-sm border border-glass-active bg-glass-surface px-1 py-0 text-[12px] text-text focus:outline-none"
+            @input="onColorRenameInput"
+            @click.stop
+            @keydown.enter.prevent="onColorRenameCommit"
+            @keydown.esc.prevent="onColorRenameCancel"
+            @blur="onColorRenameCommit"
+          />
+          <template v-else>
+            <span class="truncate">{{ color.title }}</span>
+            <span
+              class="ml-auto shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
+              :class="colors.isFavoriteColor(color.id) ? 'text-amber-300/80 opacity-100' : 'text-text-muted'"
+              :title="colors.isFavoriteColor(color.id) ? t('sidebar.removeFromShortcuts') : t('sidebar.addToShortcuts')"
+              @click.stop="colors.toggleFavoriteColor(color.id)"
+            ><Icon name="star" :size="10" :class="colors.isFavoriteColor(color.id) ? 'thin-outline' : ''" :fill="colors.isFavoriteColor(color.id) ? 'currentColor' : 'none'" /></span>
+          </template>
+        </button>
+        <div v-if="colors.items.length === 0" class="px-2 py-1 text-[10px] text-text-muted">
+          {{ t("sidebar.noColors") }}
         </div>
       </div>
     </div>
@@ -235,19 +746,24 @@ function toggleShortcut(type: CollectionType, id: string): void {
       v-for="v in linkBottomViews"
       :key="v.name"
       :to="v.path"
-      class="titlebar-no-drag rounded-md px-2 py-1.5 text-left transition-colors"
-      :class="
+      class="titlebar-no-drag flex w-full items-center rounded-md px-2 py-1.5 text-left transition-colors"
+      :class="[
         isActive(v.path)
           ? 'bg-glass-active text-text'
-          : 'text-text-muted hover:bg-glass-hover'
-      "
+          : 'text-text-muted hover:bg-glass-hover',
+        v.name === 'trash' && noteDropOver?.kind === 'trash'
+          ? 'ring-2 ring-blue-400 bg-blue-400/10'
+          : ''
+      ]"
+      @dragover="v.name === 'trash' && onNoteTargetDragOver('trash', undefined, $event)"
+      @dragleave="v.name === 'trash' && onNoteTargetDragLeave('trash', undefined)"
+      @drop="v.name === 'trash' && onTrashNoteDrop($event)"
     >
-      <span class="flex items-center gap-1">
-        {{ v.label }}
-        <span v-if="v.name === 'trash' && collections.trashCount > 0" class="text-[10px] text-text-muted">
-          ({{ collections.trashCount }})
-        </span>
-      </span>
+      <span class="shrink-0">{{ v.label }}</span>
+      <span
+        v-if="v.name === 'trash' && collections.trashCount > 0"
+        class="ml-auto shrink-0 text-[10px] text-text-muted"
+      >{{ collections.trashCount }}</span>
     </RouterLink>
 
     <!-- Settings opens its own window (singleton) via IPC, not a route. -->

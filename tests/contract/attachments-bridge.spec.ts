@@ -25,11 +25,23 @@ const dbRef = vi.hoisted(() => {
   };
 });
 vi.mock("@/platform/bootstrap", () => ({ getDatabase: dbRef.getDatabase }));
+
+// Mock the layout store so the `openAttachmentPreview` hook (which lazy-imports
+// it) can be asserted without pulling Pinia + the real store into this test.
+const layoutMock = vi.hoisted(() => {
+  const openAttachmentSplit = vi.fn();
+  return { openAttachmentSplit, useEditorLayoutStore: () => ({ openAttachmentSplit }) };
+});
+vi.mock("@/stores/editor-layout", () => ({
+  useEditorLayoutStore: layoutMock.useEditorLayoutStore
+}));
+
 const {
   parseDataUrl,
   readFileAsDataUrl,
   ingestFile,
-  dropFilesFrom
+  dropFilesFrom,
+  wireAttachmentStorage
 } = await import("@/editor/attachments-bridge");
 
 /** A fake db whose `attachments.save` returns a deterministic hash by mime. */
@@ -163,5 +175,80 @@ describe("tool-definitions: image action opens the attachment picker", () => {
     const editor = { storage: {}, isEditable: true } as unknown as import("@tiptap/vue-3").Editor;
     const image = EDITOR_ACTIONS.find((a) => a.id === "image")!;
     expect(() => image.run(editor)).not.toThrow();
+  });
+});
+
+describe("attachments-bridge: wireAttachmentStorage openAttachmentPreview hook", () => {
+  /** Flush the hook's lazy dynamic import + call. */
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  function fakeEditor(isDestroyed = false): {
+    storage: Record<string, unknown>;
+    isDestroyed: boolean;
+  } {
+    return { storage: {}, isDestroyed };
+  }
+
+  it("installs openAttachmentPreview on editor.storage", () => {
+    const editor = fakeEditor();
+    wireAttachmentStorage(editor, () => "group-1");
+    expect(typeof editor.storage.openAttachmentPreview).toBe("function");
+  });
+
+  it("double-click hook calls openAttachmentSplit(groupId, attrs, 'right')", async () => {
+    const editor = fakeEditor();
+    wireAttachmentStorage(editor, () => "group-1");
+    layoutMock.openAttachmentSplit.mockClear();
+    const hook = editor.storage.openAttachmentPreview as (a: unknown) => void;
+    hook({ hash: "h1", filename: "doc.pdf", mime: "application/pdf", size: 10 });
+    await flush();
+    expect(layoutMock.openAttachmentSplit).toHaveBeenCalledWith(
+      "group-1",
+      { hash: "h1", filename: "doc.pdf", mime: "application/pdf", size: 10 },
+      "right"
+    );
+  });
+
+  it("is a no-op when getGroupId returns undefined (no pane)", async () => {
+    const editor = fakeEditor();
+    wireAttachmentStorage(editor, () => undefined);
+    layoutMock.openAttachmentSplit.mockClear();
+    (editor.storage.openAttachmentPreview as (a: unknown) => void)({
+      hash: "h1",
+      filename: "x",
+      mime: "text/plain",
+      size: 1
+    });
+    await flush();
+    expect(layoutMock.openAttachmentSplit).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when the editor is destroyed", async () => {
+    const editor = fakeEditor(true);
+    wireAttachmentStorage(editor, () => "group-1");
+    layoutMock.openAttachmentSplit.mockClear();
+    (editor.storage.openAttachmentPreview as (a: unknown) => void)({
+      hash: "h1",
+      filename: "x",
+      mime: "text/plain",
+      size: 1
+    });
+    await flush();
+    expect(layoutMock.openAttachmentSplit).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when getGroupId is not provided (legacy 1-arg wiring)", async () => {
+    const editor = fakeEditor();
+    // No getGroupId arg — the hook must stay inert (no pane to split from).
+    wireAttachmentStorage(editor);
+    layoutMock.openAttachmentSplit.mockClear();
+    (editor.storage.openAttachmentPreview as (a: unknown) => void)({
+      hash: "h1",
+      filename: "x",
+      mime: "text/plain",
+      size: 1
+    });
+    await flush();
+    expect(layoutMock.openAttachmentSplit).not.toHaveBeenCalled();
   });
 });

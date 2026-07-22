@@ -14,17 +14,42 @@
  */
 export default {
   common: {
-    greeting: "Notesnook Vue"
+    greeting: "Notesnook Vue",
+    close: "Close"
+  },
+  history: {
+    title: "Note history",
+    empty: "No saved versions yet",
+    loading: "Loading history…",
+    locked: "Locked",
+    initialVersion: "Initial version",
+    justNow: "just now",
+    restore: "Restore this version",
+    restoreConfirm: "Restore this version? Current content will be replaced.",
+    showMore: "Show more",
+    showLess: "Show less"
   },
   sidebar: {
     notebooks: "Notebooks",
     noNotebooks: "No notebooks",
     tags: "Tags",
     noTags: "No tags",
+    colors: "Colors",
+    noColors: "No colors",
     shortcuts: "Shortcuts",
     noShortcuts: "No shortcuts",
     addToShortcuts: "Add to shortcuts",
     removeFromShortcuts: "Remove from shortcuts",
-    createSubNotebook: "Create sub-notebook"
+    removeFromFavourites: "Remove from favourites",
+    createSubNotebook: "Create sub-notebook",
+    resetManualOrder: "Reset manual order",
+    setIcon: "Set icon",
+    removeIcon: "Remove icon",
+    chooseIcon: "Choose notebook icon"
+  },
+  attachments: {
+    previewTitle: "Attachment",
+    openExternally: "Open externally",
+    unsupportedPreview: "No in-app preview for this file type."
   }
 } as const;

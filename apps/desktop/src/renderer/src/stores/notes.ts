@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import type { Note, Tag } from "@notesnook-vue/contracts";
+import type { Color, Note, Tag } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
 import {
   filterNotes,
@@ -17,6 +17,7 @@ import {
   EMPTY_PREVIEW,
   type NotePreview
 } from "@/utils/note-preview";
+import { toColorListItem, type ColorListItem } from "@/utils/colors";
 import type { CollectionType } from "@/stores/collections";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useShellStore } from "@/stores/shell";
@@ -41,6 +42,10 @@ export interface NoteListItem {
   tags: string[];
   pinned: boolean;
   favorite: boolean;
+  /** The note's assigned color (loaded via `db.relations.to(note,"color")`),
+   *  or `null` when none. Drives the list-row tint. `null` (not `undefined`)
+   *  once `loadColor` has resolved; `undefined` before the first load. */
+  color?: ColorListItem | null;
 }
 
 /**
@@ -51,7 +56,9 @@ export interface NoteListItem {
  */
 export interface EditorTab {
   id: string;
-  noteId: string;
+  /** `kind === "attachment"` tabs carry a filename (in `title`) and no noteId. */
+  kind: "note" | "attachment";
+  noteId?: string;
   title: string;
 }
 
@@ -148,10 +155,23 @@ export const useNotesStore = defineStore("notes", () => {
     return noteChangedSignals.value[noteId] ?? 0;
   }
 
-  /** One-shot flag set by `create()`: the Editor remounts per note id, so its
-   * `onMounted` checks this to focus the title input for a freshly created
-   * note (cleared on consumption). */
-  const pendingTitleFocus = ref(false);
+  /** One-shot focus request for the title input of a freshly created note.
+   *  Because the `Editor` remounts per note id, `onMounted`/the `titleInputEl`
+   *  watch reads this to decide how to focus the new title input (cleared on
+   *  consumption):
+   *  - `"select"` — focus + select-all (the New-note button seeds a placeholder
+   *    "New note" the user will type over).
+   *  - `"end"` — focus + caret at end (`createDraft` preserves the title the
+   *    user is mid-typing; selecting it would let the next keystroke replace
+   *    the just-typed letter). */
+  const pendingTitleFocus = ref<"select" | "end" | null>(null);
+
+  /** One-shot flag set by `createDraft({focus:"body"})`: the draft was promoted
+   *  by a BODY keystroke (not a title keystroke), so after the tab Editor
+   *  remounts + loads its seeded content the caret must land at the end of the
+   *  body (NOT the title input — the user was typing in the body). Consumed in
+   *  `Editor.vue`'s `loadCurrentNote` after `setContent`. */
+  const pendingBodyFocus = ref(false);
 
   /** Active sidebar-collection filter (notebook/tag → a set of note IDs the
    * list is restricted to). `null` = show all. */
@@ -164,7 +184,64 @@ export const useNotesStore = defineStore("notes", () => {
   /** noteId → "loading" while a preview fetch is in flight (idempotency guard). */
   const pendingPreviews = new Set<string>();
 
+  // --- Multi-selection (file-manager semantics) ---------------------------
+  // Separate from `activeNote` (the note open in the focused editor tab): the
+  // selection is the set of rows the user has cmd/shift-clicked and that bulk
+  // context-menu actions operate on. Plain click collapses it to the clicked
+  // note AND opens it; modifier clicks build the set without opening. The set
+  // persists across filter/search changes (ids no longer in `items` are pruned
+  // by {@link pruneSelection} on {@link load}).
+  const selectedNoteIds = ref<Set<string>>(new Set());
+  /** The anchor note for a shift-click range-select (the last plain/cmd-clicked
+   *  row). `null` until the first selection action. */
+  const anchorId = ref<string | null>(null);
+
+  const selectedCount = computed(() => selectedNoteIds.value.size);
+  /** Is `id` part of the multi-selection? */
+  function isSelected(id: string): boolean {
+    return selectedNoteIds.value.has(id);
+  }
+
+  /** Drop selected ids that are no longer in `items` (e.g. trashed, moved out,
+   *  or switched to a context that doesn't contain them). Called after {@link
+   *  load} and after bulk trashing. */
+  function pruneSelection(): void {
+    if (selectedNoteIds.value.size === 0) return;
+    const live = new Set(items.value.map((n) => n.id));
+    const next = new Set<string>();
+    for (const id of selectedNoteIds.value) if (live.has(id)) next.add(id);
+    if (next.size !== selectedNoteIds.value.size) selectedNoteIds.value = next;
+    if (anchorId.value && !live.has(anchorId.value)) anchorId.value = null;
+  }
+
+  /** Replace the selection with the given ids (no editor effect). Used by the
+   *  right-click handler to collapse a multi-selection to the clicked row. */
+  function setSelection(ids: string[]): void {
+    selectedNoteIds.value = new Set(ids);
+    anchorId.value = ids.length > 0 ? (ids[ids.length - 1] ?? null) : null;
+  }
+
+  /** Clear the multi-selection entirely. */
+  function clearSelection(): void {
+    selectedNoteIds.value = new Set();
+    anchorId.value = null;
+  }
+
   const count = computed(() => items.value.length);
+
+  /** Favourite notes surfaced as sidebar shortcut rows — the notes with
+   *  `favorite === true`, slimmed to `{id, title, type:"note"}`, ordered by
+   *  `dateEdited` descending (most-recently-edited first). Reactive over
+   *  `items`, so a `properties.toggle("favorite")` → `load()` reassigns `items`
+   *  and the sidebar Shortcuts section re-renders with no extra wiring. These
+   *  are NOT `db.shortcuts` items (upstream disallows notes); they're merged
+   *  with notebook/tag shortcuts at the view layer (Sidebar.vue). */
+  const favorites = computed(() =>
+    items.value
+      .filter((n) => n.favorite)
+      .sort((a, b) => b.dateEdited - a.dateEdited)
+      .map((n) => ({ id: n.id, title: n.title, type: "note" as const }))
+  );
 
   /** The list the `NotesList` renders: restricted to the active collection
    * filter (if any), then filtered by `query`, then sorted. */
@@ -180,16 +257,34 @@ export const useNotesStore = defineStore("notes", () => {
     return items.value.find((n) => n.id === noteId)?.title ?? "Untitled";
   }
 
-  /** Tabs in the active group, joined with titles for the tab bar. */
+  /** Tabs in the active group, joined with titles for the tab bar. Attachment
+   *  tabs use their filename as the title (no note lookup). */
   const openTabs = computed<EditorTab[]>(() =>
-    layout.tabsOf(layout.activeGroupId).map((t) => ({ id: t.id, noteId: t.noteId, title: titleOf(t.noteId) }))
+    layout.tabsOf(layout.activeGroupId).map((t) => ({
+      id: t.id,
+      kind: t.kind,
+      ...(t.noteId !== undefined ? { noteId: t.noteId } : {}),
+      title:
+        t.kind === "attachment"
+          ? (t.attachment?.filename ?? "Attachment")
+          : titleOf(t.noteId ?? "")
+    }))
   );
 
   const activeTabId = computed<string | null>(() => layout.activeTab?.id ?? null);
 
   const activeTab = computed<EditorTab | null>(() => {
     const t = layout.activeTab;
-    return t ? { id: t.id, noteId: t.noteId, title: titleOf(t.noteId) } : null;
+    if (!t) return null;
+    return {
+      id: t.id,
+      kind: t.kind,
+      ...(t.noteId !== undefined ? { noteId: t.noteId } : {}),
+      title:
+        t.kind === "attachment"
+          ? (t.attachment?.filename ?? "Attachment")
+          : titleOf(t.noteId ?? "")
+    };
   });
 
   const activeNote = computed(() =>
@@ -210,7 +305,24 @@ export const useNotesStore = defineStore("notes", () => {
    *  with an empty editor (the user can open another note). Other tabs
    *  remaining also keeps the window open. */
   function closeTab(tabId: string): void {
+    // Capture the closing tab's note BEFORE close so we can prune it from the
+    // list selection. Plain-clicking a note calls `selectOnly` (adds it to
+    // `selectedNoteIds` AND opens it); while open the row shows the active
+    // highlight, hiding the latent selection. If we don't prune it here, the
+    // closed note stays "selected" yet is no longer the active note → its row
+    // flips to the multi-selection checkmark/green style as if it had been
+    // cmd/shift-clicked. Only the closed note is dropped — any other notes the
+    // user explicitly multi-selected are preserved. The newly-activated
+    // neighbour is already marked by the `activeNote` highlight, so no
+    // `selectOnly` follow is needed.
+    const closedNoteId = layout.tabs[tabId]?.noteId;
     layout.closeTab(tabId);
+    if (closedNoteId && selectedNoteIds.value.has(closedNoteId)) {
+      const next = new Set(selectedNoteIds.value);
+      next.delete(closedNoteId);
+      selectedNoteIds.value = next;
+      if (anchorId.value === closedNoteId) anchorId.value = null;
+    }
     if (
       typeof location !== "undefined" &&
       new URLSearchParams(location.search).get("window") === "note" &&
@@ -251,9 +363,51 @@ export const useNotesStore = defineStore("notes", () => {
     lastSavedAt.value = null;
   }
 
-  /** Open a note by id (the NotesList click handler) in the active group. */
-  function selectNote(id: string): void {
+  /** Collapse the selection to a single note AND open it in the active group.
+   *  The plain-click path: opens the note + establishes a one-element
+   *  selection, so the right-clicked-row menu and bulk actions behave the same
+   *  whether the user plain-clicked or cmd/shift-built a set. */
+  function selectOnly(id: string): void {
+    selectedNoteIds.value = new Set([id]);
+    anchorId.value = id;
     layout.openNote(id);
+  }
+
+  /** Toggle a note's membership in the multi-selection WITHOUT opening it
+   *  (cmd/ctrl-click). The anchor moves to the toggled note so a subsequent
+   *  shift-click ranges from it. */
+  function toggleSelection(id: string): void {
+    const next = new Set(selectedNoteIds.value);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    selectedNoteIds.value = next;
+    anchorId.value = id;
+  }
+
+  /** Range-select from the {@link anchorId} to `id` (inclusive) in
+   *  `visibleItems` order, WITHOUT opening (shift-click). If the anchor is not
+   *  in the visible list (cleared by a filter change), the range falls back to
+   *  just `id`. The anchor is NOT moved, so repeated shift-clicks all range
+   *  from the same anchor. */
+  function extendSelection(id: string): void {
+    const ordered = visibleItems.value.map((n) => n.id);
+    const anchor = anchorId.value;
+    const ai = anchor ? ordered.indexOf(anchor) : -1;
+    const bi = ordered.indexOf(id);
+    if (ai === -1 || bi === -1) {
+      selectedNoteIds.value = new Set([id]);
+      return;
+    }
+    const [from, to] = ai <= bi ? [ai, bi] : [bi, ai];
+    selectedNoteIds.value = new Set(ordered.slice(from, to + 1));
+  }
+
+  /** Open a note by id (the NotesList plain-click handler) in the active group
+   *  and collapse the selection to it. Kept as the public entry point so
+   *  existing consumers (`App.vue`, `Sidebar.vue`) that call `selectNote` also
+   *  establish a one-element selection. */
+  function selectNote(id: string): void {
+    selectOnly(id);
   }
 
   /** Update the search query (plain or regex per `regexSearch`). */
@@ -305,6 +459,12 @@ export const useNotesStore = defineStore("notes", () => {
     let noteIds: string[];
     if (type === "notebook") {
       noteIds = await db.notebooks.notes(id);
+    } else if (type === "color") {
+      // Color→note relations are stored `from=color, to=note` (same direction
+      // as tag→note — see properties.setColor). Resolve the color's notes from
+      // its `from` side.
+      const colored = await db.relations.from({ type: "color", id }, "note").resolve();
+      noteIds = colored.map((n) => n.id);
     } else {
       // Tag→note relations are stored `from=tag, to=note` (upstream adds
       // `relations.add({tag}, {note})`), so resolve notes from the tag's
@@ -326,15 +486,56 @@ export const useNotesStore = defineStore("notes", () => {
     const db = getDatabase();
     const all = await db.notes.all.items();
     items.value = all.map(toListItem);
-    // Fire-and-forget preview enrichment per note: the list renders
-    // immediately from `items`, previews populate as each content fetch
-    // resolves. Not awaited so a slow/locked note never blocks the list.
-    for (const note of items.value) {
-      void loadPreview(note.id);
-      // Tags live in `db.relations`, not the deprecated `Note.tags` field
-      // (which is empty in practice) — resolve them per note the same way.
-      void loadTags(note.id);
-    }
+    pruneSelection();
+    // Per-note enrichment (preview + tags + color) is fire-and-forget and
+    // progressive: the list renders from `items` alone — `previewOf`/tags/
+    // color are guarded in the template — so it must NOT run on the boot
+    // critical path. SQLite is a single serialized connection (mutex FIFO) and
+    // each query crosses a renderer→main IPC round-trip. Firing 3 queries × N
+    // notes in one burst saturates the mutex (interactive queries — open note,
+    // switch collection — queue behind it, so the app feels unresponsive) and
+    // the N `DOMParser` runs in `loadPreview` jank the main thread.
+    //
+    // So the fan-out is (1) deferred off the boot critical path, (2) **phased**
+    // — cheap color+tags (the visible tint + tag chips, single relation query
+    // each, no parse) run for ALL notes before the heavy preview (a content
+    // fetch + DOMParser parse) — and (3) **chunked** across idle frames so the
+    // mutex never saturates: interactive queries interleave between chunks and
+    // tints appear quickly during the cheap phase before any heavy work runs.
+    // `requestIdleCallback` paces each chunk in the renderer; synchronous fallback
+    // when it's unavailable (node test envs) preserves the prior run-everything
+    // behaviour and avoids leaking timers across tests. See plan
+    // melodic-hopping-rainbow.
+    const ids = items.value.map((n) => n.id);
+    const CHUNK = 12;
+    const schedule = (fn: () => void): void => {
+      if (typeof requestIdleCallback === "function") requestIdleCallback(() => fn());
+      else fn();
+    };
+    const runChunked = (tasks: Array<() => void>, done: () => void): void => {
+      let i = 0;
+      const step = (): void => {
+        // `slice` + for-of yields defined elements (no `noUncheckedIndexedAccess`
+        // hazard, unlike indexing `tasks[i]`).
+        const batch = tasks.slice(i, i + CHUNK);
+        for (const task of batch) task();
+        i += batch.length;
+        if (i < tasks.length) schedule(step);
+        else done();
+      };
+      schedule(step);
+    };
+    // Phase 1 — cheap: tint + tag chips for every note (color first so the tint
+    //  lands before the tag query).
+    const colorTags = ids.map((id) => () => {
+      void loadColor(id);
+      void loadTags(id);
+    });
+    // Phase 2 — heavy: content fetch + HTML parse for the thumbnail/checklist.
+    const previews = ids.map((id) => () => {
+      void loadPreview(id);
+    });
+    runChunked(colorTags, () => runChunked(previews, () => {}));
   }
 
   /**
@@ -391,29 +592,64 @@ export const useNotesStore = defineStore("notes", () => {
     }
   }
 
+  /** Resolve a note's single assigned color via
+   *  `db.relations.to(note,"color").resolve()` (color→note; `Note.color` is
+   *  @deprecated) + patch the in-memory item's `color` so the list row tints.
+   *  Fire-and-forget like {@link loadTags}; never throws. */
+  async function loadColor(noteId: string): Promise<void> {
+    try {
+      const db = getDatabase();
+      const colorItems = (await db.relations
+        .to({ id: noteId, type: "note" }, "color")
+        .resolve()
+        .catch(() => [] as Color[])) as Color[];
+      const item = items.value.find((n) => n.id === noteId);
+      if (item) item.color = colorItems[0] ? toColorListItem(colorItems[0]) : null;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] loadColor failed:", e);
+    }
+  }
+
   /** Create a new note, reload, and open it in a tab in the active group. */
   async function create(): Promise<void> {
     const db = getDatabase();
     const id = await db.notes.add({ title: "New note" });
     await load();
-    pendingTitleFocus.value = true;
+    pendingTitleFocus.value = "select";
     layout.openNote(id);
   }
 
   /**
    * Lazily create a note from an empty editor pane on first keystroke. Seeds
-   * the db with the title + HTML the user already typed, opens the new note as
-   * a tab in `groupId` (the drafting pane's group — NOT necessarily the active
-   * one), and pre-seeds the content cache with the exact bytes the user typed
-   * so the new tab's Editor reads them straight from the cache (no DB round-
-   * trip race that could show the pre-await-window text). The draft Editor
-   * unmounts and the tab Editor mounts+loads; text is preserved (caret resets
-   * to the start — acceptable for a brand-new note). Returns the new note id,
-   * or `null` on db failure (the editor keeps its text either way).
+   * the db with the title + HTML captured at call time, opens the new note as a
+   * tab in `groupId` (the drafting pane's group — NOT necessarily the active
+   * one), and pre-seeds the content cache so the new tab's Editor reads the
+   * text straight from the cache (no DB round-trip race). The draft Editor
+   * unmounts and the tab Editor mounts+loads. Returns the new note id, or
+   * `null` on db failure (the editor keeps its text either way).
+   *
+   * `getLatestContent` re-captures the draft editor's HTML RIGHT BEFORE
+   * `layout.openTab` (the remount trigger). This is essential: `db.notes.add`
+   * + `load()` are awaited, and the user may keep typing through that window —
+   * those characters live ONLY in the still-alive draft editor (the snapshot in
+   * `opts.content` was taken before the await and is already stale). Re-seeding
+   * the cache from the live editor at the last possible moment — before the
+   * remount unmounts it — is what preserves the full typed text. (Title typed
+   * during the window is reconciled separately by the caller via `setTitle`.)
+   *
+   * `focus` controls where the caret lands after the remount, mirroring where
+   * the user was typing: `"title"` (default — a title keystroke) requests
+   * caret-at-end title focus; `"body"` (a body keystroke) requests caret-at-end
+   * body focus so the user keeps typing in the body instead of being yanked to
+   * the title. The flag is set BEFORE `layout.openTab` (the remount trigger) so
+   * the new instance's focus watches see it.
    */
   async function createDraft(
     opts: { title: string; content?: string },
-    groupId: string
+    groupId: string,
+    focus: "title" | "body" = "title",
+    getLatestContent?: () => string
   ): Promise<string | null> {
     const db = getDatabase();
     const addArg: { title: string; content?: { type: "tiptap"; data: string } } = {
@@ -429,12 +665,29 @@ export const useNotesStore = defineStore("notes", () => {
       return null;
     }
     await load();
-    // Pre-seed the cache so the new tab Editor's loadContent is a cache hit
-    // with the user's latest text (races out the DB read).
+    // Re-capture the draft editor's CURRENT html right before the remount. The
+    // editor is still alive here (openTab hasn't run), so this includes any text
+    // typed during the db.add/load await window — without it, the new tab's
+    // Editor would load the pre-await snapshot from `opts.content` and the text
+    // typed during the window would vanish when the draft editor unmounts. Seed
+    // the cache from this so the new tab's loadContent is a cache hit with the
+    // FULL text (the DB still holds the pre-await snapshot; the latest persists
+    // on the next autosave / deactivate-flush like any other edit).
+    const latestHtml = getLatestContent?.() ?? opts.content ?? "";
     contentCache.value = {
       ...contentCache.value,
-      [id]: { html: opts.content ?? "", state: "loaded" }
+      [id]: { html: latestHtml, state: "loaded" }
     };
+    // The draft Editor (keyed "draft:"+groupId) unmounts and the tab Editor
+    // (keyed by tab id) mounts — different elements, so DOM focus is lost on
+    // the transition. Re-establish focus matching where the user was typing:
+    //  - "title" → caret-at-end title input (NOT select-all: the user is mid-
+    //    typing and select-all would let the next keystroke clobber the just-
+    //    typed letter).
+    //  - "body" → caret at the end of the body so a body keystroke keeps
+    //    typing in the body instead of jumping to the title.
+    if (focus === "body") pendingBodyFocus.value = true;
+    else pendingTitleFocus.value = "end";
     layout.openTab(groupId, id);
     return id;
   }
@@ -461,12 +714,43 @@ export const useNotesStore = defineStore("notes", () => {
     };
     try {
       const db = getDatabase();
+      // TEMP-DIAG sync-pull: does the local DB hold the synced note metadata +
+      // content, or is it stale? Logs the note's contentId/dateEdited and the
+      // content item actually served, on every load (incl. force reloads).
+      try {
+        const n = await db.notes.note(noteId);
+        // TEMP-DIAG sync-pull: note sync-state — is our local copy dirty /
+        // conflicted / not-yet-synced (which would block pulling the server's
+        // newer version)? dateModified ~now => we touched it locally; synced
+        // false => unsynced local edit; conflicted true => conflict.
+        // eslint-disable-next-line no-console
+        console.log(
+          "[sync] loadContent meta:",
+          noteId,
+          "contentId:", n?.contentId,
+          "dateEdited:", n?.dateEdited,
+          "dateModified:", n?.dateModified,
+          "synced:", n?.synced,
+          "conflicted:", n?.conflicted,
+          "localOnly:", n?.localOnly,
+          "remote:", n?.remote,
+          "deleted:", n?.deleted,
+          "force:", !!opts.force
+        );
+      } catch { /* diag ignore */ }
       const item = await db.content.findByNoteId(noteId);
       if (item && "locked" in item && item.locked) {
         contentCache.value = { ...contentCache.value, [noteId]: { html: "", state: "locked" } };
         return;
       }
       const data = item && typeof item.data === "string" ? item.data : "";
+      // eslint-disable-next-line no-console
+      console.log(
+        "[sync] content served:",
+        "itemId:", item?.id,
+        "len:", data.length,
+        "preview:", JSON.stringify(data.slice(0, 100))
+      );
       contentCache.value = { ...contentCache.value, [noteId]: { html: data, state: "loaded" } };
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -479,6 +763,33 @@ export const useNotesStore = defineStore("notes", () => {
   async function loadActiveContent(): Promise<void> {
     const id = activeNote.value?.id;
     if (id) await loadContent(id);
+  }
+
+  /**
+   * Queue server downloads of `noteId`'s image/webclip attachments so their
+   * encrypted blobs land locally and the editor's image node-views can lazy-
+   * load them. Fire-and-forget — core's `db.attachments.downloadMedia` queues
+   * chunked downloads (deduping blobs already present) and fires
+   * `EVENTS.mediaAttachmentDownloaded` per completed hash, which the
+   * `ImageComponent` subscribes to (via `wireAttachmentStorage`) to swap out
+   * of the placeholder. This is the receive-side counterpart to the
+   * `FileStorage` upload/download transfers: without it, a freshly-synced note
+   * shows its images as placeholders because the blobs are never fetched.
+   * Never throws — a failed queue (no token / offline) just leaves the
+   * placeholders, matching the pre-sync behaviour.
+   */
+  function downloadMedia(noteId: string): void {
+    if (!noteId) return;
+    try {
+      const db = getDatabase();
+      void db.attachments.downloadMedia(noteId).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.warn("[notes] downloadMedia failed:", e);
+      });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[notes] downloadMedia failed:", e);
+    }
   }
 
   /**
@@ -559,7 +870,12 @@ export const useNotesStore = defineStore("notes", () => {
         localOnly: false,
         pinned: note.pinned,
         favorite: note.favorite,
-        readonly: false
+        readonly: false,
+        // A fresh `sessionId` per save makes core (`content.add` →
+        // `noteHistory.add`, gated on `content.sessionId`) write one history
+        // entry per autosave — keyed `${noteId}_${sessionId}`, so each save is
+        // a distinct version. Without this, no history entry is created at all.
+        sessionId: crypto.randomUUID()
       });
       lastSavedAt.value = Date.now();
       saveState.value = "saved";
@@ -579,6 +895,30 @@ export const useNotesStore = defineStore("notes", () => {
       previews.value = { ...previews.value, [note.id]: extractNotePreview(html) };
       // Tell the other windows so an editor showing this note reloads.
       broadcastNoteChanged(note.id);
+      // TEMP DIAG: confirm the note↔attachment relation was created by core's
+      // `content.postProcess` → `processLinkedAttachments`. Without this
+      // relation, other devices' `db.attachments.downloadMedia(noteId)` →
+      // `ofNote(noteId)` finds no attachments and never downloads our blobs
+      // (placeholders there), even though our app shows them from local cache.
+      // Remove once cross-app image sync is verified on-site.
+      void (async () => {
+        try {
+          const linked = await db.relations
+            .from({ type: "note", id: note.id }, "attachment")
+            .selector.fields(["attachments.hash", "attachments.dateUploaded"])
+            .items();
+          // eslint-disable-next-line no-console
+          console.log(
+            `[notes] saveContent diag: note ${note.id} linked attachments=${linked.length}`,
+            linked.map((a: { hash: string; dateUploaded?: number }) => ({
+              hash: a.hash,
+              uploaded: !!a.dateUploaded
+            }))
+          );
+        } catch {
+          // ignore diag failure
+        }
+      })();
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[notes] saveContent failed:", e);
@@ -607,6 +947,137 @@ export const useNotesStore = defineStore("notes", () => {
     titlePendingIds.add(noteId);
     if (titleTimers[noteId]) clearTimeout(titleTimers[noteId]);
     titleTimers[noteId] = setTimeout(() => void flushTitle(noteId), 500);
+  }
+
+  /** Move a note to trash via `db.notes.moveToTrash(id)`, close any editor tab
+   *  hosting it, then reload the list. Never throws — returns `true` on
+   *  success. The caller is responsible for refreshing the sidebar's trash
+   *  count (`collections.load()`), which lives in a separate store. */
+  async function moveToTrash(noteId: string): Promise<boolean> {
+    if (!noteId) return false;
+    try {
+      const db = getDatabase();
+      await db.notes.moveToTrash(noteId);
+      // Close any open tab whose note is the one just trashed (the layout
+      // store keys tabs by tab id, so look them up by noteId).
+      for (const tab of Object.values(layout.tabs)) {
+        if (tab.noteId === noteId) layout.closeTab(tab.id);
+      }
+      await load();
+      return true;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] moveToTrash failed:", e);
+      return false;
+    }
+  }
+
+  /** Move a batch of notes to trash via the variadic `db.notes.moveToTrash(
+   *  ...ids)` (one SQL call for all), close every open tab hosting any of them,
+   *  clear the multi-selection, and reload the list. Mirrors {@link moveToTrash}
+   *  for the per-note close + reload, but in a single db round-trip. The caller
+   *  refreshes the sidebar's trash count (`collections.load()`). Never throws. */
+  async function moveToTrashMany(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      const db = getDatabase();
+      await db.notes.moveToTrash(...ids);
+      for (const tab of Object.values(layout.tabs)) {
+        if (tab.noteId && ids.includes(tab.noteId)) layout.closeTab(tab.id);
+      }
+      clearSelection();
+      await load();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] moveToTrashMany failed:", e);
+    }
+  }
+
+  /** Duplicate a batch of notes via the variadic `db.notes.duplicate(...ids)`
+   *  (core re-links each note's relations internally; new ids aren't reliably
+   *  returned), then reload the list so the copies appear. Does not auto-open
+   *  the duplicates and leaves the selection intact. Never throws. */
+  async function duplicateMany(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      const db = getDatabase();
+      await db.notes.duplicate(...ids);
+      await load();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] duplicateMany failed:", e);
+    }
+  }
+
+  /** Archive a note via `db.notes.archive(true, id)`, then reload the list (the
+   *  note drops out of All Notes because `db.notes.all` excludes archived
+   *  notes). Editor tabs hosting the note are **not** closed — archived notes
+   *  remain openable/editable (`db.notes.note(id)` is a direct lookup). Never
+   *  throws — returns `true` on success. The caller is responsible for
+   *  refreshing the sidebar's archive count (`collections.reloadArchiveCount()`),
+   *  which lives in a separate store. */
+  async function archive(noteId: string): Promise<boolean> {
+    if (!noteId) return false;
+    try {
+      const db = getDatabase();
+      await db.notes.archive(true, noteId);
+      await load();
+      return true;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] archive failed:", e);
+      return false;
+    }
+  }
+
+  /** Archive a batch of notes via the variadic `db.notes.archive(true, ...ids)`
+   *  (one SQL call for all), clear the multi-selection, and reload the list.
+   *  Mirrors {@link archive} (no tab closing). The caller refreshes the sidebar's
+   *  archive count (`collections.reloadArchiveCount()`). Never throws. */
+  async function archiveMany(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      const db = getDatabase();
+      await db.notes.archive(true, ...ids);
+      clearSelection();
+      await load();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] archiveMany failed:", e);
+    }
+  }
+
+  /** Unarchive a note via `db.notes.archive(false, id)`, then reload the list so
+   *  it reappears in All Notes. Never throws — returns `true` on success. The
+   *  caller refreshes the sidebar's archive count. */
+  async function unarchive(noteId: string): Promise<boolean> {
+    if (!noteId) return false;
+    try {
+      const db = getDatabase();
+      await db.notes.archive(false, noteId);
+      await load();
+      return true;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] unarchive failed:", e);
+      return false;
+    }
+  }
+
+  /** Unarchive a batch of notes via `db.notes.archive(false, ...ids)`, clear the
+   *  multi-selection, and reload the list. The caller refreshes the sidebar's
+   *  archive count. Never throws. */
+  async function unarchiveMany(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      const db = getDatabase();
+      await db.notes.archive(false, ...ids);
+      clearSelection();
+      await load();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] unarchiveMany failed:", e);
+    }
   }
 
   /** Flush the pending title write for `noteId` (or every pending note when
@@ -641,6 +1112,7 @@ export const useNotesStore = defineStore("notes", () => {
     activeTab,
     activeNote,
     count,
+    favorites,
     activeContent,
     contentState,
     contentCache,
@@ -656,6 +1128,7 @@ export const useNotesStore = defineStore("notes", () => {
     noteChangedSignals,
     noteChangedSignalFor,
     pendingTitleFocus,
+    pendingBodyFocus,
     previews,
     collectionFilter,
     openTab,
@@ -663,16 +1136,34 @@ export const useNotesStore = defineStore("notes", () => {
     reorderTab,
     resetView,
     selectNote,
+    selectOnly,
+    toggleSelection,
+    extendSelection,
+    setSelection,
+    clearSelection,
+    pruneSelection,
+    isSelected,
+    selectedNoteIds,
+    selectedCount,
+    anchorId,
     load,
     create,
     createDraft,
     loadPreview,
     loadContent,
     loadActiveContent,
+    downloadMedia,
     saveContent,
     handleRemoteNoteChanged,
     setTitle,
     flushTitle,
+    moveToTrash,
+    moveToTrashMany,
+    duplicateMany,
+    archive,
+    archiveMany,
+    unarchive,
+    unarchiveMany,
     filterByCollection,
     clearCollectionFilter,
     setQuery,

@@ -62,7 +62,8 @@ const BooleanProperties = new Set([
     "synced",
     "isGeneratedTitle",
     "archived",
-    "selfDestruct"
+    "selfDestruct",
+    "spellcheck"
 ]);
 const DataMappers = {
     note: (row) => {

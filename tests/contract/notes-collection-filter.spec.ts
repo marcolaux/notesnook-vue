@@ -81,6 +81,25 @@ describe("notes store — collection filter", () => {
     });
   });
 
+  it("filterByCollection('color') resolves notes via db.relations.from(color,'note')", async () => {
+    // Color→note relations are stored `from=color, to=note` (same direction as
+    // tag→note — see properties.setColor), so notes are resolved from the
+    // color's `from` side.
+    mockDb.relations.from = (ref: any, type: any) => {
+      expect(type).toBe("note");
+      expect(ref).toEqual({ type: "color", id: "red" });
+      return { resolve: async () => [{ id: "a" }, { id: "d" }] };
+    };
+    const notes = useNotesStore();
+    notes.items = ALL;
+    await notes.filterByCollection("color", "red");
+    expect(notes.collectionFilter).toEqual({
+      type: "color",
+      id: "red",
+      noteIds: new Set(["a", "d"])
+    });
+  });
+
   it("visibleItems is restricted to the collection (and still sorted)", async () => {
     mockDb.notebooks.notes = async () => ["a", "b"];
     const notes = useNotesStore();

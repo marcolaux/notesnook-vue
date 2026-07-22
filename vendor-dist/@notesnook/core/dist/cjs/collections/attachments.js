@@ -64,7 +64,7 @@ class Attachments {
         this.db = db;
         this.name = "attachments";
         this.collection = new sql_collection_js_1.SQLCollection(db.sql, db.transaction, "attachments", db.eventManager, db.sanitizer);
-        common_js_1.EV.subscribe(common_js_1.EVENTS.fileDownloaded, (_a) => __awaiter(this, [_a], void 0, function* ({ success, filename, groupId, eventData }) {
+        db.eventManager.subscribe(common_js_1.EVENTS.fileDownloaded, (_a) => __awaiter(this, [_a], void 0, function* ({ success, filename, groupId, eventData }) {
             if (!success || !eventData || !eventData.readOnDownload)
                 return;
             const attachment = yield this.attachment(filename);
@@ -73,14 +73,14 @@ class Attachments {
             const src = yield this.read(filename, getOutputType(attachment));
             if (!src)
                 return;
-            common_js_1.EV.publish(common_js_1.EVENTS.mediaAttachmentDownloaded, {
+            this.db.eventManager.publish(common_js_1.EVENTS.mediaAttachmentDownloaded, {
                 groupId,
                 hash: attachment.hash,
                 attachmentType: getAttachmentType(attachment),
                 src
             });
         }));
-        common_js_1.EV.subscribe(common_js_1.EVENTS.fileUploaded, (_a) => __awaiter(this, [_a], void 0, function* ({ success, error, filename }) {
+        db.eventManager.subscribe(common_js_1.EVENTS.fileUploaded, (_a) => __awaiter(this, [_a], void 0, function* ({ success, error, filename }) {
             const attachment = yield this.attachment(filename);
             if (!attachment)
                 return;
@@ -95,12 +95,6 @@ class Attachments {
             yield this.collection.init();
         });
     }
-    /**
-     * Required to satisfy the ICollection interface.
-     * This collection does not currently maintain a local cache that needs invalidation,
-     * but the method must exist for type safety when iterating over all collections.
-     */
-    invalidateCache() { }
     add(item) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!item)
@@ -185,6 +179,42 @@ class Attachments {
                 return true;
             }
             return false;
+        });
+    }
+    bulkRemove(attachments, localOnly) {
+        return __awaiter(this, void 0, void 0, function* () {
+            logger_js_1.logger.debug("Bulk removing attachments", {
+                count: attachments.length,
+                localOnly
+            });
+            if (attachments.length === 0)
+                return;
+            const detachable = [];
+            for (const attachment of attachments) {
+                if (!localOnly && !(yield this.canDetach(attachment)))
+                    continue;
+                detachable.push(attachment);
+            }
+            const localOnlyHashes = detachable
+                .filter((a) => localOnly || !a.dateUploaded)
+                .map((a) => a.hash);
+            const remoteHashes = detachable
+                .filter((a) => !localOnly && !!a.dateUploaded)
+                .map((a) => a.hash);
+            if (localOnlyHashes.length > 0) {
+                yield this.db.fs().bulkDeleteFiles(localOnlyHashes, true);
+            }
+            if (remoteHashes.length > 0) {
+                yield this.db.fs().bulkDeleteFiles(remoteHashes, false);
+            }
+            if (!localOnly) {
+                for (const attachment of detachable) {
+                    yield this.detach(attachment);
+                }
+            }
+            const ids = detachable.map((a) => a.id);
+            yield this.db.relations.unlinkOfType("attachment", ids);
+            yield this.collection.softDelete(ids);
         });
     }
     detach(attachment) {
@@ -460,6 +490,15 @@ class Attachments {
             if (!this.key)
                 throw new Error("Failed to get user encryption key. Cannot cache attachments.");
             return this.key;
+        });
+    }
+    removeOrphaned() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const orphaned = yield this.db.attachments.orphaned.items();
+            logger_js_1.logger.info("Deleting orphaned attachments", {
+                attachments: orphaned
+            });
+            yield this.bulkRemove(orphaned, false);
         });
     }
 }

@@ -21,6 +21,7 @@ export const RouteName = {
   monographs: "monographs",
   archive: "archive",
   trash: "trash",
+  reminders: "reminders",
   settings: "settings"
 } as const;
 
@@ -69,15 +70,19 @@ export const VIEWS: readonly ViewEntry[] = [
     path: "/archive",
     name: RouteName.archive,
     label: "Archive",
-    position: "top",
-    hint: "Archived notes — coming in Phase 3.3."
+    position: "top"
+  },
+  {
+    path: "/reminders",
+    name: RouteName.reminders,
+    label: "Reminders",
+    position: "top"
   },
   {
     path: "/trash",
     name: RouteName.trash,
     label: "Trash",
-    position: "bottom",
-    hint: "Deleted notes + restore — coming in Phase 3.3."
+    position: "bottom"
   },
   { path: "/settings", name: RouteName.settings, label: "Settings", position: "bottom" }
 ];
@@ -130,14 +135,20 @@ export const routes: RouteRecordRaw[] = [
       {
         path: "archive",
         name: RouteName.archive,
-        component: () => import("@/components/PlaceholderView.vue"),
-        meta: { title: "Archive", hint: "Archived notes — coming in Phase 3.3." }
+        component: () => import("@/components/ArchiveView.vue"),
+        meta: { title: "Archive" }
+      },
+      {
+        path: "reminders",
+        name: RouteName.reminders,
+        component: () => import("@/components/RemindersView.vue"),
+        meta: { title: "Reminders" }
       },
       {
         path: "trash",
         name: RouteName.trash,
-        component: () => import("@/components/PlaceholderView.vue"),
-        meta: { title: "Trash", hint: "Deleted notes + restore — coming in Phase 3.3." }
+        component: () => import("@/components/TrashView.vue"),
+        meta: { title: "Trash" }
       }
     ]
   },

@@ -15,6 +15,8 @@ interface Window {
     onExternalDrop(listener: (paths: string[]) => void): () => void;
     onTrayAction(listener: (actionId: import("@contracts/tray").TrayActionId) => void): () => void;
     onDataChanged(listener: () => void): () => void;
+    onReminderFired(listener: (id: string) => void): () => void;
+    onBeforeQuit(listener: () => void): () => void;
   };
   os: string;
   /**

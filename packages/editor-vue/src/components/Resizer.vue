@@ -51,10 +51,28 @@ const emit = defineEmits<{
 const wrapper = ref<HTMLElement | null>(null);
 const dragging = ref(false);
 
-const sizeStyle = computed(() => ({
-  width: props.width ? `${props.width}px` : "auto",
-  height: props.height ? `${props.height}px` : "auto"
-}));
+// When an explicit size is committed (after a drag) AND the aspect ratio is
+// locked (image, NOT embed), drive the box height from `aspect-ratio` instead
+// of a fixed px height. The wrapper's `max-width: 100%` clamps only the width
+// when the editor narrows below the stored `width`; with a fixed px height the
+// frame keeps its height and the image letterboxes inside it (the "height
+// stays the same when the editor resizes" symptom). With `aspect-ratio`, a
+// clamped width yields a proportionally-scaled height, preserving the shape.
+// Embed passes `lockAspectRatio: false` and keeps its fixed px height (an
+// iframe's height is independent of its width, like a fixed player height).
+const sizeStyle = computed(() => {
+  const w = props.width;
+  const h = props.height;
+  if (w && h) {
+    return props.lockAspectRatio
+      ? { width: `${w}px`, aspectRatio: `${w} / ${h}` }
+      : { width: `${w}px`, height: `${h}px` };
+  }
+  return {
+    width: w ? `${w}px` : "auto",
+    height: h ? `${h}px` : "auto"
+  };
+});
 
 let startX = 0;
 let startY = 0;

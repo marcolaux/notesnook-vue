@@ -31,7 +31,8 @@ import {
   TableCell,
   TableHeader,
   Underline,
-  Highlight
+  Highlight,
+  TagMention
 } from "@notesnook-vue/editor-vue";
 
 const editor = new Editor({
@@ -54,7 +55,11 @@ const editor = new Editor({
     // Inline marks (Phase 5.3) — pure toggles, mirror Editor.vue. Underline
     // round-trips as <u>, Highlight as <mark>.
     Underline,
-    Highlight
+    Highlight,
+    // Tag-mention (Phase 5.4) — inline `#tag` chip node. `TagSuggest` is a
+    // Suggestion plugin (no schema of its own) and is omitted here; only the
+    // node's parseHTML/renderHTML govern the round-trip.
+    TagMention
   ],
   content: ""
 });
@@ -407,5 +412,63 @@ describe("editor node-view round-trip (2.4a + 2.4b + 2.4c + 2.4h)", () => {
     expect(out).toContain('data-align="center"');
     expect(out).toContain('data-title="2.4e progress"');
     expect(out).toContain('src="https://example.com/embed"');
+  });
+
+  // --- Phase 5.4: tag-mention chip round-trip --------------------------------
+  // The chip serialises as `<span data-tag-id data-tag-title>` (explicit dash-form
+  // attribute specs — NOT `getDataAttribute`, whose camelCase `data-tagId` would
+  // be lower-cased to `data-tagid` by the DOM and break the round-trip).
+
+  it("tag-mention chip preserves data-tag-id + data-tag-title", () => {
+    const html = '<p>tag <span data-tag-id="t1" data-tag-title="work"></span> after</p>';
+    const out = roundTrip(html);
+    expect(out).toContain('data-tag-id="t1"');
+    expect(out).toContain('data-tag-title="work"');
+    expect((out.match(/<span /g) || []).length).toBe(1);
+  });
+
+  it("tag-mention chip round-trips and is idempotent", () => {
+    const html = '<p>see <span data-tag-id="t2" data-tag-title="weekend"></span></p>';
+    const out = roundTrip(html);
+    expect(out).toContain('data-tag-id="t2"');
+    expect(out).toContain('data-tag-title="weekend"');
+    expect(roundTrip(out)).toBe(out);
+  });
+
+  it("tag-mention chip with no title round-trips bare", () => {
+    const html = '<p><span data-tag-id="t3"></span></p>';
+    const out = roundTrip(html);
+    expect(out).toContain('data-tag-id="t3"');
+    expect(out).not.toContain("data-tag-title");
+  });
+
+  // Regression: inserting a chip + trailing space as a mixed content array
+  // must use an explicit text node for the space. `insertContentAt(pos,
+  // [{node}, " "])` with a bare string throws inside `createNodeFromContent`
+  // (it routes the string through `Node.fromJSON`) and silently no-ops, so
+  // the chip never appears. The explicit `{type:"text", text:" "}` form
+  // inserts both the chip and the space.
+  it("chip + trailing space insert as a mixed array (explicit text node)", () => {
+    const doc = schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "hello" },
+            { type: "tagMention", attrs: { tagId: "t1", title: "work" } },
+            { type: "text", text: " " },
+            { type: "text", text: "world" }
+          ]
+        }
+      ]
+    });
+    const fragment = DOMSerializer.fromSchema(schema).serializeFragment(doc.content);
+    const out = document.createElement("div");
+    out.appendChild(fragment);
+    const html = out.innerHTML;
+    expect(html).toContain('data-tag-id="t1"');
+    expect(html).toContain('data-tag-title="work"');
+    expect(html).toContain("world");
   });
 });

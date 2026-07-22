@@ -633,3 +633,21 @@ body,
   background: color-mix(in oklab, var(--color-accent) 65%, transparent);
   outline: 1px solid color-mix(in oklab, var(--color-accent) 80%, transparent);
 }
+
+/* Subtle super-thin outline for small filled glyphs/dots that are low-contrast
+   on light acrylic — the filled amber ★ (fav star) and the sidebar color dots
+   (a white/light color dot is near-invisible on a light surface). Four 0-offset
+   / 0-blur drop-shadows trace the element's alpha silhouette as a uniform thin
+   border (cheaper + crisper than a blur halo, and it follows the shape exactly
+   — the star's points and the dot's circle). Dark on light = the visible fix;
+   dark on dark (the dark theme) = invisible, so it's harmless there. Used on
+   the FILLED (pinned/favorited) star (the outline unpinned star needs no edge)
+   and on the color dots (replacing the former `border border-black/20`, so the
+   star and the dots share one tunable intensity). */
+.thin-outline {
+  filter:
+    drop-shadow(0.4px 0 0 rgba(0, 0, 0, 0.22))
+    drop-shadow(-0.4px 0 0 rgba(0, 0, 0, 0.22))
+    drop-shadow(0 0.4px 0 rgba(0, 0, 0, 0.22))
+    drop-shadow(0 -0.4px 0 rgba(0, 0, 0, 0.22));
+}

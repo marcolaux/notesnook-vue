@@ -22,6 +22,7 @@ import type { Editor } from "@tiptap/vue-3";
 import type { EditorProps, EditorView } from "@tiptap/pm/view";
 import type { Slice } from "@tiptap/pm/model";
 import type { ImageAttributes, FileAttachment } from "@notesnook-vue/editor-vue";
+import { EVENTS } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
 
 /** Mime-routed result of ingesting one file. */
@@ -242,8 +243,17 @@ function viewPosAt(view: EditorView, event: DragEvent): number {
  *  - `openAttachmentPicker(type)` → a hidden `<input type="file">` (image-only
  *    accept for `type === "image"`, anything otherwise) → ingest each → insert
  *    at the current selection. Routes by mime (image → image node, else chip).
+ *  - `openAttachmentPreview(attrs)` → split the editor's pane right and open the
+ *    attachment as a preview tab (double-click on a chip). The layout store is
+ *    imported lazily inside the hook so this bridge module's top-level graph
+ *    stays free of the layout store (and so the existing contract tests, which
+ *    don't wire the hook, are unaffected). `getGroupId` resolves the editor's
+ *    pane (its tab → `tab.groupId`); the hook is a no-op when it's undefined.
  */
-export function wireAttachmentStorage(editor: Editor): void {
+export function wireAttachmentStorage(
+  editor: Editor,
+  getGroupId?: () => string | undefined
+): void {
   const storage = editor.storage as Record<string, unknown>;
   storage.getAttachmentData = async ({
     hash
@@ -271,6 +281,30 @@ export function wireAttachmentStorage(editor: Editor): void {
       return undefined;
     }
   };
+  // Notify image node-views when a lazily-downloaded blob lands. Core's
+  // `Attachments` fires `EVENTS.mediaAttachmentDownloaded` (with
+  // `{ hash, src }`) on `db.eventManager` once an attachment queued via
+  // `db.attachments.downloadMedia(noteId)` finishes downloading — the
+  // node-view's own retry window (8×150ms) can elapse before a network
+  // download completes, so without this hook a freshly-synced image stays on
+  // the placeholder until a note switch forces a remount. The ImageComponent
+  // subscribes on mount and re-runs its blob fetch when its hash matches.
+  // Returns core's `{ unsubscribe }` (or `undefined` when the event manager
+  // is unavailable, e.g. in tests) so the node-view can clean up on unmount.
+  storage.subscribeAttachmentDownloaded = (
+    handler: (payload: { hash: string; src?: string }) => void
+  ): { unsubscribe: () => void } | undefined => {
+    try {
+      return getDatabase().eventManager.subscribe(
+        EVENTS.mediaAttachmentDownloaded,
+        (payload) => {
+          handler(payload as { hash: string; src?: string });
+        }
+      );
+    } catch {
+      return undefined;
+    }
+  };
   storage.openAttachmentPicker = (type: string): void => {
     const input = document.createElement("input");
     input.type = "file";
@@ -288,5 +322,25 @@ export function wireAttachmentStorage(editor: Editor): void {
     });
     document.body.append(input);
     input.click();
+  };
+  storage.openAttachmentPreview = (attrs: FileAttachment): void => {
+    if (editor.isDestroyed) return;
+    const groupId = getGroupId?.();
+    if (!groupId) return;
+    // Lazy import keeps the bridge's top-level graph free of the layout store
+    // (the existing contract tests don't mock it and don't call this hook).
+    void (async () => {
+      const { useEditorLayoutStore } = await import("@/stores/editor-layout");
+      useEditorLayoutStore().openAttachmentSplit(
+        groupId,
+        {
+          hash: attrs.hash,
+          filename: attrs.filename,
+          mime: attrs.mime,
+          size: Number(attrs.size) || 0
+        },
+        "right"
+      );
+    })();
   };
 }

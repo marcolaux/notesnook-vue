@@ -6,6 +6,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { Editor } from "@tiptap/core";
+import { Plus, Ellipsis } from "@lucide/vue";
 import { findSelectedDOMNode } from "../../../utils/prosemirror";
 import TableToolbarButton from "./TableToolbarButton.vue";
 import RowPropertiesPopup from "./RowPropertiesPopup.vue";
@@ -52,8 +53,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="el" class="table-row-toolbar" style="display: none; position: absolute; z-index: 10" contenteditable="false">
-    <TableToolbarButton title="Insert row below" @click="editor.commands.addRowAfter()">＋</TableToolbarButton>
-    <TableToolbarButton title="Row properties" @click="showProps = !showProps">⋯</TableToolbarButton>
+    <TableToolbarButton title="Insert row below" @click="editor.commands.addRowAfter()"><Plus :size="14" /></TableToolbarButton>
+    <TableToolbarButton title="Row properties" @click="showProps = !showProps"><Ellipsis :size="14" /></TableToolbarButton>
     <RowPropertiesPopup v-if="showProps" :editor="editor" :anchor="el" @close="showProps = false" />
   </div>
 </template>

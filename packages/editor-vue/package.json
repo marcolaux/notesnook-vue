@@ -11,14 +11,21 @@
     "./*": "./src/*"
   },
   "dependencies": {
+    "@tiptap/extension-color": "2.6.6",
+    "@tiptap/extension-font-family": "2.6.6",
     "@tiptap/extension-highlight": "2.6.6",
+    "@tiptap/extension-subscript": "2.6.6",
+    "@tiptap/extension-superscript": "2.6.6",
     "@tiptap/extension-table-row": "2.6.6",
+    "@tiptap/extension-text-align": "2.6.6",
+    "@tiptap/extension-text-style": "2.6.6",
     "@tiptap/extension-task-item": "2.6.6",
     "@tiptap/extension-task-list": "2.6.6",
     "@tiptap/extension-underline": "2.6.6",
     "@tiptap/pm": "2.6.6",
     "@tiptap/suggestion": "2.6.6",
     "@tiptap/vue-3": "2.6.6",
+    "@lucide/vue": "^1.25.0",
     "refractor": "~4.9.0",
     "vue": "^3.5.0"
   },

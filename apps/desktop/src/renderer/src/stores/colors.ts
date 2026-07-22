@@ -5,8 +5,11 @@ import type { Color } from "@notesnook-vue/contracts";
 import {
   buildColorInput,
   sortColorsByTitle,
+  readColorFavorites,
+  writeColorFavorites,
   type ColorInput
 } from "@/utils/colors";
+import { applyManualOrder, moveIdTo } from "@/utils/sidebar-order";
 
 /**
  * Colors store (headless) — the color collection for the sidebar's "colors"
@@ -26,8 +29,17 @@ import {
  */
 
 export const useColorsStore = defineStore("colors", () => {
-  /** All colors, title-ascending. */
+  /** All colors, title-ascending then manual-order overlay (see `order`). */
   const items = ref<Color[]>([]);
+  /** Manual sidebar order of color ids (upstream `sideBarOrder:colors`). Empty
+   *  → title sort wins. Loaded in `refresh`, persisted by `setOrder`. */
+  const order = ref<string[]>([]);
+  /** Favorited color ids (local-only, `localStorage` — NOT `db.shortcuts`;
+   *  upstream disallows colors as shortcuts). Insertion order preserved.
+   *  Pruned in `refresh` so a deleted color drops out of the Shortcuts section. */
+  const favoriteIds = ref<string[]>([]);
+  /** O(1) lookup for the color-row fav active-state. */
+  const favoriteIdSet = computed(() => new Set(favoriteIds.value));
   /** True while the list is being (re)loaded. */
   const loading = ref(false);
   /** True while a create/delete mutation is in flight. */
@@ -37,20 +49,105 @@ export const useColorsStore = defineStore("colors", () => {
 
   const count = computed(() => items.value.length);
 
-  /** Reload the color list from the database, title-ascending. Never throws —
-   *  a failure leaves the previous list intact and logs. */
+  /** Favorited colors as Shortcuts-section rows (merged into the Shortcuts
+   *  section at the view layer, like favourite notes). Carries `colorCode` so
+   *  the row renders the color swatch. Insertion order; deleted colors (ids no
+   *  longer in `items`) are skipped — `refresh` prunes them from storage. */
+  const favorites = computed(() =>
+    favoriteIds.value
+      .map((id) => items.value.find((c) => c.id === id))
+      .filter((c): c is Color => Boolean(c))
+      .map((c) => ({
+        id: c.id,
+        title: c.title || "Untitled",
+        type: "color" as const,
+        colorCode: c.colorCode
+      }))
+  );
+
+  /** Reload the color list from the database, title-ascending then the stored
+   *  manual order (`db.settings.getSideBarOrder("colors")`). Empty order →
+   *  title sort wins. Never throws — a failure leaves the previous list. */
   async function refresh(): Promise<void> {
     loading.value = true;
     try {
       const db = getDatabase();
-      const all: Color[] = await db.colors.all.items();
-      items.value = sortColorsByTitle(all);
+      const [all, storedOrder] = await Promise.all([
+        db.colors.all.items() as Promise<Color[]>,
+        db.settings.getSideBarOrder("colors") as string[] | undefined
+      ]);
+      order.value = storedOrder ?? [];
+      items.value = applyManualOrder(sortColorsByTitle(all), order.value);
+      // Load the local-only color favorites, then prune ids whose color no
+      // longer exists (deleted) so the Shortcuts section doesn't hold ghost
+      // rows. Persist the pruned set if it changed.
+      const stored = readColorFavorites();
+      const live = new Set(items.value.map((c) => c.id));
+      const pruned = stored.filter((id) => live.has(id));
+      favoriteIds.value = pruned;
+      if (pruned.length !== stored.length) writeColorFavorites(pruned);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[colors] refresh failed:", e);
     } finally {
       loading.value = false;
     }
+  }
+
+  /** Is the given color id favorited? Sync, never throws. */
+  function isFavoriteColor(id: string): boolean {
+    return favoriteIdSet.value.has(id);
+  }
+
+  /** Favorite / unfavorite a color (local-only, `localStorage`). Toggles
+   *  membership, persists, and updates `favorites` reactively. Never throws. */
+  function toggleFavoriteColor(id: string): void {
+    if (!id) return;
+    const next = favoriteIdSet.value.has(id)
+      ? favoriteIds.value.filter((x) => x !== id)
+      : [...favoriteIds.value, id];
+    favoriteIds.value = next;
+    writeColorFavorites(next);
+  }
+
+  /**
+   * Persist a full manual order of color ids via
+   * `db.settings.setSideBarOrder("colors", ids)` (synced through upstream),
+   * store it, and re-apply it over the current items. Pass `[]` to reset to
+   * the title sort. The component computes the desired id sequence from a
+   * drop and passes it wholesale. Never throws — a failure logs + leaves the
+   * previous order.
+   */
+  async function setOrder(ids: string[]): Promise<void> {
+    try {
+      const db = getDatabase();
+      await db.settings.setSideBarOrder("colors", ids);
+      order.value = ids;
+      // Re-derive from the title-sorted base so a reset to [] restores title
+      // order (applying over the already-manual list would otherwise freeze
+      // the previous manual order).
+      items.value = applyManualOrder(sortColorsByTitle(items.value), ids);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[colors] setOrder failed:", e);
+    }
+  }
+
+  /**
+   * Move `fromId` to a position relative to `toId` (`before` → immediately
+   * ahead, else immediately after) in the displayed color order, then persist
+   * the resulting full id sequence via {@link setOrder}. The sidebar color-row
+   * drop handler calls this. No-op when `from`/`to` are missing or equal.
+   */
+  async function moveBefore(fromId: string, toId: string, before: boolean): Promise<void> {
+    if (!fromId || !toId || fromId === toId) return;
+    const next = moveIdTo(
+      items.value.map((c) => c.id),
+      fromId,
+      toId,
+      before
+    );
+    await setOrder(next);
   }
 
   /**
@@ -96,6 +193,34 @@ export const useColorsStore = defineStore("colors", () => {
     }
   }
 
+  /**
+   * Rename a color's title via `db.colors.add({id, title})` (upsert-by-id —
+   * core finds the existing color by `id` and `collection.update`s only the
+   * provided fields, so the `colorCode` is preserved), then reload. This is
+   * the sidebar color-row's inline-rename path, mirroring the collections
+   * store's `renameTag`. Returns `true` on success, `false` on a missing id /
+   * empty title / throw.
+   */
+  async function renameColor(id: string, title: string): Promise<boolean> {
+    const trimmed = title.trim();
+    if (!id || !trimmed) return false;
+    busy.value = true;
+    try {
+      const db = getDatabase();
+      await db.colors.add(buildColorInput({ id, title: trimmed }));
+      lastError.value = null;
+      await refresh();
+      return true;
+    } catch (e) {
+      lastError.value = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error("[colors] renameColor failed:", e);
+      return false;
+    } finally {
+      busy.value = false;
+    }
+  }
+
   /** Count the notes tagged with a color via `db.colors.count(id)` (core reads
    *  `relations.from(color,"note").count()`). Returns `0` on a miss/throw —
    *  never throws. */
@@ -113,13 +238,21 @@ export const useColorsStore = defineStore("colors", () => {
 
   return {
     items,
+    order,
+    favoriteIds,
+    favorites,
     loading,
     busy,
     lastError,
     count,
     refresh,
+    setOrder,
+    moveBefore,
     add,
     remove,
-    noteCount
+    renameColor,
+    noteCount,
+    isFavoriteColor,
+    toggleFavoriteColor
   };
 });

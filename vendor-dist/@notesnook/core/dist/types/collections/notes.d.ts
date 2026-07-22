@@ -23,7 +23,6 @@ export declare class Notes implements ICollection {
     constructor(db: Database);
     init(): Promise<void>;
     buildCache(): Promise<void>;
-    invalidateCache(): Promise<void>;
     add(item: Partial<Note & {
         content: NoteContent<false>;
         sessionId: string;
@@ -46,6 +45,7 @@ export declare class Notes implements ICollection {
     setExpiryDate(date: number | null, ...ids: string[]): Promise<void>;
     readonly(state: boolean, ...ids: string[]): Promise<void>;
     localOnly(state: boolean, ...ids: string[]): Promise<void>;
+    spellcheck(state: boolean, ...ids: string[]): Promise<void>;
     export(id: string, options: ExportOptions): Promise<false | string>;
     export(note: Note, options: ExportOptions): Promise<false | string>;
     duplicate(...ids: string[]): Promise<void>;

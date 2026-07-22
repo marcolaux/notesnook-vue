@@ -8,6 +8,7 @@ import {
   formatAbsoluteDate,
   toAssignedTag,
   toAssignedNotebook,
+  toAssignedColor,
   uniqueById,
   TOGGLE_KEYS,
   TOGGLE_LABELS
@@ -18,10 +19,11 @@ import { useEditorLayoutStore } from "@/stores/editor-layout";
 import type { Note } from "@notesnook-vue/contracts";
 
 // In-memory fake db: a map of full Notes backs `notes.note`, the toggle
-// setters, and `notes.all.items`. Per-note tag + notebook assignments back
-// `relations.to(note,"tag"|"notebook").resolve()`; `relations.add`/`unlink`
-// mutate the tag side; `notes.addToNotebook`/`removeFromNotebook` mutate the
-// notebook side. Avoids the platform graph.
+// setters, and `notes.all.items`. Per-note tag + notebook + color assignments
+// back `relations.to(note,"tag"|"notebook"|"color").resolve()`; `relations.add`
+// /`unlink` mutate the tag side; `relations.to(note,"color").unlink()` clears
+// the color; `notes.addToNotebook`/`removeFromNotebook` mutate the notebook
+// side. Avoids the platform graph.
 type FakeNote = Pick<
   Note,
   "id" | "title" | "headline" | "dateCreated" | "dateEdited" | "tags" | "pinned" | "favorite" | "readonly" | "localOnly"
@@ -29,12 +31,15 @@ type FakeNote = Pick<
 
 type FakeTag = { id: string; title: string; type: "tag"; dateCreated: number; dateModified: number };
 type FakeNotebook = { id: string; title: string; type: "notebook"; dateCreated: number; dateModified: number };
+type FakeColor = { id: string; title: string; colorCode: string; type: "color"; dateCreated: number; dateModified: number };
 
 const db = {
   _full: new Map<string, FakeNote>(),
   _noteTags: new Map<string, FakeTag[]>(),
   _noteNotebooks: new Map<string, FakeNotebook[]>(),
+  _noteColors: new Map<string, FakeColor[]>(),
   _allTags: new Map<string, FakeTag>(),
+  _allColors: new Map<string, FakeColor>(),
   notes: {
     note: vi.fn(async (id: string) => db._full.get(id)),
     pin: vi.fn(async (state: boolean, ...ids: string[]) => {
@@ -83,7 +88,13 @@ const db = {
       resolve: vi.fn(async () => {
         if (type === "tag") return db._noteTags.get(ref.id) ?? [];
         if (type === "notebook") return db._noteNotebooks.get(ref.id) ?? [];
+        if (type === "color") return db._noteColors.get(ref.id) ?? [];
         return [];
+      }),
+      // `RelationsArray.unlink()` — clears all relations of this direction for
+      // the note. Used by setColor/clearColor to drop the existing color.
+      unlink: vi.fn(async () => {
+        if (type === "color") db._noteColors.set(ref.id, []);
       })
     })),
     add: vi.fn(async (from: { id: string; type: string }, to: { id: string; type: string }) => {
@@ -94,6 +105,12 @@ const db = {
         const list = db._noteTags.get(to.id) ?? [];
         if (!list.some((t) => t.id === tag.id)) list.push(tag);
         db._noteTags.set(to.id, list);
+      }
+      if (from.type === "color" && to.type === "note") {
+        const color =
+          db._allColors.get(from.id) ??
+          ({ id: from.id, title: `Color ${from.id}`, colorCode: "#000", type: "color", dateCreated: 1, dateModified: 1 } as FakeColor);
+        db._noteColors.set(to.id, [color]);
       }
     }),
     unlink: vi.fn(async (from: { id: string; type: string }, to: { id: string; type: string }) => {
@@ -108,6 +125,12 @@ const db = {
       const id = `tag-${item.title.toLowerCase().replace(/\s+/g, "-")}`;
       const tag: FakeTag = { id, title: item.title, type: "tag", dateCreated: 1, dateModified: 1 };
       db._allTags.set(id, tag);
+      return id;
+    })
+  },
+  notebooks: {
+    add: vi.fn(async (item: { title: string }) => {
+      const id = `nb-${item.title.toLowerCase().replace(/\s+/g, "-")}`;
       return id;
     })
   },
@@ -227,7 +250,7 @@ describe("TOGGLE_KEYS / TOGGLE_LABELS", () => {
   });
 });
 
-describe("toAssignedTag / toAssignedNotebook / uniqueById", () => {
+describe("toAssignedTag / toAssignedNotebook / toAssignedColor / uniqueById", () => {
   it("toAssignedTag maps id+title with Untitled fallback", () => {
     expect(toAssignedTag({ id: "t1", title: "Work", type: "tag", dateCreated: 1, dateModified: 1 } as never)).toEqual({
       id: "t1",
@@ -247,6 +270,15 @@ describe("toAssignedTag / toAssignedNotebook / uniqueById", () => {
     ).toBe("Untitled");
   });
 
+  it("toAssignedColor maps id+title+colorCode with Untitled fallback", () => {
+    expect(
+      toAssignedColor({ id: "c1", title: "Red", colorCode: "#f00", type: "color", dateCreated: 1, dateModified: 1 } as never)
+    ).toEqual({ id: "c1", title: "Red", colorCode: "#f00" });
+    expect(
+      toAssignedColor({ id: "c2", title: "", colorCode: "#00f", type: "color", dateCreated: 1, dateModified: 1 } as never).title
+    ).toBe("Untitled");
+  });
+
   it("uniqueById dedupes by id preserving first-seen order, skips holes", () => {
     expect(uniqueById([{ id: "a" }, { id: "b" }, { id: "a" }, { id: "c" }])).toEqual([
       { id: "a" },
@@ -263,7 +295,9 @@ describe("usePropertiesStore", () => {
     db._full.clear();
     db._noteTags.clear();
     db._noteNotebooks.clear();
+    db._noteColors.clear();
     db._allTags.clear();
+    db._allColors.clear();
     db.notes.note.mockClear();
     db.notes.pin.mockClear();
     db.notes.favorite.mockClear();
@@ -276,6 +310,7 @@ describe("usePropertiesStore", () => {
     db.relations.add.mockClear();
     db.relations.unlink.mockClear();
     db.tags.add.mockClear();
+    db.notebooks.add.mockClear();
     db.content.findByNoteId.mockClear();
   });
 
@@ -376,7 +411,9 @@ describe("usePropertiesStore — tags & notebooks", () => {
     db._full.clear();
     db._noteTags.clear();
     db._noteNotebooks.clear();
+    db._noteColors.clear();
     db._allTags.clear();
+    db._allColors.clear();
     db.notes.note.mockClear();
     db.notes.addToNotebook.mockClear();
     db.notes.removeFromNotebook.mockClear();
@@ -384,6 +421,7 @@ describe("usePropertiesStore — tags & notebooks", () => {
     db.relations.add.mockClear();
     db.relations.unlink.mockClear();
     db.tags.add.mockClear();
+    db.notebooks.add.mockClear();
   });
 
   async function openNote(note: FakeNote): Promise<void> {
@@ -506,7 +544,126 @@ describe("usePropertiesStore — tags & notebooks", () => {
     expect(await props.createTag("x")).toBeNull();
     expect(await props.addNotebook("nb1")).toBe(false);
     expect(await props.removeNotebook("nb1")).toBe(false);
+    expect(await props.setColor("c1")).toBe(false);
+    expect(await props.clearColor()).toBe(false);
+    expect(await props.createNotebook("x")).toBeNull();
     expect(db.relations.add).not.toHaveBeenCalled();
     expect(db.notes.addToNotebook).not.toHaveBeenCalled();
+  });
+});
+
+describe("usePropertiesStore — color + id-aware assignment", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    db._full.clear();
+    db._noteTags.clear();
+    db._noteNotebooks.clear();
+    db._noteColors.clear();
+    db._allTags.clear();
+    db._allColors.clear();
+    db.notes.note.mockClear();
+    db.notes.addToNotebook.mockClear();
+    db.notes.removeFromNotebook.mockClear();
+    db.relations.to.mockClear();
+    db.relations.add.mockClear();
+    db.relations.unlink.mockClear();
+    db.tags.add.mockClear();
+    db.notebooks.add.mockClear();
+  });
+
+  async function openNote(note: FakeNote): Promise<void> {
+    db._full.set(note.id, note);
+    const layout = useEditorLayoutStore();
+    layout.init();
+    const notes = useNotesStore();
+    await notes.load();
+    notes.selectNote(note.id);
+  }
+
+  it("loadAssignments reads the note's color relation (first color only)", async () => {
+    db._allColors.set("red", { id: "red", title: "Red", colorCode: "#f00", type: "color", dateCreated: 1, dateModified: 1 });
+    db._noteColors.set("a", [db._allColors.get("red")!]);
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const props = usePropertiesStore();
+    await props.loadAssignments();
+    expect(db.relations.to).toHaveBeenCalledWith({ id: "a", type: "note" }, "color");
+    expect(props.color).toEqual({ id: "red", title: "Red", colorCode: "#f00" });
+  });
+
+  it("loadAssignments sets color=null when the note has no color", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const props = usePropertiesStore();
+    await props.loadAssignments();
+    expect(props.color).toBeNull();
+  });
+
+  it("setColor unlinks the existing color then adds the new one + reloads", async () => {
+    db._allColors.set("blue", { id: "blue", title: "Blue", colorCode: "#00f", type: "color", dateCreated: 1, dateModified: 1 });
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const props = usePropertiesStore();
+    const ok = await props.setColor("blue");
+    expect(ok).toBe(true);
+    // to(note,"color").unlink() was called to clear any prior color
+    expect(db._noteColors.get("a")).toEqual([
+      { id: "blue", title: "Blue", colorCode: "#00f", type: "color", dateCreated: 1, dateModified: 1 }
+    ]);
+    expect(db.relations.add).toHaveBeenCalledWith({ id: "blue", type: "color" }, { id: "a", type: "note" });
+    expect(props.color).toEqual({ id: "blue", title: "Blue", colorCode: "#00f" });
+  });
+
+  it("clearColor unlinks the color relation + reloads", async () => {
+    db._allColors.set("red", { id: "red", title: "Red", colorCode: "#f00", type: "color", dateCreated: 1, dateModified: 1 });
+    db._noteColors.set("a", [db._allColors.get("red")!]);
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const props = usePropertiesStore();
+    const ok = await props.clearColor();
+    expect(ok).toBe(true);
+    expect(db._noteColors.get("a")).toEqual([]);
+    expect(props.color).toBeNull();
+  });
+
+  it("createNotebook creates the notebook + adds the note, returns {id,title}", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const props = usePropertiesStore();
+    const created = await props.createNotebook("Trips");
+    expect(db.notebooks.add).toHaveBeenCalledWith({ title: "Trips" });
+    expect(db.notes.addToNotebook).toHaveBeenCalledWith("nb-trips", "a");
+    expect(created).toEqual({ id: "nb-trips", title: "Trips" });
+  });
+
+  it("createNotebook trims + rejects empty title", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const props = usePropertiesStore();
+    expect(await props.createNotebook("   ")).toBeNull();
+    expect(db.notebooks.add).not.toHaveBeenCalled();
+  });
+
+  it("addTag is id-aware: targets the passed noteId, not the active note", async () => {
+    db._allTags.set("t1", { id: "t1", title: "Work", type: "tag", dateCreated: 1, dateModified: 1 });
+    await openNote(fakeNote({ id: "a", title: "A" })); // active note is "a"
+    const props = usePropertiesStore();
+    const ok = await props.addTag("t1", "other-note");
+    expect(ok).toBe(true);
+    expect(db.relations.add).toHaveBeenCalledWith({ id: "t1", type: "tag" }, { id: "other-note", type: "note" });
+    // the relation was written to the right-clicked note, not the active one
+    expect(db._noteTags.get("other-note")?.map((t) => t.id)).toEqual(["t1"]);
+  });
+
+  it("createTag with explicit noteId returns {id,title} from inputs + targets that note", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const props = usePropertiesStore();
+    const created = await props.createTag("Ideas", "other-note");
+    expect(created).toEqual({ id: "tag-ideas", title: "Ideas" });
+    expect(db.relations.add).toHaveBeenCalledWith({ id: "tag-ideas", type: "tag" }, { id: "other-note", type: "note" });
+  });
+
+  it("setColor is id-aware: targets the passed noteId", async () => {
+    db._allColors.set("red", { id: "red", title: "Red", colorCode: "#f00", type: "color", dateCreated: 1, dateModified: 1 });
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const props = usePropertiesStore();
+    const ok = await props.setColor("red", "other-note");
+    expect(ok).toBe(true);
+    expect(db.relations.add).toHaveBeenCalledWith({ id: "red", type: "color" }, { id: "other-note", type: "note" });
+    expect(db._noteColors.get("other-note")?.map((c) => c.id)).toEqual(["red"]);
   });
 });

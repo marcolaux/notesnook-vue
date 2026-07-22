@@ -7,17 +7,25 @@ store (`NodeFSFileStore` → Main node-fs in production).
 
 Differences from upstream (deliberate, for Phase 1):
   - Hash: SHA-256 (Web Crypto) instead of hash-wasm xxhash64 — avoids a WASM
-    dep; fresh attachments are self-consistent. Reading existing Notesnook
-    attachments (xxh64) is deferred to the import-DB milestone.
-  - downloadFile/uploadFile (sync-server HTTP) throw "not implemented (Phase 6)"
-    instead of pulling axios/file-saver/toast/etc.
+    dep; fresh attachments are self-consistent. The hash is an opaque storage
+    key on both client and server, and downloads use the hash from synced
+    attachment metadata (never recomputed), so cross-app sync with upstream
+    (xxh64) works regardless — only cross-client dedup is affected.
+  - HTTP transfers use the renderer `fetch` API instead of `axios` (not a
+    dependency here). The protocol matches upstream's `apps/web/src/interfaces/
+    fs.ts` exactly: single-part PUT for <25MB, S3 multipart for larger, GET a
+    pre-signed URL then fetch for downloads, HEAD for size verification.
+  - Multipart upload runs parts sequentially (upstream uses a 4-wide queue) and
+    omits the per-part resume-state persistence (`addAdditionalData`); a failed
+    large upload retries from zero. The top-of-`uploadFile` size check still
+    skips already-uploaded files, so completed uploads are never re-sent.
   - Progress/toast/app-events UI feedback dropped (not needed for storage).
 
 The chunk store + NNCrypto are injectable so the encryption pipeline can be
 tested against an in-memory chunk store + the real sodium crypto.
 */
 import { StreamableFS } from "@notesnook/streamable-fs";
-import type { IFileStorage as StreamableFSChunkStore } from "@notesnook/streamable-fs";
+import type { IFileStorage as StreamableFSChunkStore, FileHandle } from "@notesnook/streamable-fs";
 import type {
   IFileStorage,
   Cancellable,
@@ -28,8 +36,19 @@ import type {
   FileEncryptionMetadataWithOutputType,
   FileEncryptionMetadataWithHash
 } from "@notesnook-vue/contracts";
+import { hosts } from "@notesnook-vue/contracts";
 import { NNCrypto } from "./nncrypto";
 import { NodeFSFileStore } from "./file-store";
+
+// Lazy accessor for the active per-account `Database`. The `FileStorage` is
+// constructed (and passed to `db.setup`) before the `Database` exists, so this
+// can't be a construction-time dependency — it is resolved lazily inside the
+// sync transfer methods (which only run during sync, long after bootstrap).
+// The import forms a benign cycle (bootstrap → database → fs → bootstrap):
+// `getDatabase` is a hoisted function declaration, and we only *call* it at
+// runtime, so the live binding is resolved by then. Mirrors the pattern in
+// `editor/attachments-bridge.ts`.
+import { getDatabase } from "@/platform/bootstrap";
 
 const ABYTES = 17;
 const CHUNK_SIZE = 512 * 1024;
@@ -113,6 +132,399 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
     return { chunkSize: CHUNK_SIZE, iv, size: bytes.length, salt: key.salt ?? "", alg: ALG };
   }
 
+  // --- Sync-server transfers (upload / download / delete / size) -----------
+  // Ported from upstream `apps/web/src/interfaces/fs.ts` (GPL-3.0), retargeted
+  // to the renderer `fetch` API (no `axios` here) and trimmed of progress/toast
+  // UI. The encrypted blob is moved as-is; decryption stays a separate
+  // `readEncrypted` step, so the wire format is byte-identical to upstream and
+  // blobs round-trip across apps on the same account.
+
+  /** Threshold above which uploads use S3 multipart instead of a single PUT. */
+  const MINIMUM_MULTIPART_FILE_SIZE = 25 * 1024 * 1024;
+  /** Encrypted bytes per chunk = plaintext CHUNK_SIZE + 17-byte auth tag. */
+  const ENCRYPTED_CHUNK_SIZE = CHUNK_SIZE + ABYTES;
+  /** Number of encrypted chunks grouped into one S3 multipart part (~10MB). */
+  const UPLOAD_PART_REQUIRED_CHUNKS = Math.ceil((10 * 1024 * 1024) / ENCRYPTED_CHUNK_SIZE);
+
+  /** `RequestOptions` plus the `AbortSignal` the `Cancellable` wrapper injects.
+   *  `signal` is required (not optional) so it satisfies `fetch`'s
+   *  `RequestInit.signal: AbortSignal | null` under `exactOptionalPropertyTypes`. */
+  type RequestOptionsWithSignal = RequestOptions & { signal: AbortSignal };
+
+  /** A FileHandle is "complete" when its stored encrypted bytes minus the
+   *  per-chunk auth tags equal the recorded plaintext size — i.e. no chunk is
+   *  missing/truncated. Mirrors upstream `exists(handle)`. */
+  async function handleIsComplete(handle: FileHandle): Promise<boolean> {
+    return handle.file.size === (await handle.size()) - handle.chunks.length * ABYTES;
+  }
+
+  /** `TransformStream` that re-chunks an incoming byte stream into fixed
+   *  `size`-byte pieces (the last is shorter). Buffer-free (pure `Uint8Array`,
+   *  no Node `Buffer`) so it runs in the renderer. Used by `downloadFile` to
+   *  split the downloaded encrypted blob into `chunkSize + ABYTES` chunks the
+   *  chunk store writes one-by-one. Mirrors upstream `ChunkedStream` (copy). */
+  function chunkedStream(size: number): TransformStream<Uint8Array, Uint8Array> {
+    let back: Uint8Array | null = null;
+    return new TransformStream<Uint8Array, Uint8Array>({
+      transform(part, controller) {
+        back = back ? concatBytes([back, part]) : part;
+        while (back.length >= size) {
+          controller.enqueue(back.subarray(0, size));
+          back = back.subarray(size);
+        }
+      },
+      flush(controller) {
+        if (back && back.length > 0) controller.enqueue(back);
+      }
+    });
+  }
+
+  /** HEAD the server for the stored (encrypted) size of `filename`.
+   *  Returns `-1` on error, `0` if absent/empty, else the encrypted byte count.
+   *  Mirrors upstream `getUploadedFileSize`. */
+  async function getUploadedFileSizeImpl(filename: string): Promise<number> {
+    try {
+      const db = getDatabase();
+      const token = await db.tokenManager.getAccessToken();
+      const res = await fetch(`${hosts.API_HOST}/s3?name=${filename}`, {
+        method: "HEAD",
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (!res.ok) return 0;
+      const len = parseInt(res.headers.get("x-object-size") ?? res.headers.get("content-length") ?? "0");
+      return isNaN(len) ? 0 : len;
+    } catch {
+      return -1;
+    }
+  }
+
+  /** Verify the just-uploaded encrypted size decrypts to `expectedSize`.
+   *  Throws on mismatch. Mirrors upstream `checkUpload`. */
+  async function checkUpload(filename: string, chunkSize: number, expectedSize: number): Promise<void> {
+    const size = await getUploadedFileSizeImpl(filename);
+    const totalChunks = Math.ceil(size / (chunkSize + ABYTES));
+    const decryptedLength = size - totalChunks * ABYTES;
+    const error =
+      size === 0
+        ? "File size is 0."
+        : size === -1
+          ? "File verification check failed."
+          : expectedSize !== decryptedLength
+            ? `File size mismatch. Expected ${expectedSize} bytes but got ${decryptedLength} bytes.`
+            : undefined;
+    if (error) throw new Error(error);
+  }
+
+  /** Single-part PUT: send the whole encrypted blob to `${API_HOST}/s3?name=`.
+   *  Used for files < 25MB (all images). The body is sent as an `ArrayBuffer`
+   *  (not a `Blob`) so `fetch` reliably sets `Content-Length` — the server treats
+   *  `Content-Length: 0` as "no body" and returns a pre-signed URL string
+   *  instead of storing the blob, which would look like a 200 success while
+   *  nothing reaches S3. `Content-Type: ""` matches upstream (the API server
+   *  proxies to a pre-signed S3 URL whose signature excludes Content-Type). */
+  async function singlePartUpload(
+    handle: FileHandle,
+    requestOptions: RequestOptionsWithSignal
+  ): Promise<boolean> {
+    const { url, headers, signal } = requestOptions;
+    const blob = await handle.toBlob();
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: { ...headers, "Content-Type": "" },
+      body: await blob.arrayBuffer(),
+      signal
+    });
+    if (!res.ok) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[fs] singlePartUpload failed: ${res.status} ${res.statusText} for ${url}; body=`,
+        (await res.text()).slice(0, 300)
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /** S3 multipart upload for files >= 25MB: initiate → PUT each part to its
+   *  pre-signed URL → complete. Parts run sequentially (upstream uses a 4-wide
+   *  queue; sequential is correct and avoids an extra dep). Resume-state
+   *  persistence is omitted — a failed upload retries from zero, and the
+   *  top-of-`uploadFile` size check still skips already-completed files. */
+  async function multiPartUpload(
+    handle: FileHandle,
+    filename: string,
+    requestOptions: RequestOptionsWithSignal
+  ): Promise<boolean> {
+    const { headers, signal } = requestOptions;
+    const totalParts = Math.ceil(handle.chunks.length / UPLOAD_PART_REQUIRED_CHUNKS);
+
+    const initiateRes = await fetch(
+      `${hosts.API_HOST}/s3/multipart?name=${filename}&parts=${totalParts}&uploadId=`,
+      { headers, signal }
+    );
+    if (!initiateRes.ok) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[fs] multipart initiate failed: ${initiateRes.status} ${initiateRes.statusText}; body=`,
+        (await initiateRes.text()).slice(0, 300)
+      );
+      throw new Error("Could not initiate multi-part upload.");
+    }
+    const initiated = (await initiateRes.json()) as { uploadId: string; parts: string[]; error?: string };
+    if (initiated.error) throw new Error(initiated.error);
+    const { uploadId, parts } = initiated;
+    if (!parts) throw new Error("Could not initiate multi-part upload: invalid response.");
+
+    const partETags: { PartNumber: number; ETag: string }[] = [];
+    for (let i = 0; i < totalParts; ++i) {
+      const from = i * UPLOAD_PART_REQUIRED_CHUNKS;
+      const length = Math.min(handle.chunks.length - from, UPLOAD_PART_REQUIRED_CHUNKS);
+      const partUrl = parts[i];
+      if (!partUrl) throw new Error(`Missing pre-signed URL for part ${i}.`);
+      const blob = await handle.readChunks(from, length);
+      const res = await fetch(partUrl, {
+        method: "PUT",
+        // Pre-signed S3 part URL — signature excludes Content-Type, so send "".
+        // ArrayBuffer body → reliable Content-Length (see singlePartUpload).
+        headers: { "Content-Type": "" },
+        body: await blob.arrayBuffer(),
+        signal
+      });
+      if (!res.ok) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[fs] multipart part ${i} failed: ${res.status} ${res.statusText}; body=`,
+          (await res.text()).slice(0, 300)
+        );
+        throw new Error(`Failed to upload part ${i}: ${res.status}`);
+      }
+      const etag = res.headers.get("etag");
+      if (!etag) throw new Error(`Failed to upload part ${i}: invalid etag.`);
+      partETags.push({ PartNumber: i + 1, ETag: JSON.parse(etag) });
+    }
+
+    const completeRes = await fetch(`${hosts.API_HOST}/s3/multipart`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        Key: filename,
+        UploadId: uploadId,
+        PartETags: partETags.sort((a, b) => a.PartNumber - b.PartNumber)
+      }),
+      signal
+    });
+    if (!completeRes.ok) throw new Error("Could not complete multi-part upload.");
+    return true;
+  }
+
+  /** TEMP DIAG: round-trip-verify a just-uploaded blob. Downloads the server's
+   *  copy into a `<hash>-verify` temp file (non-destructive — the real local
+   *  file is untouched) and decrypts it with the synced attachment key, logging
+   *  the decrypted byte count vs expected. This localizes upload-vs-decrypt
+   *  faults: if OUR app can't decrypt the server's copy, the stored blob is
+   *  corrupt/wrong; if it can, the bytes are good on S3 and a downstream
+   *  client's failure to render is on its side. Remove once cross-app image
+   *  sync is verified on-site. */
+  async function verifyServerRoundTrip(
+    filename: string,
+    requestOptions: RequestOptionsWithSignal
+  ): Promise<void> {
+    const tempName = `${filename}-verify`;
+    try {
+      const db = getDatabase();
+      const attachment = await db.attachments.attachment(filename);
+      if (!attachment) {
+        // eslint-disable-next-line no-console
+        console.warn(`[fs] DIAG round-trip: no attachment record for ${filename}`);
+        return;
+      }
+      const token = await db.tokenManager.getAccessToken();
+      const signedRes = await fetch(`${hosts.API_HOST}/s3?name=${filename}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (!signedRes.ok) {
+        // eslint-disable-next-line no-console
+        console.warn(`[fs] DIAG round-trip: signed-URL GET ${signedRes.status} for ${filename}`);
+        return;
+      }
+      const signedUrl = (await signedRes.text()).trim();
+      const res = await fetch(signedUrl);
+      if (!res.ok || !res.body) {
+        // eslint-disable-next-line no-console
+        console.warn(`[fs] DIAG round-trip: blob fetch ${res.status} for ${filename}`);
+        return;
+      }
+      const tempHandle = await streamablefs.createFile(
+        tempName,
+        attachment.size,
+        attachment.mimeType || "application/octet-stream",
+        { overwrite: true }
+      );
+      await res.body
+        .pipeThrough(chunkedStream(attachment.chunkSize + ABYTES))
+        .pipeTo(tempHandle.writeable);
+
+      const key = await db.attachments.decryptKey(attachment.key);
+      if (!key) {
+        // eslint-disable-next-line no-console
+        console.warn(`[fs] DIAG round-trip: decryptKey returned null for ${filename}`);
+        await streamablefs.deleteFile(tempName);
+        return;
+      }
+      const dec = await nn.createDecryptionStream(key, attachment.iv);
+      const chunks = await consumeStream(tempHandle.readable.pipeThrough(dec));
+      const out = concatBytes(chunks);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[fs] DIAG round-trip: OK decrypted ${out.length} bytes (expected ${attachment.size}, alg=${attachment.alg}, ivLen=${attachment.iv.length}, chunkSize=${attachment.chunkSize}) for ${filename}`
+      );
+      await streamablefs.deleteFile(tempName);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn(`[fs] DIAG round-trip FAILED for ${filename}:`, e);
+      try {
+        await streamablefs.deleteFile(tempName);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  /** Upload one encrypted blob to the sync server. Returns `true` on success,
+   *  `false` on failure (never throws — core's `queueUploads` logs the error
+   *  and marks the attachment failed). Mirrors upstream `uploadFile`. */
+  async function uploadFileImpl(
+    filename: string,
+    requestOptions: RequestOptionsWithSignal
+  ): Promise<boolean> {
+    try {
+      const handle = await streamablefs.readFile(filename);
+      if (!handle || !(await handleIsComplete(handle)))
+        throw new Error(`File is corrupt or missing data. Please upload the file again. (File hash: ${filename})`);
+
+      // Skip if already on the server (encrypted sizes match).
+      const uploadedSize = await getUploadedFileSizeImpl(filename);
+      if (uploadedSize === -1) return false;
+      if (uploadedSize > 0 && uploadedSize === (await handle.size())) return true;
+
+      const multipart = handle.file.size >= MINIMUM_MULTIPART_FILE_SIZE;
+      // eslint-disable-next-line no-console
+      console.log(
+        `[fs] uploading ${filename} (${handle.file.size} bytes, ${multipart ? "multipart" : "single-part"})`
+      );
+      const uploaded = multipart
+        ? await multiPartUpload(handle, filename, requestOptions)
+        : await singlePartUpload(handle, requestOptions);
+
+      if (uploaded) await checkUpload(filename, requestOptions.chunkSize, handle.file.size);
+      if (!uploaded) {
+        // eslint-disable-next-line no-console
+        console.warn(`[fs] upload reported failure for ${filename} (see error above)`);
+      } else {
+        void verifyServerRoundTrip(filename, requestOptions).catch(() => undefined);
+      }
+      return uploaded;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[fs] uploadFile failed:", e);
+      return false;
+    }
+  }
+
+  /** Download one encrypted blob from the sync server into the local chunk
+   *  store. The server's `/s3?name=` GET returns a pre-signed URL (text); a
+   *  second `fetch` streams the encrypted bytes, which are re-chunked into
+   *  `chunkSize + ABYTES` pieces and written under `filename`. Validates the
+   *  decrypted length against the attachment record and marks the attachment
+   *  failed on mismatch. Mirrors upstream `downloadFile`. */
+  async function downloadFileImpl(
+    filename: string,
+    requestOptions: RequestOptionsWithSignal
+  ): Promise<boolean> {
+    const { url, headers, chunkSize, signal } = requestOptions;
+    try {
+      const existing = await streamablefs.readFile(filename);
+      if (existing && (await handleIsComplete(existing))) return true;
+      if (existing) await existing.delete();
+
+      const db = getDatabase();
+      const attachment = await db.attachments.attachment(filename);
+      if (!attachment) throw new Error("Attachment doesn't exist.");
+
+      // 1. Get a pre-signed URL (the API GET returns it as text).
+      const signedRes = await fetch(url, { headers, signal });
+      if (signedRes.status === 401) {
+        // eslint-disable-next-line no-console
+        console.warn(`[fs] download: signed-URL GET returned 401 for ${filename}`);
+        return false;
+      }
+      if (!signedRes.ok) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[fs] download: signed-URL GET failed: ${signedRes.status} ${signedRes.statusText} for ${filename}; body=`,
+          (await signedRes.text()).slice(0, 300)
+        );
+        throw new Error(`Failed to get signed URL (${signedRes.status}).`);
+      }
+      const signedUrl = (await signedRes.text()).trim();
+      if (!signedUrl || !signedUrl.startsWith("http")) {
+        // eslint-disable-next-line no-console
+        console.error(`[fs] download: invalid signed URL for ${filename}:`, signedUrl.slice(0, 200));
+        throw new Error("Empty signed URL.");
+      }
+
+      // 2. Stream the encrypted blob.
+      const res = await fetch(signedUrl, { signal });
+      if (!res.ok || !res.body) {
+        // eslint-disable-next-line no-console
+        console.error(`[fs] download: blob fetch failed: ${res.status} ${res.statusText} for ${filename}`);
+        throw new Error(`Download failed (${res.status}).`);
+      }
+
+      const size = parseInt(res.headers.get("content-length") ?? "0");
+      if (size <= 0) {
+        const error = `File length is 0. Please upload this file again from the attachment manager. (File hash: ${filename})`;
+        await db.attachments.markAsFailed(attachment.id, error);
+        throw new Error(error);
+      }
+      const totalChunks = Math.ceil(size / (chunkSize + ABYTES));
+      const decryptedLength = size - totalChunks * ABYTES;
+      if (attachment.size !== decryptedLength) {
+        const error = `File length mismatch. Expected ${attachment.size} but got ${decryptedLength} bytes. Please upload this file again from the attachment manager. (File hash: ${filename})`;
+        await db.attachments.markAsFailed(attachment.id, error);
+        throw new Error(error);
+      }
+      if (res.headers.get("content-type") === "application/xml") {
+        throw new Error(`Download returned an XML error: ${await res.text()}`);
+      }
+
+      // 3. Re-chunk + write to the chunk store under `filename`.
+      const fileHandle = await streamablefs.createFile(
+        filename,
+        decryptedLength,
+        attachment.mimeType || "application/octet-stream",
+        { overwrite: true }
+      );
+      await res.body.pipeThrough(chunkedStream(chunkSize + ABYTES)).pipeTo(fileHandle.writeable);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[fs] downloaded ${filename} (${size} encrypted bytes -> ${decryptedLength} plaintext, alg=${attachment.alg})`
+      );
+      return true;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[fs] downloadFile failed:", e);
+      // Clean up a partial download so the next attempt re-fetches.
+      try {
+        const partial = await streamablefs.readFile(filename);
+        if (partial) await partial.delete();
+      } catch {
+        // ignore cleanup failure
+      }
+      return false;
+    }
+  }
+
   return {
     async writeEncryptedBase64(data, key, mimeType): Promise<FileEncryptionMetadataWithHash> {
       const bytes = base64ToBytes(data);
@@ -140,25 +552,45 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
       if (!requestOptions) {
         return !(await streamablefs.exists(filename)) || (await streamablefs.deleteFile(filename));
       }
-      // Server-side delete (sync) — not implemented until Phase 6.
-      throw new Error("deleteFile with requestOptions (sync) not implemented (Phase 6)");
+      try {
+        const { url, headers } = requestOptions;
+        const res = await fetch(url, { method: "DELETE", headers });
+        if (res.ok) await streamablefs.deleteFile(filename);
+        return res.ok;
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[fs] deleteFile failed:", e);
+        return false;
+      }
     },
 
     async bulkDeleteFiles(filenames, requestOptions?): Promise<boolean> {
-      if (requestOptions) {
-        // Server-side bulk delete (sync) — not implemented until Phase 6.
-        throw new Error("bulkDeleteFiles with requestOptions (sync) not implemented (Phase 6)");
-      }
-      // Local bulk delete: best-effort, returns true if every file was removed.
-      let all = true;
-      for (const f of filenames) {
-        try {
-          if ((await streamablefs.exists(f)) && !(await streamablefs.deleteFile(f))) all = false;
-        } catch {
-          all = false;
+      if (!requestOptions) {
+        // Local bulk delete: best-effort, returns true if every file was removed.
+        let all = true;
+        for (const f of filenames) {
+          try {
+            if ((await streamablefs.exists(f)) && !(await streamablefs.deleteFile(f))) all = false;
+          } catch {
+            all = false;
+          }
         }
+        return all;
       }
-      return all;
+      try {
+        const { url, headers } = requestOptions;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ names: filenames })
+        });
+        if (res.ok) await streamablefs.bulkDeleteFiles(filenames);
+        return res.ok;
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[fs] bulkDeleteFiles failed:", e);
+        return false;
+      }
     },
 
     async exists(filename): Promise<boolean> {
@@ -172,9 +604,8 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
       return filenames.filter((f) => !set.has(f));
     },
 
-    async getUploadedFileSize(_filename): Promise<number> {
-      // No sync server in Phase 1 → report not uploaded.
-      return 0;
+    async getUploadedFileSize(filename): Promise<number> {
+      return getUploadedFileSizeImpl(filename);
     },
 
     async clearFileStorage(): Promise<void> {
@@ -185,20 +616,18 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
       return { hash: await sha256Hex(base64ToBytes(data)), type: "sha256" };
     },
 
-    downloadFile(_filename, _requestOptions): Cancellable<boolean> {
+    downloadFile(filename, requestOptions): Cancellable<boolean> {
+      const controller = new AbortController();
       return {
-        execute: async () => {
-          throw new Error("downloadFile (sync) not implemented (Phase 6)");
-        },
-        cancel: async () => undefined
+        execute: () => downloadFileImpl(filename, { ...requestOptions, signal: controller.signal }),
+        cancel: async () => controller.abort()
       };
     },
-    uploadFile(_filename, _requestOptions): Cancellable<boolean> {
+    uploadFile(filename, requestOptions): Cancellable<boolean> {
+      const controller = new AbortController();
       return {
-        execute: async () => {
-          throw new Error("uploadFile (sync) not implemented (Phase 6)");
-        },
-        cancel: async () => undefined
+        execute: () => uploadFileImpl(filename, { ...requestOptions, signal: controller.signal }),
+        cancel: async () => controller.abort()
       };
     }
   };

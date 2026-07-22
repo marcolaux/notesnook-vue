@@ -49,12 +49,16 @@ type SqliteStatement = Database.Statement<unknown[], unknown>;
 const require_ = createRequire(import.meta.url);
 
 /**
- * Set to `true` in M4 once the FTS5 extension packages are installed. Until
- * then `loadExtensions` is skipped so the engine works for non-FTS queries
- * (and `db.init()` migrations that need `trigram` will fail — which is exactly
- * what M4 fixes).
+ * M4 (done): the prebuilt FTS5 tokenizer extension packages
+ * (`sqlite-better-trigram` + `sqlite3-fts5-html`, with their per-platform
+ * `*-<os>-<arch>` binary variants) are installed as (optional)Dependencies.
+ * `loadExtensions` loads them after the DB is first decrypted, registering the
+ * `better_trigram` + `html` tokenizers that core's `migrations` reference — so
+ * core's dist runs byte-for-byte upstream (no dist string-patches needed).
+ * Verified to load against `better-sqlite3-multiple-ciphers@12.11.1`
+ * (SQLite 3.53.2).
  */
-const LOAD_FTS5_EXTENSIONS = false;
+const LOAD_FTS5_EXTENSIONS = true;
 
 class SQLite {
   private sqlite?: SqliteDB;

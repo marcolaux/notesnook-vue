@@ -88,6 +88,26 @@ describe("notes draft — lazy create on first keystroke (per-tab model)", () =>
     expect(notes.getContent("n-1")?.state).toBe("loaded");
   });
 
+  it("createDraft re-seeds the cache from getLatestContent (preserves await-window typing)", async () => {
+    const notes = useNotesStore();
+    const layout = useEditorLayoutStore();
+    layout.init();
+    // opts.content is the PRE-await snapshot ("<p>H</p>"); getLatestContent
+    // returns the LATER html the user typed during the db.add/load await
+    // window. The cache must be seeded with the LATEST, not the snapshot, or
+    // the new tab would load the snapshot and the await-window text would be
+    // lost when the draft editor unmounts.
+    const id = await notes.createDraft(
+      { title: "", content: "<p>H</p>" },
+      layout.activeGroupId,
+      "title",
+      () => "<p>Hello</p>"
+    );
+    expect(id).toBe("n-1");
+    expect(notes.getContent("n-1")?.html).toBe("<p>Hello</p>");
+    expect(notes.getContent("n-1")?.state).toBe("loaded");
+  });
+
   it("createDraft with only a title seeds the title and no content", async () => {
     const notes = useNotesStore();
     const layout = useEditorLayoutStore();
@@ -137,7 +157,35 @@ describe("notes draft — lazy create on first keystroke (per-tab model)", () =>
     await notes.create();
     expect(notes.activeNote?.id).toBe("n-1");
     expect(layout.activeTab?.noteId).toBe("n-1");
-    expect(notes.pendingTitleFocus).toBe(true);
+    // "select" mode: focus + select-all over the "New note" placeholder.
+    expect(notes.pendingTitleFocus).toBe("select");
+  });
+
+  it("createDraft() requests caret-at-end title focus (preserves typed letter)", async () => {
+    const notes = useNotesStore();
+    const layout = useEditorLayoutStore();
+    layout.init();
+    await notes.createDraft({ title: "H", content: "<p>H</p>" }, layout.activeGroupId);
+    expect(notes.activeNote?.id).toBe("n-1");
+    // Default focus="title" → "end" mode: focus + caret after the just-typed
+    // letter (NOT select-all, which would let the next keystroke clobber it).
+    expect(notes.pendingTitleFocus).toBe("end");
+    expect(notes.pendingBodyFocus).toBe(false);
+  });
+
+  it("createDraft({focus:'body'}) requests body focus (keeps typing in the body)", async () => {
+    const notes = useNotesStore();
+    const layout = useEditorLayoutStore();
+    layout.init();
+    await notes.createDraft(
+      { title: "", content: "<p>H</p>" },
+      layout.activeGroupId,
+      "body"
+    );
+    expect(notes.activeNote?.id).toBe("n-1");
+    // A body keystroke keeps focus in the body — do NOT yank it to the title.
+    expect(notes.pendingBodyFocus).toBe(true);
+    expect(notes.pendingTitleFocus).toBeNull();
   });
 
   it("resetView closes all tabs + clears the content cache", async () => {

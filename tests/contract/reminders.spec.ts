@@ -3,13 +3,16 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import {
   buildReminderInput,
+  buildReminderSchedule,
   sortRemindersByCreatedDesc,
+  sortRemindersByUpcoming,
   REMINDER_PRIORITIES,
   REMINDER_MODES,
   RECURRING_MODES,
   type ReminderInput
 } from "@/utils/reminders";
 import { useRemindersStore } from "@/stores/reminders";
+import { useReminderDialogStore } from "@/stores/reminder-dialog";
 import type { Reminder } from "@notesnook-vue/contracts";
 
 // In-memory fake db.reminders: a Map<id, Reminder> backs `all.items()` /
@@ -64,6 +67,27 @@ const db = {
     remove: vi.fn(async (...ids: string[]) => {
       for (const id of ids) db.reminders._store.delete(id);
     })
+  },
+  // Fake reminder↔note relations + note lookup for the noteLinks feature.
+  // `relationsRows` holds raw {fromId,fromType,toId,toType}; `to(refs,"note").get()`
+  // returns rows whose from is in refs (single id or `ids[]`) + toType matches.
+  _relationsRows: [] as { fromId: string; fromType: string; toId: string; toType: string }[],
+  relations: {
+    add: vi.fn(async (from: { id: string; type: string }, to: { id: string; type: string }) => {
+      db._relationsRows.push({ fromId: from.id, fromType: from.type, toId: to.id, toType: to.type });
+    }),
+    to: vi.fn((from: { type: string; id?: string; ids?: string[] }, type: string) => ({
+      get: async () =>
+        db._relationsRows.filter(
+          (r) =>
+            r.toType === type &&
+            r.fromType === from.type &&
+            (from.ids ? from.ids.includes(r.fromId) : r.fromId === from.id)
+        )
+    }))
+  },
+  notes: {
+    note: vi.fn(async (id: string) => ({ id, title: `Note ${id}` }))
   }
 };
 vi.mock("@/platform/bootstrap", () => ({
@@ -119,10 +143,14 @@ describe("useRemindersStore", () => {
     setActivePinia(createPinia());
     clock = 1_000_000;
     db.reminders._store.clear();
+    db._relationsRows = [];
     db.reminders.all.items.mockClear();
     db.reminders.reminder.mockClear();
     db.reminders.add.mockClear();
     db.reminders.remove.mockClear();
+    db.relations.add.mockClear();
+    db.relations.to.mockClear();
+    db.notes.note.mockClear();
   });
 
   it("starts empty", () => {
@@ -189,6 +217,49 @@ describe("useRemindersStore", () => {
     expect(id).toBeNull();
     expect(s.lastError).toContain("title");
     expect(s.busy).toBe(false);
+  });
+
+  it("add with noteId links the new reminder to the note via db.relations.add", async () => {
+    const s = useRemindersStore();
+    const id = await s.add({ title: "Remind", date: 5000, mode: "once", noteId: "note-7" });
+    expect(typeof id).toBe("string");
+    expect(db.relations.add).toHaveBeenCalledWith(
+      { type: "reminder", id },
+      { type: "note", id: "note-7" }
+    );
+  });
+
+  it("add without noteId does NOT call db.relations.add", async () => {
+    const s = useRemindersStore();
+    await s.add({ title: "Plain", date: 5000, mode: "once" });
+    expect(db.relations.add).not.toHaveBeenCalled();
+  });
+
+  it("refresh builds noteLinks from reminder↔note relations + note titles", async () => {
+    db.reminders._store.set(
+      "r1",
+      fakeReminder({ id: "r1", title: "R1", date: 5, mode: "once", dateCreated: 10 })
+    );
+    db._relationsRows.push({ fromId: "r1", fromType: "reminder", toId: "note-9", toType: "note" });
+    const s = useRemindersStore();
+    await s.refresh();
+    expect(db.relations.to).toHaveBeenCalledWith(
+      { type: "reminder", ids: ["r1"] },
+      "note"
+    );
+    expect(s.noteLinks["r1"]).toEqual({ noteId: "note-9", title: "Note note-9" });
+    expect(s.noteIdMap["r1"]).toBe("note-9");
+  });
+
+  it("refresh leaves noteLinks empty for standalone reminders", async () => {
+    db.reminders._store.set(
+      "r2",
+      fakeReminder({ id: "r2", title: "R2", date: 5, mode: "once", dateCreated: 10 })
+    );
+    const s = useRemindersStore();
+    await s.refresh();
+    expect(s.noteLinks["r2"]).toBeUndefined();
+    expect(Object.keys(s.noteIdMap)).toEqual([]);
   });
 
   it("remove no-ops on empty + reloads otherwise", async () => {
@@ -264,5 +335,227 @@ describe("useRemindersStore", () => {
     await s.refresh();
     expect(s.items).toHaveLength(1);
     expect(s.loading).toBe(false);
+  });
+});
+
+describe("buildReminderSchedule", () => {
+  // `isReminderActive` + `getUpcomingReminderTime` read the real `Date.now()`,
+  // so all dates are relative to `realNow` (like the activeItems store test).
+  const realNow = Date.now();
+
+  it("schedules a future once-reminder at its date", () => {
+    const r = fakeReminder({ id: "a", title: "A", date: realNow + 60_000, mode: "once" });
+    const out = buildReminderSchedule([r], realNow);
+    expect(out).toEqual([{ id: "a", title: "A", fireAt: realNow + 60_000 }]);
+  });
+
+  it("excludes past once-reminders (not active) and disabled ones", () => {
+    const past = fakeReminder({ id: "p", title: "P", date: realNow - 60_000, mode: "once" });
+    const disabled = fakeReminder({ id: "d", title: "D", date: realNow + 60_000, mode: "once", disabled: true });
+    const future = fakeReminder({ id: "f", title: "F", date: realNow + 60_000, mode: "once" });
+    const out = buildReminderSchedule([past, disabled, future], realNow);
+    expect(out.map((s) => s.id)).toEqual(["f"]);
+  });
+
+  it("excludes permanent reminders (no fire time)", () => {
+    const perm = fakeReminder({ id: "perm", title: "Ongoing", date: realNow + 1000, mode: "permanent" });
+    expect(buildReminderSchedule([perm], realNow)).toEqual([]);
+  });
+
+  it("a snoozed once-reminder fires at snoozeUntil (not the past date)", () => {
+    const r = fakeReminder({
+      id: "s",
+      title: "S",
+      date: realNow - 60_000,
+      mode: "once",
+      snoozeUntil: realNow + 120_000
+    });
+    const out = buildReminderSchedule([r], realNow);
+    expect(out).toEqual([{ id: "s", title: "S", fireAt: realNow + 120_000 }]);
+  });
+
+  it("a daily repeat reminder fires at the next occurrence (future)", () => {
+    const r = fakeReminder({
+      id: "rep",
+      title: "R",
+      date: realNow - 90_000, // already passed → next is tomorrow's slot
+      mode: "repeat",
+      recurringMode: "day"
+    });
+    const out = buildReminderSchedule([r], realNow);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("rep");
+    expect(out[0].fireAt).toBeGreaterThan(realNow);
+  });
+
+  it("drops entries whose computed fireAt is in the past", () => {
+    // A once-reminder whose date is in the past is inactive → excluded; but
+    // guard the explicit `fireAt <= now` drop too by passing `now` ahead of a
+    // future once-date.
+    const r = fakeReminder({ id: "a", title: "A", date: realNow + 60_000, mode: "once" });
+    expect(buildReminderSchedule([r], realNow + 120_000)).toEqual([]);
+  });
+
+  it("includes description when present, omits the key when absent", () => {
+    const withDesc = fakeReminder({ id: "a", title: "A", date: realNow + 60_000, mode: "once", description: "note" });
+    const noDesc = fakeReminder({ id: "b", title: "B", date: realNow + 60_000, mode: "once" });
+    const out = buildReminderSchedule([withDesc, noDesc], realNow);
+    expect(out[0].description).toBe("note");
+    expect("description" in out[1]).toBe(false);
+  });
+
+  it("attaches noteId from the noteLinks map, omits it when absent", () => {
+    const linked = fakeReminder({ id: "a", title: "A", date: realNow + 60_000, mode: "once" });
+    const standalone = fakeReminder({ id: "b", title: "B", date: realNow + 60_000, mode: "once" });
+    const out = buildReminderSchedule([linked, standalone], realNow, { a: "note-42" });
+    expect(out[0].noteId).toBe("note-42");
+    expect("noteId" in out[1]).toBe(false);
+  });
+
+  it("omits noteId for a reminder whose link isn't in the map", () => {
+    const r = fakeReminder({ id: "x", title: "X", date: realNow + 60_000, mode: "once" });
+    const out = buildReminderSchedule([r], realNow, { other: "note-1" });
+    expect("noteId" in out[0]).toBe(false);
+  });
+
+  it("sortRemindersByUpcoming orders soonest-first, inactive last", () => {
+    const soon = fakeReminder({ id: "soon", title: "S", date: realNow + 60_000, mode: "once" });
+    const later = fakeReminder({ id: "later", title: "L", date: realNow + 600_000, mode: "once" });
+    const past = fakeReminder({ id: "past", title: "P", date: realNow - 60_000, mode: "once" });
+    const sorted = sortRemindersByUpcoming([past, later, soon], realNow);
+    // active soonest first, then later; past (inactive) last.
+    expect(sorted.map((r) => r.id)).toEqual(["soon", "later", "past"]);
+  });
+});
+
+describe("useReminderDialogStore", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it("openCreate seeds defaults + confirm returns a create input (no id)", async () => {
+    const d = useReminderDialogStore();
+    const p = d.openCreate();
+    expect(d.open).toBe(true);
+    expect(d.mode).toBe("create");
+    expect(d.editingId).toBeNull();
+    d.setTitle("Water plants");
+    d.confirm();
+    const input = await p;
+    expect(input).not.toBeNull();
+    expect(input!.id).toBeUndefined();
+    expect(input!.title).toBe("Water plants");
+    expect(input!.mode).toBe("once");
+    expect(input!.priority).toBe("vibrate");
+    expect(input!.localOnly).toBe(false);
+    expect("recurringMode" in (input as object)).toBe(false);
+    expect("selectedDays" in (input as object)).toBe(false);
+    expect(d.open).toBe(false);
+  });
+
+  it("confirm with an empty title resolves null (treated as cancel)", async () => {
+    const d = useReminderDialogStore();
+    const p = d.openCreate();
+    d.setTitle("   ");
+    d.confirm();
+    expect(await p).toBeNull();
+    expect(d.open).toBe(false);
+  });
+
+  it("cancel resolves null + closes", async () => {
+    const d = useReminderDialogStore();
+    const p = d.openCreate();
+    d.cancel();
+    expect(await p).toBeNull();
+    expect(d.open).toBe(false);
+  });
+
+  it("openEdit seeds from a reminder + confirm returns an edit input with id", async () => {
+    const realNow = Date.now();
+    const r = fakeReminder({
+      id: "r1",
+      title: "Standup",
+      date: realNow + 3_600_000,
+      mode: "repeat",
+      recurringMode: "week",
+      selectedDays: [1, 3],
+      priority: "urgent",
+      localOnly: true,
+      dateCreated: 10
+    });
+    const d = useReminderDialogStore();
+    const p = d.openEdit(r);
+    expect(d.mode).toBe("edit");
+    expect(d.editingId).toBe("r1");
+    expect(d.title).toBe("Standup");
+    expect(d.reminderMode).toBe("repeat");
+    expect(d.priority).toBe("urgent");
+    expect(d.selectedDays).toEqual([1, 3]);
+    expect(d.localOnly).toBe(true);
+    d.confirm();
+    const input = await p;
+    expect(input).not.toBeNull();
+    expect(input!.id).toBe("r1");
+    expect(input!.mode).toBe("repeat");
+    expect(input!.recurringMode).toBe("week");
+    expect(input!.selectedDays).toEqual([1, 3]);
+    expect(input!.priority).toBe("urgent");
+    expect(input!.localOnly).toBe(true);
+  });
+
+  it("a repeat reminder with no selected days omits the selectedDays key", async () => {
+    const d = useReminderDialogStore();
+    const p = d.openCreate();
+    d.setTitle("Daily stand");
+    d.setReminderMode("repeat");
+    d.setRecurringMode("day");
+    // selectedDays stays []
+    d.confirm();
+    const input = await p;
+    expect(input!.mode).toBe("repeat");
+    expect(input!.recurringMode).toBe("day");
+    expect("selectedDays" in (input as object)).toBe(false);
+  });
+
+  it("openCreateForNote seeds title + nn:// description + noteId, and confirm carries noteId", async () => {
+    const d = useReminderDialogStore();
+    const p = d.openCreateForNote("note-42", "My note");
+    expect(d.open).toBe(true);
+    expect(d.mode).toBe("create");
+    expect(d.title).toBe("My note");
+    expect(d.description).toBe("nn://note/note-42");
+    expect(d.linkedNoteTitle).toBe("My note");
+    d.confirm();
+    const input = await p;
+    expect(input).not.toBeNull();
+    expect(input!.noteId).toBe("note-42");
+    expect(input!.title).toBe("My note");
+    expect(input!.description).toBe("nn://note/note-42");
+  });
+
+  it("openCreate (after a note-linked open) resets noteId so it doesn't leak", async () => {
+    const d = useReminderDialogStore();
+    let p = d.openCreateForNote("note-1", "N1");
+    d.cancel();
+    await p;
+    p = d.openCreate();
+    expect(d.linkedNoteTitle).toBeUndefined();
+    d.setTitle("Standalone");
+    d.confirm();
+    const input = await p;
+    expect(input!.noteId).toBeUndefined();
+    expect("noteId" in (input as object)).toBe(false);
+  });
+
+  it("openEdit leaves noteId unset (editing preserves the existing relation)", async () => {
+    const realNow = Date.now();
+    const r = fakeReminder({ id: "r1", title: "Standup", date: realNow + 3_600_000, mode: "once", dateCreated: 10 });
+    const d = useReminderDialogStore();
+    const p = d.openEdit(r);
+    expect(d.linkedNoteTitle).toBeUndefined();
+    d.confirm();
+    const input = await p;
+    expect(input!.id).toBe("r1");
+    expect("noteId" in (input as object)).toBe(false);
   });
 });

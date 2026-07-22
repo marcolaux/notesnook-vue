@@ -62,11 +62,6 @@ class Notes {
             this.cache.archived = archived;
         });
     }
-    invalidateCache() {
-        return __awaiter(this, void 0, void 0, function* () {
-            yield this.buildCache();
-        });
-    }
     add(item) {
         return __awaiter(this, void 0, void 0, function* () {
             if (item.remote)
@@ -140,6 +135,7 @@ class Notes {
                         localOnly: item.localOnly,
                         conflicted: item.conflicted,
                         readonly: item.readonly,
+                        archived: item.archived,
                         dateCreated: item.dateCreated,
                         dateEdited: item.dateEdited || dateEdited,
                         isGeneratedTitle: item.isGeneratedTitle
@@ -157,6 +153,7 @@ class Notes {
                         localOnly: item.localOnly,
                         conflicted: item.conflicted,
                         readonly: item.readonly,
+                        archived: item.archived,
                         dateCreated: item.dateCreated || Date.now(),
                         dateEdited: item.dateEdited || dateEdited || Date.now(),
                         isGeneratedTitle: item.isGeneratedTitle
@@ -304,6 +301,9 @@ class Notes {
             }));
         });
     }
+    spellcheck(state, ...ids) {
+        return this.collection.update(ids, { spellcheck: state });
+    }
     export(noteOrId, options) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a;
@@ -350,7 +350,7 @@ class Notes {
                 const content = note.contentId
                     ? yield this.db.content.get(note.contentId)
                     : undefined;
-                const duplicateId = yield this.db.notes.add(Object.assign(Object.assign({}, (0, clone_js_1.clone)(note)), { id: undefined, readonly: false, favorite: false, pinned: false, contentId: undefined, title: note.title + " (Copy)", dateEdited: undefined, dateCreated: undefined, dateModified: undefined }));
+                const duplicateId = yield this.db.notes.add(Object.assign(Object.assign({}, (0, clone_js_1.clone)(note)), { id: undefined, pinned: false, isGeneratedTitle: false, contentId: undefined, title: note.title + " (Copy)", dateEdited: undefined, dateCreated: undefined, dateModified: undefined }));
                 const contentId = yield this.db.content.add(Object.assign(Object.assign({}, (0, clone_js_1.clone)(content)), { id: undefined, noteId: duplicateId, dateResolved: undefined, dateEdited: undefined, dateCreated: undefined, dateModified: undefined }));
                 yield this.db.notes.add({ id: duplicateId, contentId });
                 for (const relation of yield this.db.relations.to(note).get()) {
@@ -380,6 +380,7 @@ class Notes {
                     yield this.db.relations.unlinkOfType("note", ids);
                     yield this.collection.softDelete(ids);
                     yield this.db.content.removeByNoteId(...ids);
+                    yield this.db.inboxItemsHistory.delete(ids);
                 }));
             }
             this.totalNotes = Math.max(0, this.totalNotes - ids.length);

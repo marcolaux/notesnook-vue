@@ -29,6 +29,7 @@ import Languages from "./languages.json";
 import { setLastUsedLanguage } from "./code-block";
 import type { CodeBlockAttributes, CodeBlockOptions } from "./code-block";
 import type { CaretPosition } from "./utils";
+import { Check } from "@lucide/vue";
 
 type LanguageDef = { filename: string; title: string; alias?: string[] };
 
@@ -179,7 +180,11 @@ function onSearchKeydown(e: KeyboardEvent): void {
             @click="selectLanguage(lang.filename)"
           >
             <span>{{ lang.title }}</span>
-            <span v-if="languageDefinition?.filename === lang.filename" class="text-indigo-500">✓</span>
+            <Check
+              v-if="languageDefinition?.filename === lang.filename"
+              :size="12"
+              class="text-indigo-500"
+            />
             <span v-else-if="lang.alias" class="text-[9px] text-text-muted">
               {{ lang.alias.slice(0, 3).join(", ").toUpperCase() }}
             </span>

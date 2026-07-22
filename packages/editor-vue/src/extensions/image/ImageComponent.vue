@@ -38,6 +38,7 @@ Scoped differences from upstream (this 2.4e increment):
 */
 import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/vue-3";
+import { Image as ImageIcon } from "@lucide/vue";
 import Resizer from "../../components/Resizer.vue";
 import { useObserver } from "../../utils/use-observer";
 import { corsify, revokeBloburl, toBlobURL } from "../../utils/downloader";
@@ -101,6 +102,16 @@ const justifyClass = computed(() =>
 let attachmentLoadAttempts = 0;
 let cancelled = false;
 const MAX_ATTACHMENT_ATTEMPTS = 8;
+// Subscription to the host's "attachment downloaded" event (wired by
+// `wireAttachmentStorage` in the renderer). When a blob queued by
+// `db.attachments.downloadMedia(noteId)` lands, the host fires
+// `EVENTS.mediaAttachmentDownloaded` with the hash; if it matches this image
+// we reset the retry counter and re-fetch — the local file now exists, so
+// `getAttachmentData` succeeds. Without this, a slow network download can
+// outlast the 8×150ms retry window and leave the image on the placeholder
+// until a note switch forces a remount. No-op when the hook isn't wired
+// (pure-editor test setups).
+let unsubscribeDownload: (() => void) | undefined;
 async function loadAttachmentBlob(): Promise<void> {
   if (cancelled || src.value || !hash.value || bloburl.value) return;
   const getAttachmentData = (
@@ -163,6 +174,25 @@ watch(
 // preserves lazy-loading for genuinely off-screen images (rect outside the
 // viewport → skip) while recovering the observer's first-mount miss.
 onMounted(() => {
+  // Subscribe to the host's "attachment downloaded" event so a blob that lands
+  // after our retry window re-triggers a load. Only when a hash is present
+  // (hash-less inline-src images never need it).
+  if (hash.value) {
+    const subscribe = (
+      props.editor.storage as {
+        subscribeAttachmentDownloaded?: (
+          handler: (payload: { hash: string; src?: string }) => void
+        ) => { unsubscribe: () => void } | undefined;
+      }
+    ).subscribeAttachmentDownloaded;
+    const sub = subscribe?.((payload) => {
+      if (cancelled || bloburl.value || src.value) return;
+      if (payload?.hash !== hash.value) return;
+      attachmentLoadAttempts = 0;
+      void loadAttachmentBlob();
+    });
+    unsubscribeDownload = sub?.unsubscribe;
+  }
   setTimeout(() => {
     if (cancelled || bloburl.value || src.value || !hash.value) return;
     if (inView.value) return; // observer already drove a load
@@ -189,6 +219,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   cancelled = true;
+  unsubscribeDownload?.();
   if (hash.value) revokeBloburl(hash.value);
 });
 
@@ -218,7 +249,10 @@ function onResizeStop(w: number, h: number): void {
       <div
         ref="frameRef"
         class="image-frame"
-        :class="{ 'image-frame--selected': props.selected }"
+        :class="{
+          'image-frame--selected': props.selected,
+          'image-frame--placeholder': !imgSrc && hash
+        }"
       >
         <div
           v-if="editor.isEditable && props.selected"
@@ -235,12 +269,7 @@ function onResizeStop(w: number, h: number): void {
 
         <!-- placeholder overlay while we wait for the blob (hash, no src yet) -->
         <div v-if="!imgSrc && hash" class="image-placeholder">
-          <svg viewBox="0 0 24 24" width="72" height="72" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
-            />
-          </svg>
+          <ImageIcon :size="72" aria-hidden="true" />
         </div>
 
         <img
@@ -265,7 +294,10 @@ function onResizeStop(w: number, h: number): void {
 .image-frame {
   position: relative;
   width: 100%;
-  min-height: 80px;
+  /* Fill the Resizer wrapper so the frame inherits its aspect-ratio-derived
+     height (the wrapper clamps width via max-width:100% when the editor
+     narrows; aspect-ratio then scales the height proportionally). */
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -273,6 +305,12 @@ function onResizeStop(w: number, h: number): void {
   border-radius: 6px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.03);
+}
+/* Only the placeholder state needs a min-height (no <img> to size the box yet).
+   A blanket min-height would force a small resized image (aspect-height < 80px)
+   tall and re-break the aspect ratio the Resizer preserves. */
+.image-frame--placeholder {
+  min-height: 80px;
 }
 .image-frame--selected {
   border-color: rgba(99, 102, 241, 0.65);

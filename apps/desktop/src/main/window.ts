@@ -18,10 +18,12 @@
  */
 import { BrowserWindow, nativeTheme, screen } from "electron";
 import { registerWindowServer, type WindowServer } from "../contracts/router";
+import type { WindowBounds } from "../contracts/session-state";
 import { resolveTabRelease, type ScreenRect, type WindowRect } from "../contracts/tab-tear-off";
 import { selectBroadcastTargets } from "../contracts/note-broadcast";
 import { openSettingsWindow, isSettingsWindow } from "./settings-window";
 import { openNoteWindow } from "./note-window";
+import { resolveContextForSender } from "./session-state";
 
 /** The main app window — set once it is created so `notifyDataChanged` can
  *  forward cross-window DB-mutation signals to it. */
@@ -36,10 +38,13 @@ export function createWindowServer(preloadPath: string): WindowServer {
     openSettings(): void {
       openSettingsWindow(preloadPath);
     },
-    openNote(noteId: string): void {
-      openNoteWindow(preloadPath, noteId);
+    openNote(noteId: string, bounds?: WindowBounds | undefined, contextId?: string | undefined): void {
+      openNoteWindow(preloadPath, noteId, bounds, contextId);
     },
-    releaseTab(input: { noteId: string; startScreenX: number; startScreenY: number }): {
+    releaseTab(
+      input: { noteId: string; startScreenX: number; startScreenY: number },
+      senderId?: number | undefined
+    ): {
       action: "none" | "moved" | "toreOff";
     } {
       // `dragend`'s `screenX/screenY` are unreliable on macOS when the drop
@@ -89,7 +94,12 @@ export function createWindowServer(preloadPath: string): WindowServer {
         // Target vanished between resolve + send → fall through to tear-off.
       }
       if (res.action === "toreOff") {
-        openNoteWindow(preloadPath, input.noteId);
+        // Track the torn-off note window under the source window's account so
+        // it reopens next run (it owns the same DB as the source). Best-effort:
+        // if the source window isn't bound yet, the note window opens but isn't
+        // persisted.
+        const contextId = resolveContextForSender(senderId);
+        openNoteWindow(preloadPath, input.noteId, undefined, contextId);
         return { action: "toreOff" };
       }
       return { action: "none" };

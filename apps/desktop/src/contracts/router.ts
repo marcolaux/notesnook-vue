@@ -18,6 +18,13 @@
  */
 import { initTRPC } from "@trpc/server";
 import { z } from "zod";
+import {
+  type ContextSession,
+  type LayoutSnapshot,
+  type WindowBounds,
+  LayoutSnapshotSchema,
+  WindowBoundsSchema
+} from "./session-state";
 
 const t = initTRPC.create();
 
@@ -321,8 +328,13 @@ export interface WindowServer {
    * Focuses the existing window for that note if one is alive; otherwise
    * creates one that boots the full shell into focus mode with the note open.
    * Called from any app window. See `src/main/note-window.ts`.
+   *
+   * Optional `bounds` restores a saved size/position (used when reopening note
+   * windows from the last session); optional `contextId` lets main track the
+   * note window's bounds under the opening account. Both omitted by callers
+   * that don't restore (a user-initiated tear-off).
    */
-  openNote(noteId: string): void;
+  openNote(noteId: string, bounds?: WindowBounds | undefined, contextId?: string | undefined): void;
   /**
    * Resolve a tab drag that started at `(startScreenX, startScreenY)` (OS screen
    * coordinates, captured in the renderer at `dragstart`) at release:
@@ -342,7 +354,10 @@ export interface WindowServer {
    * the pure `resolveTabRelease` predicate. Returns `{ action }` so the
    * renderer closes the source tab only when the move/tear-off actually happened.
    */
-  releaseTab(input: { noteId: string; startScreenX: number; startScreenY: number }): {
+  releaseTab(
+    input: { noteId: string; startScreenX: number; startScreenY: number },
+    senderId?: number | undefined
+  ): {
     action: "none" | "moved" | "toreOff";
   };
   /**
@@ -381,6 +396,109 @@ export function registerWindowServer(server: WindowServer): void {
 function requireWindowServer(): WindowServer {
   if (!windowServer) throw new Error("Window server not registered (main boot incomplete)");
   return windowServer;
+}
+
+// ---------------------------------------------------------------------------
+// Session server — persists the editor session (open tabs + split layout,
+// torn-off note windows, window bounds) to a local `userData/session.json`,
+// keyed per account. Implemented in `src/main/session-state.ts`. See
+// `contracts/session-state.ts` for the persisted shape (local-only; NOT synced).
+// ---------------------------------------------------------------------------
+export interface SessionServer {
+  /** Load the per-account session (main-window layout + note windows + main
+   *  bounds). Returns an empty session when none is saved (fresh install). */
+  loadLayout(contextId: string): Promise<ContextSession>;
+  /** Persist the main window's layout snapshot (open tabs + splits + history). */
+  saveLayout(contextId: string, snapshot: LayoutSnapshot): Promise<void>;
+  /** Persist the main window's bounds. */
+  saveWindowBounds(contextId: string, bounds: WindowBounds): Promise<void>;
+  /** Persist a torn-off note window's bounds (upserted by noteId). */
+  saveNoteWindowBounds(contextId: string, noteId: string, bounds: WindowBounds): Promise<void>;
+  /** Bind a window (identified by its webContents `senderId`) to a context so
+   *  main-side geometry writes land under the right account. Called once on
+   *  boot, before the first `saveLayout`. */
+  bindContext(senderId: number | undefined, contextId: string): void;
+}
+let sessionServer: SessionServer | undefined;
+export function registerSessionServer(server: SessionServer): void {
+  sessionServer = server;
+}
+function requireSessionServer(): SessionServer {
+  if (!sessionServer) throw new Error("Session server not registered (main boot incomplete)");
+  return sessionServer;
+}
+
+// ---------------------------------------------------------------------------
+// Shell server — OS-interaction capabilities for the attachment preview's
+// "Open externally" action. Implemented in `src/main/shell.ts` and injected via
+// `registerShellServer`. Kept separate from the `fs` chunk store (which is the
+// fixed attachment directory with a strict name regex) — this writes arbitrary
+// bytes to a temp dir under a UUID-prefixed, sanitised filename and opens the
+// resulting path with the OS default handler (Electron `shell.openPath`).
+// ---------------------------------------------------------------------------
+export interface ShellServer {
+  /** Write `data` to a unique temp file and return its absolute path. The
+   *  filename is sanitised (path separators stripped) and placed under
+   *  `<temp>/notesnook-attachments/<uuid>-<sanitised-filename>` so there's no
+   *  collision with other attachments and no path traversal. */
+  writeTemp(input: { filename: string; data: Uint8Array }): Promise<{ path: string }>;
+  /** Open `path` with the OS default handler (Electron `shell.openPath`).
+   *  Returns the error string from `shell.openPath` (empty on success). */
+  openPath(input: { path: string }): Promise<string>;
+}
+
+let shellServer: ShellServer | undefined;
+export function registerShellServer(server: ShellServer): void {
+  shellServer = server;
+}
+function requireShell(): ShellServer {
+  if (!shellServer) throw new Error("Shell server not registered (main boot incomplete)");
+  return shellServer;
+}
+
+// ---------------------------------------------------------------------------
+// Reminders — OS-notification scheduling for reminders. Implemented in
+// `src/main/reminders.ts` via Electron `Notification` + `setTimeout`. The
+// renderer computes each reminder's next fire time (core's
+// `getUpcomingReminderTime`) and pushes the schedule here; main fires the
+// notification + signals the renderer (`app:reminder-fired`) so it can
+// reschedule repeats. Injected via `registerRemindersServer`.
+// ---------------------------------------------------------------------------
+
+/** One scheduled notification. The renderer builds these via
+ *  `buildReminderSchedule` (pure, in `utils/reminders.ts`). `description` is
+ *  optional; `exactOptionalPropertyTypes`-safe (undefined stripped upstream). */
+export interface ScheduledReminder {
+  id: string;
+  title: string;
+  /** Optional notification body. `undefined` is allowed (the renderer strips
+   *  it when a reminder has no description); included for `exactOptionalPropertyTypes`
+   *  compat with the zod-inferred bridge input (`z.string().optional()`). */
+  description?: string | undefined;
+  /** Optional note id linked to the reminder (via `db.relations`). When set,
+   *  clicking the OS notification opens this note (`app:open-note`). `undefined`
+   *  for standalone reminders; `exactOptionalPropertyTypes`-safe. */
+  noteId?: string | undefined;
+  /** Epoch ms when the notification should fire. Must be in the future. */
+  fireAt: number;
+}
+
+export interface RemindersServer {
+  /** Replace the active schedule with `items` (clears any existing timers).
+   *  Items with a non-future `fireAt` are skipped (stale). Never throws — a
+   *  failure to schedule one item does not abort the rest. */
+  schedule(items: ScheduledReminder[]): Promise<void>;
+  /** Clear all scheduled timers (e.g. before a re-push or on quit). */
+  clear(): Promise<void>;
+}
+
+let remindersServer: RemindersServer | undefined;
+export function registerRemindersServer(server: RemindersServer): void {
+  remindersServer = server;
+}
+function requireReminders(): RemindersServer {
+  if (!remindersServer) throw new Error("Reminders server not registered (main boot incomplete)");
+  return remindersServer;
 }
 
 // ---------------------------------------------------------------------------
@@ -430,10 +548,21 @@ export const appRouter = t.router({
     openSettings: t.procedure.mutation(() => requireWindowServer().openSettings()),
     // Open a note in its own window (torn off from a tab). Focuses the existing
     // window for that note if alive; otherwise creates one that boots into
-    // focus mode with the note open (see `src/main/note-window.ts`).
+    // focus mode with the note open (see `src/main/note-window.ts`). Optional
+    // `bounds` restores a saved size/position (used when reopening note windows
+    // from the last session); optional `contextId` lets main track the note
+    // window under the opening account (it owns the same DB as the caller).
     openNote: t.procedure
-      .input(z.object({ noteId: z.string() }))
-      .mutation(({ input }) => requireWindowServer().openNote(input.noteId)),
+      .input(
+        z.object({
+          noteId: z.string(),
+          bounds: WindowBoundsSchema.optional(),
+          contextId: z.string().optional()
+        })
+      )
+      .mutation(({ input }) =>
+        requireWindowServer().openNote(input.noteId, input.bounds, input.contextId)
+      ),
     // Resolve a dragged tab at release (move to another window / tear off / none).
     // Main reads the live cursor + every window's OS bounds and applies the
     // pure `resolveTabRelease` predicate; moves the tab to the window under the
@@ -444,7 +573,9 @@ export const appRouter = t.router({
       .input(
         z.object({ noteId: z.string(), startScreenX: z.number(), startScreenY: z.number() })
       )
-      .mutation(({ input }) => requireWindowServer().releaseTab(input)),
+      .mutation(({ ctx, input }) =>
+        requireWindowServer().releaseTab(input, (ctx as { senderId?: number }).senderId)
+      ),
     // Notify the main window that the shared DB changed from another window
     // (backup import / vault action in Settings) so it reloads its stores.
     notifyDataChanged: t.procedure.mutation(() => requireWindowServer().notifyDataChanged()),
@@ -583,6 +714,84 @@ export const appRouter = t.router({
     openFile: t.procedure
       .input(z.object({ extensions: z.array(z.string()) }))
       .mutation(({ input }) => requireDialog().openFile(input.extensions))
+  }),
+
+  // Shell — OS-interaction for the attachment preview's "Open externally"
+  // action (write decrypted bytes to a temp file, open with the OS handler).
+  // Implemented in `src/main/shell.ts` via Electron `shell.openPath` + node `fs`.
+  shell: t.router({
+    writeTemp: t.procedure
+      .input(
+        z.object({
+          filename: z.string(),
+          data: z.custom<Uint8Array>((v) => v instanceof Uint8Array)
+        })
+      )
+      .mutation(({ input }) => requireShell().writeTemp(input)),
+    openPath: t.procedure
+      .input(z.object({ path: z.string() }))
+      .mutation(({ input }) => requireShell().openPath(input))
+  }),
+
+  // Reminders — OS-notification scheduling. The renderer computes each
+  // reminder's next fire time (core's `getUpcomingReminderTime`) and pushes the
+  // schedule here; main sets a `setTimeout` per item + fires an Electron
+  // `Notification`, then signals the renderer (`app:reminder-fired`) so it can
+  // reschedule repeats / drop fired once-reminders. Implemented in
+  // `src/main/reminders.ts`.
+  reminders: t.router({
+    schedule: t.procedure
+      .input(
+        z.array(
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            description: z.string().optional(),
+            noteId: z.string().optional(),
+            fireAt: z.number()
+          })
+        )
+      )
+      .mutation(({ input }) => requireReminders().schedule(input)),
+    clear: t.procedure.mutation(() => requireReminders().clear())
+  }),
+
+  // Session persistence — the editor session (open tabs + split layout, torn-off
+  // note windows, window bounds), saved locally per account. Implemented in
+  // `src/main/session-state.ts`; shape in `contracts/session-state.ts`.
+  session: t.router({
+    // Load the per-account session (main-window layout + note windows + main
+    // bounds). Returns an empty session when none is saved.
+    loadLayout: t.procedure
+      .input(z.object({ contextId: z.string() }))
+      .query(({ input }) => requireSessionServer().loadLayout(input.contextId)),
+    // Persist the main window's layout snapshot. The zod-validated payload is
+    // cast to the hand-written `LayoutSnapshot` (the store's canonical shape) —
+    // the two differ only in optional-`undefined` markers under
+    // `exactOptionalPropertyTypes`, which zod infers but the store types omit;
+    // the cast is safe because zod already validated the structure.
+    saveLayout: t.procedure
+      .input(z.object({ contextId: z.string(), snapshot: LayoutSnapshotSchema }))
+      .mutation(({ input }) =>
+        requireSessionServer().saveLayout(input.contextId, input.snapshot as LayoutSnapshot)
+      ),
+    // Persist the main window's bounds.
+    saveWindowBounds: t.procedure
+      .input(z.object({ contextId: z.string(), bounds: WindowBoundsSchema }))
+      .mutation(({ input }) => requireSessionServer().saveWindowBounds(input.contextId, input.bounds)),
+    // Persist a torn-off note window's bounds (upserted by noteId).
+    saveNoteWindowBounds: t.procedure
+      .input(z.object({ contextId: z.string(), noteId: z.string(), bounds: WindowBoundsSchema }))
+      .mutation(({ input }) =>
+        requireSessionServer().saveNoteWindowBounds(input.contextId, input.noteId, input.bounds)
+      ),
+    // Bind the calling window to a context (by webContents senderId) so main-
+    // side geometry writes land under the right account. Called once on boot.
+    bindContext: t.procedure
+      .input(z.object({ contextId: z.string() }))
+      .mutation(({ ctx, input }) =>
+        requireSessionServer().bindContext((ctx as { senderId?: number }).senderId, input.contextId)
+      )
   })
 });
 

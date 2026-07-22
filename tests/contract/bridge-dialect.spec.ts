@@ -12,6 +12,7 @@
  */
 import { describe, it, expect } from "vitest";
 import BetterSqlite from "better-sqlite3-multiple-ciphers";
+import { loadFts5Extensions } from "./helpers/fts5-extensions";
 import { gzipSync, gunzipSync } from "node:zlib";
 import type { ICompressor, SQLiteOptions } from "@notesnook-vue/contracts";
 import type { SqliteBridgeClient } from "../../apps/desktop/src/renderer/src/platform/sqlite-dialect";
@@ -36,6 +37,7 @@ class InProcessCompressor implements ICompressor {
  */
 function createFakeBridgeSqlite(): SqliteBridgeClient & { runCalls: Array<{ sql: string; parameters: unknown[] }> } {
   const db = new BetterSqlite(":memory:").unsafeMode(true);
+  loadFts5Extensions(db);
   const runCalls: Array<{ sql: string; parameters: unknown[] }> = [];
   return {
     open: { mutate: async ({ filePath }) => filePath },

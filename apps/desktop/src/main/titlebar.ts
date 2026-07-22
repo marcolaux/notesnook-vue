@@ -19,6 +19,7 @@
  */
 import type { BrowserWindowConstructorOptions, WebPreferences } from "electron";
 import { detectPlatform, type Platform } from "../contracts/titlebar";
+import type { WindowBounds } from "../contracts/session-state";
 
 const BASE_WINDOW = {
   width: 1280,
@@ -55,17 +56,32 @@ function webPreferences(preloadPath: string): WebPreferences {
  * Build the full `BrowserWindow` constructor options for a platform. The
  * preload path is resolved by the caller (it depends on the main module's
  * `__dirname`, which differs in dev vs. packaged).
+ *
+ * Optional `bounds` overrides the `BASE_WINDOW` width/height/x/y so a window
+ * reopens at its last size/position (session restore). The caller applies
+ * `win.maximize()` after construction when `bounds.maximized` is true (a
+ * maximized window's saved size is its unmaximized restore size).
  */
 export function buildBrowserWindowOptions(
   platform: Platform,
-  preloadPath: string
+  preloadPath: string,
+  bounds?: WindowBounds | undefined
 ): BrowserWindowConstructorOptions {
   const webPrefs = webPreferences(preloadPath);
+  const sized: BrowserWindowConstructorOptions = bounds
+    ? {
+        ...BASE_WINDOW,
+        width: bounds.width,
+        height: bounds.height,
+        x: bounds.x,
+        y: bounds.y
+      }
+    : { ...BASE_WINDOW };
 
   switch (platform) {
     case "macos":
       return {
-        ...BASE_WINDOW,
+        ...sized,
         titleBarStyle: "hiddenInset",
         frame: false,
         vibrancy: "under-window",
@@ -74,7 +90,7 @@ export function buildBrowserWindowOptions(
       };
     case "windows":
       return {
-        ...BASE_WINDOW,
+        ...sized,
         titleBarStyle: "hidden",
         titleBarOverlay: TITLE_BAR_OVERLAY,
         backgroundMaterial: "acrylic",
@@ -82,7 +98,7 @@ export function buildBrowserWindowOptions(
       };
     case "linux":
       return {
-        ...BASE_WINDOW,
+        ...sized,
         titleBarStyle: "hidden",
         titleBarOverlay: TITLE_BAR_OVERLAY,
         frame: false,
@@ -90,7 +106,7 @@ export function buildBrowserWindowOptions(
       };
     default:
       return {
-        ...BASE_WINDOW,
+        ...sized,
         frame: true,
         webPreferences: webPrefs
       };
@@ -100,7 +116,8 @@ export function buildBrowserWindowOptions(
 /** Convenience: detect the platform from `process.platform` and build options. */
 export function buildBrowserWindowOptionsForOS(
   os: string,
-  preloadPath: string
+  preloadPath: string,
+  bounds?: WindowBounds | undefined
 ): BrowserWindowConstructorOptions {
-  return buildBrowserWindowOptions(detectPlatform(os), preloadPath);
+  return buildBrowserWindowOptions(detectPlatform(os), preloadPath, bounds);
 }

@@ -22,6 +22,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { SqliteDialect } from "@streetwriters/kysely";
 import BetterSqlite from "better-sqlite3-multiple-ciphers";
+import { loadFts5Extensions } from "./helpers/fts5-extensions";
 import { gzipSync, gunzipSync } from "node:zlib";
 import type {
   ICompressor,
@@ -118,6 +119,7 @@ class InProcessCompressor implements ICompressor {
 
 async function setupDb(): Promise<Database> {
   const dbInstance = new BetterSqlite(":memory:");
+  loadFts5Extensions(dbInstance);
   // One shared key-store instance (the factory is called per crypto op; a fresh
   // instance each time would lose the key written by `deriveCryptoKey`).
   const keyStore = new InMemoryKeyStore();

@@ -55,7 +55,13 @@ export type {
   SyncOptions,
   Monograph,
   HistorySession,
-  SessionContentItem
+  SessionContentItem,
+  ToolbarConfig,
+  ToolbarConfigPlatforms,
+  /** A settings row. `key` is constrained to `keyof SettingItemMap`; custom
+   *  namespaced keys (e.g. our `custom:notebookIcons`) must be cast on write
+   *  via the bypass path — see `stores/notebook-icons.ts`. */
+  SettingItem
 } from "@notesnook/core";
 
 export type {
@@ -81,8 +87,21 @@ export {
   hosts,
   EV,
   EVENTS,
-  isReminderActive
+  isReminderActive,
+  formatReminderTime,
+  /** Deterministic MD5 id used by the settings collection (`makeId(key)` → row
+   *  id). Re-exported so custom settings rows (e.g. `custom:notebookIcons`)
+   *  compute the same id across devices. */
+  makeId
 } from "@notesnook/core";
+
+// `getUpcomingReminderTime` is exported by core's `collections/reminders`
+// module but NOT hoisted to the barrel `index`. Rather than patch the vendored
+// dist barrel (the old build-vendor shim 3), import it via a subpath export
+// (`./collections/reminders`) that our build script adds to the vendored
+// `@notesnook/core` package.json — using upstream's real function with zero
+// patches to core's dist/source.
+export { getUpcomingReminderTime } from "@notesnook/core/collections/reminders";
 
 export type {
   Cipher,

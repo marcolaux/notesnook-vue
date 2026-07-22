@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import { SqliteDialect } from "@streetwriters/kysely";
 import BetterSqlite from "better-sqlite3-multiple-ciphers";
+import { loadFts5Extensions } from "./helpers/fts5-extensions";
 import { gzipSync, gunzipSync } from "node:zlib";
 import type { ICompressor, SQLiteOptions } from "@notesnook-vue/contracts";
 import { NNStorage } from "../../apps/desktop/src/renderer/src/platform/storage";
@@ -77,6 +78,7 @@ describe("M7: db.init() + notes round-trip with real NNStorage", () => {
   it("initialises the Database with NNStorage (memory) and round-trips a note", async () => {
     const dbInstance = new BetterSqlite(":memory:");
     dbInstance.unsafeMode(true);
+    loadFts5Extensions(dbInstance);
     const platform: {
       sqliteOptions: SQLiteOptions;
       storage: NNStorage;

@@ -58,6 +58,24 @@ const appEvents = {
     const handler = () => listener();
     ipcRenderer.on("app:data-changed", handler);
     return () => ipcRenderer.removeListener("app:data-changed", handler);
+  },
+  // A reminder notification fired in the main process. The renderer refreshes
+  // its reminders store (so a fired once-reminder drops out of active, and a
+  // repeat reminder reschedules to its next occurrence via
+  // `getUpcomingReminderTime`).
+  onReminderFired(listener: (id: string) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, id: string) => listener(id);
+    ipcRenderer.on("app:reminder-fired", handler);
+    return () => ipcRenderer.removeListener("app:reminder-fired", handler);
+  },
+  // The app is about to quit (Cmd+Q / tray Quit / last-window close). Sent by
+  // main's `before-quit` handler so the renderer can flush its last editor-
+  // session layout snapshot before the process exits. Best-effort: the IPC
+  // mutation may not land before quit, so main also writes its own cached copy.
+  onBeforeQuit(listener: () => void): () => void {
+    const handler = () => listener();
+    ipcRenderer.on("app:before-quit", handler);
+    return () => ipcRenderer.removeListener("app:before-quit", handler);
   }
 };
 

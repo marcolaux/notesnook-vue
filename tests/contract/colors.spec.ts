@@ -70,6 +70,19 @@ const db = {
       for (const id of ids) db.colors._store.delete(id);
     }),
     count: vi.fn(async (id: string) => db.colors._counts.get(id) ?? 0)
+  },
+  // Upstream `db.settings` sidebar-order accessors for the colors section
+  // (synced). Backed by an in-memory array; `getSideBarOrder` returns [] by
+  // default (matching upstream's seeded default).
+  settings: {
+    _colorOrder: [] as string[],
+    getSideBarOrder: vi.fn((section: string) =>
+      section === "colors" ? db.settings._colorOrder : []
+    ),
+    setSideBarOrder: vi.fn(async (section: string, ids: string[]) => {
+      if (section === "colors") db.settings._colorOrder = ids;
+      return "id";
+    })
   }
 };
 vi.mock("@/platform/bootstrap", () => ({
@@ -122,6 +135,9 @@ describe("useColorsStore", () => {
     db.colors.add.mockClear();
     db.colors.remove.mockClear();
     db.colors.count.mockClear();
+    db.settings._colorOrder = [];
+    db.settings.getSideBarOrder.mockClear();
+    db.settings.setSideBarOrder.mockClear();
   });
 
   it("starts empty", () => {
@@ -214,5 +230,103 @@ describe("useColorsStore", () => {
     await s.refresh();
     expect(s.items).toHaveLength(1);
     expect(s.loading).toBe(false);
+  });
+
+  it("renameColor upserts by id (preserves colorCode) + reloads", async () => {
+    db.colors._store.set("c1", fakeColor({ id: "c1", title: "Red", colorCode: "#f00" }));
+    const s = useColorsStore();
+    await s.refresh();
+    const ok = await s.renameColor("c1", "Crimson");
+    expect(ok).toBe(true);
+    expect(db.colors.add).toHaveBeenCalledWith({ id: "c1", title: "Crimson" });
+    expect(s.items[0].title).toBe("Crimson");
+    expect(s.items[0].colorCode).toBe("#f00"); // preserved
+  });
+
+  it("renameColor trims the title + returns false on empty", async () => {
+    db.colors._store.set("c1", fakeColor({ id: "c1", title: "Red", colorCode: "#f00" }));
+    const s = useColorsStore();
+    await s.refresh();
+    expect(await s.renameColor("c1", "   ")).toBe(false);
+    expect(await s.renameColor("", "x")).toBe(false);
+    expect(db.colors.add).not.toHaveBeenCalled();
+  });
+
+  it("renameColor never throws + sets lastError on failure", async () => {
+    db.colors._store.set("c1", fakeColor({ id: "c1", title: "Red", colorCode: "#f00" }));
+    db.colors.add.mockRejectedValueOnce(new Error("boom"));
+    const s = useColorsStore();
+    await s.refresh();
+    expect(await s.renameColor("c1", "Crimson")).toBe(false);
+    expect(s.lastError).toBe("boom");
+    expect(s.busy).toBe(false);
+  });
+
+  it("refresh reads + applies the stored sideBarOrder:colors", async () => {
+    db.colors._store.set("a", fakeColor({ id: "a", title: "Banana", colorCode: "#1" }));
+    db.colors._store.set("b", fakeColor({ id: "b", title: "apple", colorCode: "#2" }));
+    db.colors._store.set("c", fakeColor({ id: "c", title: "Cherry", colorCode: "#3" }));
+    db.settings._colorOrder = ["a", "b", "c"]; // override title order
+    const s = useColorsStore();
+    await s.refresh();
+    expect(db.settings.getSideBarOrder).toHaveBeenCalledWith("colors");
+    expect(s.order).toEqual(["a", "b", "c"]);
+    // a + b listed in order; c unlisted → appended after (title tiebreak).
+    expect(s.items.map((x) => x.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("refresh defaults to title sort when no stored order", async () => {
+    db.colors._store.set("a", fakeColor({ id: "a", title: "Banana", colorCode: "#1" }));
+    db.colors._store.set("b", fakeColor({ id: "b", title: "apple", colorCode: "#2" }));
+    const s = useColorsStore();
+    await s.refresh();
+    expect(s.order).toEqual([]);
+    expect(s.items.map((x) => x.id)).toEqual(["b", "a"]); // title-ascending
+  });
+
+  it("setOrder persists + re-applies the full sequence", async () => {
+    db.colors._store.set("a", fakeColor({ id: "a", title: "Banana", colorCode: "#1" }));
+    db.colors._store.set("b", fakeColor({ id: "b", title: "apple", colorCode: "#2" }));
+    db.colors._store.set("c", fakeColor({ id: "c", title: "Cherry", colorCode: "#3" }));
+    const s = useColorsStore();
+    await s.refresh();
+    // title order: b, a, c → reorder to c, a, b
+    await s.setOrder(["c", "a", "b"]);
+    expect(db.settings.setSideBarOrder).toHaveBeenCalledWith("colors", ["c", "a", "b"]);
+    expect(s.order).toEqual(["c", "a", "b"]);
+    expect(s.items.map((x) => x.id)).toEqual(["c", "a", "b"]);
+  });
+
+  it("setOrder([]) resets to the title sort", async () => {
+    db.colors._store.set("a", fakeColor({ id: "a", title: "Banana", colorCode: "#1" }));
+    db.colors._store.set("b", fakeColor({ id: "b", title: "apple", colorCode: "#2" }));
+    const s = useColorsStore();
+    await s.refresh();
+    await s.setOrder(["a", "b"]);
+    expect(s.items.map((x) => x.id)).toEqual(["a", "b"]);
+    await s.setOrder([]);
+    expect(db.settings.setSideBarOrder).toHaveBeenLastCalledWith("colors", []);
+    expect(s.order).toEqual([]);
+    expect(s.items.map((x) => x.id)).toEqual(["b", "a"]); // title-ascending
+  });
+
+  it("moveBefore reorders + persists the resulting sequence", async () => {
+    db.colors._store.set("a", fakeColor({ id: "a", title: "Banana", colorCode: "#1" }));
+    db.colors._store.set("b", fakeColor({ id: "b", title: "apple", colorCode: "#2" }));
+    db.colors._store.set("c", fakeColor({ id: "c", title: "Cherry", colorCode: "#3" }));
+    const s = useColorsStore();
+    await s.refresh(); // b, a, c
+    // move c before a
+    await s.moveBefore("c", "a", true);
+    expect(s.items.map((x) => x.id)).toEqual(["b", "c", "a"]);
+    expect(db.settings.setSideBarOrder).toHaveBeenLastCalledWith("colors", ["b", "c", "a"]);
+  });
+
+  it("moveBefore is a no-op when from === to", async () => {
+    db.colors._store.set("a", fakeColor({ id: "a", title: "A", colorCode: "#1" }));
+    const s = useColorsStore();
+    await s.refresh();
+    await s.moveBefore("a", "a", true);
+    expect(db.settings.setSideBarOrder).not.toHaveBeenCalled();
   });
 });

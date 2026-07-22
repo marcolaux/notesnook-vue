@@ -3,10 +3,12 @@
 #
 # Adapted from the upstream `apps/desktop/electron-builder.config.js` to this
 # repo's stack:
-#   - The only native module is `better-sqlite3-multiple-ciphers` (M4 dropped
-#     FTS5 loadable extensions — `trigram` is a SQLite built-in; no
-#     `sqlite-better-trigram` / `sqlite3-fts5-html`). It is `asarUnpack`-ed so
-#     its `.node` binary loads from disk.
+#   - Native artifacts that must load from disk (so `asarUnpack`-ed):
+#     `better-sqlite3-multiple-ciphers` (`.node`) + the M4 FTS5 tokenizer
+#     loadable extensions `sqlite-better-trigram` / `sqlite3-fts5-html`
+#     (`.dylib`/`.so`/`.dll` from their per-platform `*-<os>-<arch>` packages).
+#     These register the `better_trigram` + `html` tokenizers core's migrations
+#     reference, keeping core's dist byte-for-byte upstream.
 #   - Sodium is the vendored JS/WASM build (`@notesnook/sodium` browser.js) —
 #     no `sodium-native` prebuilds to ship.
 #   - The `nn://` custom protocol (Phase 6.5 deep links) is registered as a
@@ -41,10 +43,17 @@ productName: Notesnook Vue
 # editing this file (mirrors upstream's NN_PRODUCT_NAME / NN_APP_ID).
 artifactName: notesnook-vue_${os}_${arch}.${ext}
 asar: true
-# The native SQLite binary must be unpacked from asar so `require` can load the
-# `.node` file from disk (Electron cannot `require` binaries inside asar).
+# Native binaries must be unpacked from asar so they load from disk (Electron
+# cannot `require`/`loadExtension` binaries inside asar): the SQLite `.node`
+# and the M4 FTS5 tokenizer `.dylib`/`.so`/`.dll` (per-platform `*-<os>-<arch>`
+# packages). `src/main/sqlite.ts` `getExtensionPath` rewrites `.asar` →
+# `.asar.unpacked` for the extension path.
 asarUnpack:
   - node_modules/better-sqlite3-multiple-ciphers/**
+  - node_modules/sqlite-better-trigram/**
+  - node_modules/sqlite-better-trigram-*/**
+  - node_modules/sqlite3-fts5-html/**
+  - node_modules/sqlite3-fts5-html-*/**
 
 directories:
   # `build/` holds icons + entitlements (deferred — created on-site).

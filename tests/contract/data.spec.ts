@@ -16,6 +16,7 @@
 import { describe, it, expect } from "vitest";
 import { SqliteDialect } from "@streetwriters/kysely";
 import BetterSqlite from "better-sqlite3-multiple-ciphers";
+import { loadFts5Extensions } from "./helpers/fts5-extensions";
 import { gzipSync, gunzipSync } from "node:zlib";
 import type {
   ICompressor,
@@ -45,6 +46,7 @@ function createInProcessPlatform(): {
   // One shared in-memory DB instance — `dialect()` may be called once by core
   // to build its Kysely; passing the instance (not a factory) keeps a single DB.
   const dbInstance = new BetterSqlite(":memory:");
+  loadFts5Extensions(dbInstance);
   return {
     sqliteOptions: {
       dialect: () => new SqliteDialect({ database: dbInstance }),

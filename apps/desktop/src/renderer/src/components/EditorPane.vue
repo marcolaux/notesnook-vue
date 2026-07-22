@@ -41,6 +41,8 @@ import {
 } from "@/utils/tab-dnd";
 import NoteTabs from "./NoteTabs.vue";
 import Editor from "./Editor.vue";
+import AttachmentPreview from "./AttachmentPreview.vue";
+import HistorySidebar from "./HistorySidebar.vue";
 
 const props = defineProps<{ groupId: string }>();
 const layout = useEditorLayoutStore();
@@ -48,6 +50,8 @@ const layout = useEditorLayoutStore();
 const activeTabId = computed<string | null>(
   () => layout.groups[props.groupId]?.activeTabId ?? null
 );
+/** The active tab object (read for `kind` to dispatch Editor vs AttachmentPreview). */
+const activeTab = computed(() => (activeTabId.value ? layout.tabs[activeTabId.value] ?? null : null));
 
 // --- Drag-to-split drop zones -----------------------------------------------
 const editorEl = ref<HTMLElement | null>(null);
@@ -110,15 +114,29 @@ function onEditorDrop(e: DragEvent): void {
     <div
       ref="editorEl"
       data-editor-body=""
-      class="relative min-h-0 min-w-0 flex-1"
+      class="relative flex min-h-0 min-w-0 flex-1"
       @dragover.capture="onEditorDragOver($event)"
       @dragleave="onEditorDragLeave($event)"
       @drop.capture="onEditorDrop($event)"
     >
-      <KeepAlive v-if="activeTabId" :max="12">
-        <Editor :key="activeTabId" :tab-id="activeTabId" />
-      </KeepAlive>
-      <Editor v-else :key="'draft:' + props.groupId" :group-id="props.groupId" />
+      <div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <KeepAlive v-if="activeTabId" :max="12">
+          <component
+            :is="activeTab?.kind === 'attachment' ? AttachmentPreview : Editor"
+            :key="activeTab?.kind === 'attachment' ? 'att:' + activeTabId : activeTabId"
+            :tab-id="activeTabId"
+          />
+        </KeepAlive>
+        <Editor v-else :key="'draft:' + props.groupId" :group-id="props.groupId" />
+      </div>
+
+      <!-- Per-tab note-history timeline sidebar (note tabs only). The
+           `activeTabId` term narrows it to a non-null string for the prop. -->
+      <HistorySidebar
+        v-if="activeTab?.kind === 'note' && activeTab.historyVisible && activeTabId"
+        :tab-id="activeTabId"
+        class="w-80 shrink-0 border-l border-glass-border"
+      />
 
       <!-- Drag-to-split zone overlay: only while a tab drag hovers this pane.
            `pointer-events-none` so it never intercepts clicks/editor input. -->
