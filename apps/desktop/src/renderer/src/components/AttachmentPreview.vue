@@ -188,7 +188,7 @@ onUnmounted(() => {
           {{ t("attachments.openExternally") }}
         </button>
       </div>
-      <div v-if="error" class="p-4 text-xs text-red-400">{{ error }}</div>
+      <div v-if="error" class="p-4 text-xs text-[var(--paragraph-error)]">{{ error }}</div>
     </div>
   </div>
 </template>

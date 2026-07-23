@@ -121,7 +121,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
   background: var(--color-surface-solid, rgba(24, 24, 24, 0.92));
   backdrop-filter: blur(var(--backdrop-blur-base, 24px));
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 24px color-mix(in srgb, black 35%, transparent);
   font-size: 13px;
 }
 

@@ -23,6 +23,7 @@ import {
 import { migrateLegacyDatabaseKeyIfNeeded } from "./key-store";
 import { bindEventBridge } from "./event-bridge";
 import { ensureLocalUser } from "./local-user";
+import { makeId, type SettingItem } from "@notesnook-vue/contracts";
 
 let database: Database | undefined;
 
@@ -125,6 +126,45 @@ export async function switchContext(contextId: ContextId): Promise<Database> {
 }
 
 /**
+ * Persistent "already seeded" flag stored in `db.settings` (a single row under
+ * the namespaced key `custom:seeded`). Seeding must run at most ONCE per
+ * database — we gate on this flag, NOT on note count. A user who deletes the
+ * welcome notes would otherwise trip the old `notes.count() > 0` guard (count
+ * drops to 0) and re-trigger seeding, and `db.tags.add` throws on the
+ * duplicate "phase-3" title — surfacing as a startup error. The flag is tied
+ * to the DB (wiped if the DB is wiped, so a truly fresh DB re-seeds), and uses
+ * the same `db.settings.collection` bypass as `stores/notebook-icons.ts`
+ * (stock `Settings.set/get` are private + reject unknown keys).
+ */
+const SEEDED_KEY = "custom:seeded";
+const SEEDED_ROW_ID = makeId(SEEDED_KEY);
+
+/** True if this DB has already been seeded (the flag row is present). */
+function isSeeded(db: Database): boolean {
+  const item = db.settings.collection.get(SEEDED_ROW_ID);
+  return !!item && item.value === "1";
+}
+
+/** Mark this DB as seeded so `seedIfEmpty` never runs again. Never throws. */
+async function markSeeded(db: Database): Promise<void> {
+  try {
+    const old = db.settings.collection.get(SEEDED_ROW_ID);
+    await db.settings.collection.upsert({
+      id: SEEDED_ROW_ID,
+      // Custom namespaced key; not in SettingItemMap, so cast (bypass path).
+      key: SEEDED_KEY as SettingItem["key"],
+      value: "1",
+      type: "settingitem",
+      dateCreated: old?.dateCreated ?? Date.now(),
+      dateModified: Date.now()
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[bootstrap] markSeeded failed:", e);
+  }
+}
+
+/**
  * Seed a couple of welcome notes on a fresh *local* database so the list isn't
  * empty in local mode. Account DBs are never seeded — they start empty and fill
  * from the server via sync (the user's "keep separate" choice: local data lives
@@ -132,7 +172,22 @@ export async function switchContext(contextId: ContextId): Promise<Database> {
  */
 async function seedIfEmpty(db: Database, contextId: ContextId): Promise<void> {
   if (!isLocal(contextId)) return; // accounts start empty — sync fills them
-  if ((await db.notes.all.count()) > 0) return;
+  // Authoritative gate: seed at most once per DB.
+  if (isSeeded(db)) return;
+  // Upgrade path: an install from before the flag existed may already hold
+  // seed data — most commonly the user deleted the welcome notes but the
+  // "phase-3" tag survived (the exact duplicate-tag startup error). Treat any
+  // existing notes/tags/notebooks as "already seeded": mark the flag and bail
+  // without re-seeding (which would throw on the duplicate tag). A genuinely
+  // fresh local DB has none of these, so it still seeds.
+  if (
+    (await db.notes.all.count()) > 0 ||
+    (await db.tags.all.count()) > 0 ||
+    (await db.notebooks.all.count()) > 0
+  ) {
+    await markSeeded(db);
+    return;
+  }
   await db.notes.add({
     title: "Welcome to Notesnook Vue",
     content: { type: "tiptap", data: "<p>This is your first note, stored in a real encrypted SQLite database via @notesnook/core.</p>" }
@@ -243,6 +298,9 @@ async function seedIfEmpty(db: Database, contextId: ContextId): Promise<void> {
   // data for the future sidebar "colors" section + note-color picker (on-site).
   // Accounts stay empty — sync fills them.
   await db.colors.add({ title: "Indigo", colorCode: "#5C6BC0" });
+  // Mark seeded LAST so the flag is only set after a complete, successful seed.
+  // If any add above throws, the flag stays unset and the next launch retries.
+  await markSeeded(db);
 }
 
 /** Returns the initialised Database singleton. Throws if bootstrap hasn't run. */

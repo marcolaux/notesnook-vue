@@ -31,11 +31,13 @@ import { Surface, Flex, Text, Button } from "@notesnook-vue/ui-vue";
 import { useSyncStore } from "@/stores/sync";
 import { useStatusStore } from "@/stores/status";
 import { useConfigStore } from "@/stores/config";
+import { useAuthStore } from "@/stores/auth";
 import { formatSyncRelative } from "@/utils/status";
 
 const sync = useSyncStore();
 const status = useStatusStore();
 const config = useConfigStore();
+const auth = useAuthStore();
 
 onMounted(() => {
   // The settings window doesn't bind sync events / clock on boot — do it here
@@ -64,9 +66,13 @@ const stateLabel = computed(() => {
   }
 });
 
-/** Sync-now is disabled while a sync is busy, or when sync is turned off, or
- *  while the window has no token (not logged in — surfaced via the error). */
-const canSyncNow = computed(() => !sync.busy && config.syncEnabled);
+/** Sync-now is disabled while a sync is busy, when sync is turned off, or when
+ *  not logged into a server account. Local mode (skipped login) has no token,
+ *  so a sync attempt here only fails — and can trip a core logout event that
+ *  clears the local-mode skip flag (re-shows the login screen on restart). */
+const canSyncNow = computed(
+  () => !sync.busy && config.syncEnabled && auth.isLoggedIn
+);
 
 async function onSyncNow(): Promise<void> {
   // Build options conditionally — `exactOptionalPropertyTypes` rejects an

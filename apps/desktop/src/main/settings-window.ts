@@ -45,13 +45,20 @@ export function isSettingsWindow(win: BrowserWindow | undefined | null): boolean
   return !!win && !win.isDestroyed() && win === settingsWindow;
 }
 
-export function openSettingsWindow(preloadPath: string): void {
+export function openSettingsWindow(preloadPath: string, section?: string): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     // eslint-disable-next-line no-console
     console.log("[settings-window] focusing existing window");
     if (settingsWindow.isMinimized()) settingsWindow.restore();
     settingsWindow.show();
     settingsWindow.focus();
+    // If a deep-link section was requested, nudge the existing window to it
+    // (best-effort: the renderer re-reads `?section=` on receiving this).
+    if (section) {
+      const u = new URL(settingsWindow.webContents.getURL());
+      u.searchParams.set("section", section);
+      void settingsWindow.webContents.loadURL(u.toString());
+    }
     return;
   }
 
@@ -92,12 +99,17 @@ export function openSettingsWindow(preloadPath: string): void {
     });
   }
 
+  // Deep-link section (e.g. `?section=updates`) so callers like the title-bar
+  // update badge can open Settings on a specific section. `SettingsLayout.vue`
+  // reads this on mount to seed its active section.
   const devUrl = process.env["ELECTRON_RENDERER_URL"];
   if (devUrl) {
-    void settingsWindow.loadURL(`${devUrl}?window=settings`);
+    const params = new URLSearchParams(section ? { window: "settings", section } : { window: "settings" });
+    void settingsWindow.loadURL(`${devUrl}?${params.toString()}`);
   } else {
-    void settingsWindow.loadFile(resolve(__dirname, "../renderer/index.html"), {
-      query: { window: "settings" }
-    });
+    const query: Record<string, string> = section
+      ? { window: "settings", section }
+      : { window: "settings" };
+    void settingsWindow.loadFile(resolve(__dirname, "../renderer/index.html"), { query });
   }
 }

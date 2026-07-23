@@ -456,6 +456,21 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     glyph: "film",
     run: (e) => chain(e).insertEmbed().run()
   },
+  {
+    id: "linkNote",
+    title: "Link to note",
+    keywords: ["note link", "internal link", "wiki", "mention", "backlink", "reference"],
+    slash: true,
+    glyph: "link",
+    // Insert `@` at the cursor, which the `NoteSuggest` extension matches
+    // immediately (its finder allows an empty query) → the NoteLinkPicker opens
+    // right where the user invoked the slash/omnibar command. Picking a note
+    // deletes the transient `@` (the suggestion range) + inserts the `link`
+    // mark; Escape also deletes it, so the `@` never litters the body. A no-op
+    // until `NoteSuggest` is registered (an isolated editor would just insert a
+    // literal `@`), matching the image action's "no-op until wired" contract.
+    run: (e) => chain(e).insertContent("@").run()
+  },
 
   // --- Conditional (contextual) settings — shown only when the selection is
   // inside the relevant node. The table node already has its own floating

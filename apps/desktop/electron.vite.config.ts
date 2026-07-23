@@ -2,6 +2,14 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import vue from "@vitejs/plugin-vue";
 import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
+
+// Read the app version at build time so it can be injected into the renderer
+// via `define` (the title-bar version label + the Updates settings section use
+// it as `__APP_VERSION__`). In a release build the publish workflow rewrites
+// this `version` field to the tag version before `npm run build`, so it matches
+// the version electron-builder bakes into `app-update.yml`.
+const pkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8")) as { version: string };
 
 export default defineConfig({
   main: {
@@ -39,6 +47,9 @@ export default defineConfig({
       ]
     },
     plugins: [vue(), tailwindcss()],
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version)
+    },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, "src/renderer/index.html") }

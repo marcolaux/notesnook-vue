@@ -28,6 +28,44 @@ import { applyManualOrder, moveIdTo } from "@/utils/sidebar-order";
  * on mount; note-color assignment + the picker UI are on-site follow-ups.
  */
 
+/**
+ * Palette cycled for freshly created colors (the Colors section header `+`).
+ * `db.colors.add` upserts by id **or colorCode** — a duplicate colorCode would
+ * update the existing color instead of creating one — so each new color gets
+ * the first code from this list not already in use (then a hue-nudged fallback
+ * if the whole palette is used). The title is renamed inline immediately after;
+ * the swatch is editable later via the color editor.
+ */
+const NEW_COLOR_PALETTE = [
+  "#5b8def",
+  "#22c55e",
+  "#ef4444",
+  "#f59e0b",
+  "#a855f7",
+  "#ec4899",
+  "#14b8a6",
+  "#64748b",
+  "#eab308",
+  "#0ea5e9"
+];
+
+/**
+ * Nudge a `#rrggbb` color's hue by `step` sixteenths of a turn (a cheap HSL-ish
+ * rotation on the RGB channels) to derive a distinct fallback code when the
+ * whole {@link NEW_COLOR_PALETTE} is already in use. Returns a valid `#rrggbb`.
+ */
+function nudgeHue(hex: string, step: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  // rotate the channels by `step` positions (3-cycle keeps it valid + distinct).
+  const rot = ((step % 3) + 3) % 3;
+  const [nr, ng, nb] =
+    rot === 1 ? [g, b, r] : rot === 2 ? [b, r, g] : [r, g, b];
+  const h = (v: number) => v.toString(16).padStart(2, "0");
+  return `#${h(nr)}${h(ng)}${h(nb)}`;
+}
+
 export const useColorsStore = defineStore("colors", () => {
   /** All colors, title-ascending then manual-order overlay (see `order`). */
   const items = ref<Color[]>([]);
@@ -221,6 +259,36 @@ export const useColorsStore = defineStore("colors", () => {
     }
   }
 
+  /**
+   * Create a new standalone color (the Colors section header `+`): a color
+   * titled `New color` with a swatch cycled from {@link NEW_COLOR_PALETTE},
+   * via `db.colors.add` (which requires title + colorCode). Returns the new id,
+   * or `null` on failure (error surfaced via `lastError`). The caller enters
+   * inline-rename so the user names it directly; the swatch is editable later.
+   * A numeric title suffix is appended if `New color` already exists, and the
+   * swatch code is the first palette color not already in use (a duplicate
+   * colorCode would upsert onto the existing color — distinct codes keep them
+   * separate; a hue-nudged fallback covers a full palette).
+   */
+  async function createColor(): Promise<string | null> {
+    const usedCodes = new Set(items.value.map((c) => c.colorCode.toLowerCase()));
+    let title = "New color";
+    let n = 2;
+    while (items.value.some((c) => c.title === title)) {
+      title = `New color ${n++}`;
+    }
+    let code = NEW_COLOR_PALETTE.find((c) => !usedCodes.has(c.toLowerCase()));
+    if (!code) {
+      // whole palette in use — derive a distinct code by nudging the first.
+      const base = NEW_COLOR_PALETTE[0] ?? "#5b8def";
+      let step = 1;
+      do {
+        code = nudgeHue(base, step++);
+      } while (usedCodes.has(code.toLowerCase()));
+    }
+    return add({ title, colorCode: code });
+  }
+
   /** Count the notes tagged with a color via `db.colors.count(id)` (core reads
    *  `relations.from(color,"note").count()`). Returns `0` on a miss/throw —
    *  never throws. */
@@ -251,6 +319,7 @@ export const useColorsStore = defineStore("colors", () => {
     add,
     remove,
     renameColor,
+    createColor,
     noteCount,
     isFavoriteColor,
     toggleFavoriteColor

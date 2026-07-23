@@ -13,7 +13,7 @@
  * singleton. Tests build their own instance to avoid shared-history bleed.
  */
 import { createRouter, createMemoryHistory, type Router } from "vue-router";
-import { routes } from "./routes";
+import { routes, RouteName } from "./routes";
 import { useAuthStore } from "@/stores/auth";
 
 export function installAuthGuard(router: Router): void {
@@ -22,6 +22,11 @@ export function installAuthGuard(router: Router): void {
     if (auth.status === "unknown") return true;
     if (!auth.showShell && to.path !== "/login") return { path: "/login" };
     if (auth.showShell && to.path === "/login") return { path: "/all" };
+    // Monographs (the published-notes view) is hidden in local-only mode —
+    // publishing is a server call gated on a logged-in account. The sidebar
+    // entry + goto command are already hidden; this is defense-in-depth for a
+    // stray programmatic / deep-link navigation to `/monographs`.
+    if (!auth.isLoggedIn && to.name === RouteName.monographs) return { path: "/all" };
     return true;
   });
 }

@@ -54,7 +54,12 @@ import {
   TextAlign,
   // Tag-mention (Phase 5.4): inline `#tag` chip node + `#`-triggered picker.
   TagMention,
-  TagSuggest
+  TagSuggest,
+  // Note-linking: `Link` (the standard `link` mark, byte-compatible with
+  // upstream `<a href="nn://note/<id>">`) + `NoteSuggest` (the `@`/`[[`-triggered
+  // picker; its own PluginKey so it doesn't collide with `SlashCommands`/`tagSuggest`).
+  Link,
+  NoteSuggest
 } from "@notesnook-vue/editor-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorStore } from "@/stores/editor";
@@ -63,7 +68,7 @@ import { useStatusStore } from "@/stores/status";
 import { usePropertiesStore } from "@/stores/properties";
 import { useCollectionsStore } from "@/stores/collections";
 import { textStats } from "@/utils/properties";
-import { useLinksStore } from "@/stores/links";
+import { useNoteFooter } from "@/composables/use-note-footer";
 import { readEditorStats } from "@/utils/status";
 import { scrollEditorToMatch } from "@/utils/search-scroll";
 import {
@@ -72,6 +77,7 @@ import {
 } from "@/editor/attachments-bridge";
 import { wireEditorColorPicker } from "@/editor/color-bridge";
 import { wireTagMention } from "@/editor/tag-mention-bridge";
+import { wireNoteLink } from "@/editor/note-link-bridge";
 import { goToCollection } from "@/utils/collection-nav";
 import EditorToolbar from "./EditorToolbar.vue";
 import FindBar from "./FindBar.vue";
@@ -84,7 +90,6 @@ const editorStore = useEditorStore();
 const status = useStatusStore();
 const properties = usePropertiesStore();
 const collections = useCollectionsStore();
-const links = useLinksStore();
 
 // --- This editor's tab / note (from the layout store, NOT the global active) -
 // `tabId` → bound to that tab; `groupId` → draft mode (no tab yet). Exactly one
@@ -95,6 +100,11 @@ const myTab = computed(() =>
 );
 const myNoteId = computed<string | null>(() => myTab.value?.noteId ?? null);
 const myGroupId = computed<string>(() => myTab.value?.groupId ?? props.groupId ?? "");
+/** Whether this editor's pane is the focused pane (`layout.activeGroupId`).
+ *  The focused pane's editor gets the full-intensity "paper" surface
+ *  (`.editor-pane-surface`); inactive panes get the same paper at half
+ *  intensity (`.editor-pane-inactive`) — still an editor, just de-emphasised. */
+const isPaneFocused = computed(() => layout.activeGroupId === myGroupId.value);
 const myNote = computed(() =>
   myNoteId.value ? notes.items.find((n) => n.id === myNoteId.value) ?? null : null
 );
@@ -107,6 +117,17 @@ const myContentState = computed(
 const isDraft = computed(() => !myNoteId.value);
 /** Registry key: `tabId` in tab mode, `"draft:" + groupId` in draft mode. */
 const myKey = computed(() => props.tabId ?? "draft:" + (props.groupId ?? ""));
+
+// --- Per-pane footer (tags + note-links + word count) ----------------------
+// Bound to THIS pane's note id (not the global active note), so a background
+// split pane's footer reflects its own note. Mutations delegate to the id-aware
+// properties/links store mutators then reload local state; `wordCount` is
+// pushed live from this editor's own text below (see `refreshStatus`). The
+// display refs are destructured to top-level bindings so the template auto-
+// unwraps them (the `footer` object itself is passed to the tag-mention
+// bridge, which needs the refs).
+const footer = useNoteFooter(myNoteId);
+const { tags, outgoing, incoming, wordCount } = footer;
 
 // --- Per-tab find & replace bar --------------------------------------------
 // `findOpen` is local + per-instance, so under `<KeepAlive>` each tab keeps its
@@ -197,11 +218,12 @@ function onTitleEnter(): void {
   inst.chain().focus().setTextSelection(1).run();
 }
 
-// --- Tags (assigned to this tab's note via the properties store) ------------
-// `properties.tags` auto-reloads on note switch (the store watches
-// `activeNoteId`). `collections.tags` is the full sidebar list — the source of
-// existing-tag suggestions. Adding a tag the sidebar doesn't know yet creates
-// it (`properties.createTag`) then refreshes the sidebar so it appears there.
+// --- Tags (assigned to this pane's note via the footer composable) ----------
+// `footer.tags` is bound to THIS pane's note (not the global active note), so
+// a background split pane's footer shows its own tags. `collections.tags` is the
+// full sidebar list — the source of existing-tag suggestions. Adding a tag the
+// sidebar doesn't know yet creates it (`footer.createTag`, which also refreshes
+// the sidebar) so it appears there.
 const tagQuery = ref("");
 const tagMenuOpen = ref(false);
 const tagInputEl = ref<HTMLInputElement | null>(null);
@@ -209,7 +231,7 @@ const tagInputEl = ref<HTMLInputElement | null>(null);
 /** Existing tags matching the query, excluding ones already assigned. */
 const tagSuggestions = computed(() => {
   const q = tagQuery.value.trim().toLowerCase();
-  const assigned = new Set(properties.tags.map((t) => t.id));
+  const assigned = new Set(tags.value.map((t) => t.id));
   return collections.tags
     .filter((t) => !assigned.has(t.id))
     .filter((t) => (q ? t.title.toLowerCase().includes(q) : true))
@@ -217,14 +239,14 @@ const tagSuggestions = computed(() => {
 });
 
 async function addExistingTag(tagId: string): Promise<void> {
-  await properties.addTag(tagId);
+  await footer.addTag(tagId);
   tagQuery.value = "";
   tagMenuOpen.value = false;
   tagInputEl.value?.focus();
 }
 
 async function removeAssignedTag(tagId: string): Promise<void> {
-  await properties.removeTag(tagId);
+  await footer.removeTag(tagId);
 }
 
 /** Click a footer tag chip → go to that tag's note list. The current note stays
@@ -241,7 +263,7 @@ async function commitTagInput(): Promise<void> {
   const exact = collections.tags.find(
     (t) => t.title.toLowerCase() === q.toLowerCase()
   );
-  if (exact && !properties.tags.some((t) => t.id === exact.id)) {
+  if (exact && !tags.value.some((t) => t.id === exact.id)) {
     await addExistingTag(exact.id);
     return;
   }
@@ -251,9 +273,8 @@ async function commitTagInput(): Promise<void> {
     tagMenuOpen.value = false;
     return;
   }
-  const created = await properties.createTag(q);
+  const created = await footer.createTag(q);
   if (created) {
-    await collections.load();
     tagQuery.value = "";
     tagMenuOpen.value = false;
     tagInputEl.value?.focus();
@@ -268,10 +289,10 @@ function onTagInputBlur(): void {
 }
 
 // --- Note links (incoming + outgoing) --------------------------------------
-// `links` auto-reloads on note switch (the store watches `activeNoteId`).
-// Outgoing chips are removable + clickable to open; incoming (backlinks) are
-// read-only. The add picker searches the notes list (excluding this note +
-// already-linked) — Enter links the first match.
+// `footer.outgoing`/`incoming` are bound to THIS pane's note (not the global
+// active note). Outgoing chips are removable + clickable to open; incoming
+// (backlinks) are read-only. The add picker searches the notes list (excluding
+// this note + already-linked) — Enter links the first match.
 const linkQuery = ref("");
 const linkMenuOpen = ref(false);
 const linkInputEl = ref<HTMLInputElement | null>(null);
@@ -280,7 +301,7 @@ const linkInputEl = ref<HTMLInputElement | null>(null);
 const linkSuggestions = computed(() => {
   const q = linkQuery.value.trim().toLowerCase();
   const activeId = myNoteId.value;
-  const linked = new Set(links.outgoing.map((l) => l.id));
+  const linked = new Set(outgoing.value.map((l) => l.id));
   return notes.items
     .filter((n) => n.id !== activeId && !linked.has(n.id))
     .filter((n) => (q ? n.title.toLowerCase().includes(q) : true))
@@ -288,14 +309,14 @@ const linkSuggestions = computed(() => {
 });
 
 async function addOutgoingLink(noteId: string): Promise<void> {
-  await links.link(noteId);
+  await footer.link(noteId);
   linkQuery.value = "";
   linkMenuOpen.value = false;
   linkInputEl.value?.focus();
 }
 
 async function removeOutgoingLink(noteId: string): Promise<void> {
-  await links.unlink(noteId);
+  await footer.unlink(noteId);
 }
 
 /** Enter in the link input: link the first matching note, if any. */
@@ -361,7 +382,12 @@ const editor = useEditor({
     // plugin inserts chips) + `TagSuggest` (the `#`-triggered picker; its own
     // PluginKey so it doesn't collide with `SlashCommands`).
     TagMention,
-    TagSuggest
+    TagSuggest,
+    // Note-linking: the `link` mark (byte-compatible with upstream) must exist
+    // before `NoteSuggest` inserts links; `NoteSuggest` is the `@`/`[[`-triggered
+    // picker (own PluginKey — no collision with SlashCommands/tagSuggest).
+    Link,
+    NoteSuggest
   ],
   // NOTE: `content` is intentionally empty. The note's content is loaded after
   // mount via `loadCurrentNote()` (see below). Initialising with the note's
@@ -428,17 +454,9 @@ async function flushSave(): Promise<void> {
   savedAt.value = Date.now();
 }
 
-/** Mirror this pane's autosave state into the shared status store so the bottom
- *  status bar can render "Saving… / Saved" (moved off the editor toolbar). Only
- *  the FOCUSED pane drives the bar — same guard as {@link refreshStatus}. */
-function pushSaveState(): void {
-  if (editorStore.editor !== editor.value) return;
-  status.setSaveState(saving.value, savedAt.value);
-}
-
-// Push whenever the autosave flags flip, and re-sync on focus move (handled in
-// the focused watch below, which also calls refreshStatus → pushSaveState).
-watch([saving, savedAt], pushSaveState);
+// The autosave `saving`/`savedAt` refs are passed as props to THIS pane's
+// `<EditorToolbar>` so each toolbar reflects its own note's save state —
+// NOT a shared global slot that would make every pane react to one save.
 
 // --- Draft creation (no note open → create after typing pauses) ------------
 // Draft mode only: the editor surface is empty but live. The first edit (title
@@ -564,7 +582,17 @@ async function loadCurrentNote(): Promise<void> {
       .setContent(html, false)
       .reconcileTagMentions(tagIds, { silent: true })
       .run();
+    // Seed outgoing-link relations for any inline `nn://note/<id>` links the
+    // loaded content carries but that lack a `note`→`note` relation (e.g. a
+    // note written on another device / before this sync existed) so the footer
+    // "Outgoing" chips reflect the body links on open. Idempotent; one reload.
+    void ((inst.storage as Record<string, unknown>).syncNoteLinks as (() => void) | undefined)?.();
     loadedNoteId = id;
+    // Seed the per-pane footer word count from the just-loaded content. The
+    // `setContent(…, false)` load does NOT fire `update`, so a background
+    // pane's `refreshStatus` wouldn't otherwise pick it up (only real
+    // edits/caret moves push). Mirrors the live path in `refreshStatus`.
+    wordCount.value = textStats(inst.getText({ blockSeparator: "\n" })).words;
     // Draft promoted by a BODY keystroke: the user was typing in the body, so
     // after the seeded content is loaded focus the editor + place the caret at
     // the end of the body (mirrors the empty-band-click caret idiom: `content
@@ -623,9 +651,15 @@ async function reloadIfStale(): Promise<void> {
       .setContent(fresh, false)
       .reconcileTagMentions(tagIds, { silent: true })
       .run();
+    // Re-seed outgoing-link relations for inline `nn://` links on a remote
+    // reload (same rationale as `loadCurrentNote`). Idempotent.
+    void ((inst.storage as Record<string, unknown>).syncNoteLinks as (() => void) | undefined)?.();
     // A remote change may have introduced images whose blobs aren't local yet
     // — queue their downloads so they don't sit on placeholders.
     notes.downloadMedia(id);
+    // Re-seed the per-pane word count — `setContent(…, false)` doesn't fire
+    // `update`, so the live `refreshStatus` path wouldn't see a remote change.
+    wordCount.value = textStats(inst.getText({ blockSeparator: "\n" })).words;
   }
 }
 
@@ -670,14 +704,18 @@ watch(
 // palette + editor-command registry can reach `editor.chain()` for the
 // FOCUSED pane only. On the same edge, attach the status-bar listeners (word
 // count + cursor position refresh on every edit and caret move) and push an
-// initial reading. `refreshStatus` is a no-op unless this editor IS the
-// focused one (`editorStore.editor === editor.value`).
+// initial reading. The per-pane footer word count (below) is pushed for EVERY
+// editor (focused or not), but the shared status store + properties panel
+// remain focused-only — `refreshStatus` no-ops those unless this editor IS
+// the focused one (`editorStore.editor === editor.value`).
 function refreshStatus(): void {
   const inst = editor.value;
   if (!inst) return;
+  // Per-pane footer word count: update on every edit/caret move regardless of
+  // focus so each split pane's footer reflects its own note's count live.
+  wordCount.value = textStats(inst.getText({ blockSeparator: "\n" })).words;
   if (editorStore.editor !== inst) return; // only the focused editor pushes
   status.setEditorStats(readEditorStats(inst));
-  pushSaveState();
   // Live-stats push to the properties panel (Phase 5.1): word/char/line counts
   // from the editor's plain text, computed on every edit + caret move (same
   // `update`/`selectionUpdate` cadence as the status bar). `textStats` shares
@@ -688,6 +726,7 @@ function refreshStatus(): void {
 }
 
 let disposeTagMention: (() => void) | null = null;
+let disposeNoteLink: (() => void) | null = null;
 
 watch(
   editor,
@@ -723,7 +762,16 @@ watch(
       // listener + the watch) captured for cleanup on the next editor swap /
       // unmount.
       disposeTagMention?.();
-      disposeTagMention = wireTagMention(e, () => myNoteId.value);
+      disposeTagMention = wireTagMention(e, () => myNoteId.value, footer);
+      // Wire the `@`/`[[` note-link picker hooks `NoteSuggest` reads
+      // (`getNoteSuggestions` — filter the notes list; `getContentBlocks` —
+      // block drilldown via `db.notes.contentBlocks`) + the `link` mark
+      // click-handler target (`openLink` → open the linked note in a new tab in
+      // this pane's group). `getNoteId`/`getGroupId` are getters so the bridge
+      // stays valid across draft→promote. Re-wired per editor instance; returns
+      // a disposer captured for cleanup on the next editor swap / unmount.
+      disposeNoteLink?.();
+      disposeNoteLink = wireNoteLink(e, () => myNoteId.value, () => myGroupId.value, footer);
       refreshStatus();
       // If the id watch fired before the editor existed, the load was
       // skipped — do it now that the editor is ready. Also force a load when a
@@ -811,6 +859,10 @@ onBeforeUnmount(() => {
   // watch) so a per-tab editor doesn't leak its store subscription on unmount.
   disposeTagMention?.();
   disposeTagMention = null;
+  // Tear down the note-link bridge (no-op disposer today, but kept for symmetry
+  // so a future transaction listener / reconcile watcher plugs in cleanly).
+  disposeNoteLink?.();
+  disposeNoteLink = null;
   void flushSave();
   void notes.flushTitle(myNoteId.value ?? undefined);
 });
@@ -879,8 +931,16 @@ function onEditorAreaClick(e: MouseEvent): void {
 </script>
 
 <template>
-  <div class="relative flex h-full flex-col bg-glass-surface">
-    <EditorToolbar v-if="!isDraft" :editor="editor" />
+  <div
+    class="relative flex h-full flex-col bg-glass-surface"
+    :class="isPaneFocused ? 'editor-pane-surface' : 'editor-pane-inactive'"
+  >
+    <EditorToolbar
+      v-if="!isDraft"
+      :editor="editor"
+      :saving="saving"
+      :saved-at="savedAt"
+    />
     <FindBar
       v-if="findOpen && editor"
       :editor="editor"
@@ -891,7 +951,7 @@ function onEditorAreaClick(e: MouseEvent): void {
       <div v-if="myContentState === 'locked'" class="text-sm text-amber-300/80">
         This note is vault-locked. Unlock arrives in Phase 6.
       </div>
-      <div v-else-if="myContentState === 'error'" class="text-sm text-red-300/80">
+      <div v-else-if="myContentState === 'error'" class="text-sm text-[var(--paragraph-error)]">
         Failed to load note content.
       </div>
       <template v-else-if="editor">
@@ -908,7 +968,7 @@ function onEditorAreaClick(e: MouseEvent): void {
           class="editor-tags mt-4 flex flex-wrap items-center gap-2 border-t border-glass-border pt-3"
         >
           <span
-            v-for="tag in properties.tags"
+            v-for="tag in tags"
             :key="tag.id"
             class="group inline-flex items-center gap-1 rounded-full bg-glass-active px-2.5 py-1 text-xs text-text hover:bg-glass-hover"
           >
@@ -950,11 +1010,12 @@ function onEditorAreaClick(e: MouseEvent): void {
               </li>
             </ul>
           </div>
-          <!-- Word count + cursor position for the focused pane's editor,
-               pushed in by this Editor via status.setEditorStats on every
-               update/selectionUpdate. Right-aligned in the tags footer. -->
+          <!-- Word count is per-pane (this editor's own text, pushed on every
+               edit/caret move via the footer composable). Cursor line/col are a
+               caret concept → shown only for the focused pane (the status store
+               is focused-only). Right-aligned in the tags footer. -->
           <span class="ml-auto shrink-0 text-[10px] text-text-muted">
-            {{ status.wordCount }} words · Ln {{ status.cursorLine }}, Col {{ status.cursorColumn }}
+            {{ wordCount }} words<template v-if="isPaneFocused"> · Ln {{ status.cursorLine }}, Col {{ status.cursorColumn }}</template>
           </span>
         </div>
         <div v-if="!isDraft" class="editor-links mt-4 border-t border-glass-border pt-3 text-xs text-text-muted">
@@ -962,7 +1023,7 @@ function onEditorAreaClick(e: MouseEvent): void {
           <div class="mb-2 flex flex-wrap items-center gap-2">
             <span class="text-text-muted">Outgoing:</span>
             <button
-              v-for="l in links.outgoing"
+              v-for="l in outgoing"
               :key="'out-' + l.id"
               class="group inline-flex items-center gap-1 rounded-full bg-glass-active px-2.5 py-1 text-xs text-text hover:bg-glass-hover"
               :title="'Open ' + l.title"
@@ -978,7 +1039,7 @@ function onEditorAreaClick(e: MouseEvent): void {
                 ×
               </span>
             </button>
-            <span v-if="links.outgoing.length === 0" class="text-text-muted">None</span>
+            <span v-if="outgoing.length === 0" class="text-text-muted">None</span>
             <div class="relative inline-flex items-center">
               <input
                 ref="linkInputEl"
@@ -1007,7 +1068,7 @@ function onEditorAreaClick(e: MouseEvent): void {
           <div class="flex flex-wrap items-center gap-2">
             <span class="text-text-muted">Incoming:</span>
             <button
-              v-for="l in links.incoming"
+              v-for="l in incoming"
               :key="'in-' + l.id"
               class="inline-flex items-center rounded-full bg-glass-surface px-2.5 py-1 text-xs text-text hover:bg-glass-hover"
               :title="'Open ' + l.title"
@@ -1015,7 +1076,7 @@ function onEditorAreaClick(e: MouseEvent): void {
             >
               <span class="max-w-40 truncate">{{ l.title }}</span>
             </button>
-            <span v-if="links.incoming.length === 0" class="text-text-muted">None</span>
+            <span v-if="incoming.length === 0" class="text-text-muted">None</span>
           </div>
         </div>
       </template>

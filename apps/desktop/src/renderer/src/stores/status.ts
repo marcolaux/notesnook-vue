@@ -9,7 +9,9 @@ import type { EditorStats, SyncState } from "@/utils/status";
  * surfaces (the bottom status bar was removed; its concerns were relocated):
  *  - Sync status → the sidebar account area (`Sidebar.vue`).
  *  - Word/line/col counts → the editor tags footer (`Editor.vue`).
- *  - Autosave indicator → the editor toolbar (`EditorToolbar.vue`).
+ *  - Autosave indicator → the editor toolbar (`EditorToolbar.vue`), but NOTE
+ *    the per-pane `saving`/`savedAt` live on each `Editor.vue` instance and are
+ *    passed as props — this store no longer holds autosave state.
  * Holds three independent concerns:
  *
  *  - **Editor stats** (word/char count + cursor line/column): pushed in by
@@ -41,13 +43,6 @@ export const useStatusStore = defineStore("status", () => {
   const cursorLine = ref(1);
   const cursorColumn = ref(1);
 
-  // Autosave indicator: the "Saving… / Saved" state of the FOCUSED pane's
-  // editor, pushed in by `Editor.vue` via {@link setSaveState} with the same
-  // focused-guard as the editor stats. Read by the editor toolbar
-  // (`EditorToolbar.vue`).
-  const saving = ref(false);
-  const savedAt = ref<number | null>(null);
-
   /** A reactive wall-clock the sidebar sync indicator reads so "5m ago" stays
    * accurate without the user nudging the store. Bumped on an interval by
    * {@link startClock}; tests can set it directly for determinism. */
@@ -62,14 +57,6 @@ export const useStatusStore = defineStore("status", () => {
     charCount.value = s.charCount;
     cursorLine.value = s.cursorLine;
     cursorColumn.value = s.cursorColumn;
-  }
-
-  /** Push the focused editor's autosave state so the status bar can render the
-   *  "Saving… / Saved" indicator. Called by `Editor.vue` only when it is the
-   *  focused pane (mirrors {@link setEditorStats}). */
-  function setSaveState(isSaving: boolean, savedAtTs: number | null): void {
-    saving.value = isSaving;
-    savedAt.value = savedAtTs;
   }
 
   let syncBound = false;
@@ -160,10 +147,7 @@ export const useStatusStore = defineStore("status", () => {
     charCount,
     cursorLine,
     cursorColumn,
-    saving,
-    savedAt,
     setEditorStats,
-    setSaveState,
     refreshSync,
     bindSyncEvents,
     startClock,

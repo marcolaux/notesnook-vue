@@ -49,12 +49,31 @@ function select(item: SlashItem): void {
   props.command(item);
 }
 
+// Keep the active item within the menu's scroll viewport. The menu is a fixed,
+// teleported scroll container (`overflow-y: auto; max-height`), so we scroll
+// IT directly rather than `scrollIntoView` — that would also walk up to <body>
+// and scroll the page. `offsetTop` is relative to the menu (its offsetParent).
+function scrollActiveIntoView(): void {
+  const container = el.value;
+  if (!container) return;
+  const child = container.children[activeIndex.value] as HTMLElement | undefined;
+  if (!child) return;
+  const viewTop = container.scrollTop;
+  const viewBottom = viewTop + container.clientHeight;
+  const itemTop = child.offsetTop;
+  const itemBottom = itemTop + child.offsetHeight;
+  if (itemTop < viewTop) container.scrollTop = itemTop;
+  else if (itemBottom > viewBottom) container.scrollTop = itemBottom - container.clientHeight;
+}
+
 // Exposed for `render.ts` keyboard routing.
 function next(): void {
   activeIndex.value = cycleIndex(activeIndex.value, props.items.length, 1);
+  void nextTick(scrollActiveIntoView);
 }
 function prev(): void {
   activeIndex.value = cycleIndex(activeIndex.value, props.items.length, -1);
+  void nextTick(scrollActiveIntoView);
 }
 function selectActive(): void {
   const item = props.items[activeIndex.value];
@@ -66,6 +85,9 @@ watch(
   () => props.items,
   () => {
     activeIndex.value = 0;
+    // A new filter result list may be scrolled (the container persists across
+    // updates); reset to the top so item 0 is visible.
+    if (el.value) el.value.scrollTop = 0;
     void nextTick(reposition);
   }
 );
@@ -102,7 +124,7 @@ onBeforeUnmount(() => {
         :class="{ 'slash-item--active': i === activeIndex }"
         type="button"
         @click="select(item)"
-        @mouseenter="activeIndex = i"
+        @mouseenter="activeIndex = i; void nextTick(scrollActiveIntoView)"
       >
         {{ item.title }}
       </button>
@@ -122,7 +144,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
   background: var(--color-surface-solid, rgba(24, 24, 24, 0.92));
   backdrop-filter: blur(var(--backdrop-blur-base, 24px));
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 24px color-mix(in srgb, black 35%, transparent);
   font-size: 13px;
   /* styles set inline (top/left) by reposition() */
 }

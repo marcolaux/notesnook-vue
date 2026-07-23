@@ -85,6 +85,12 @@ const tabs = computed(() =>
 const activeTabId = computed<string | null>(
   () => layout.groups[props.groupId]?.activeTabId ?? null
 );
+/** Whether this strip's pane is the focused pane. The focused pane's active
+ *  tab gets the full-intensity "paper" surface (`.editor-tab-active`, which
+ *  blends into the focused editor below); an inactive pane's active tab gets
+ *  the same paper at half intensity (`.editor-tab-inactive`) so it still
+ *  blends into its (de-emphasised) editor. */
+const isPaneFocused = computed(() => layout.activeGroupId === props.groupId);
 
 /** Start screen position of the in-flight drag (source strip only — used by
  *  `dragend` to decide tear-off). Null when no drag started here. */
@@ -309,7 +315,9 @@ async function onTabDragEnd(e: DragEvent): Promise<void> {
       class="group relative flex cursor-pointer items-center gap-1 border-r border-glass-border px-3 py-1.5 text-xs"
       :class="
         activeTabId === tab.id
-          ? 'bg-glass-active text-text'
+          ? isPaneFocused
+            ? 'editor-tab-active bg-glass-active text-text'
+            : 'editor-tab-inactive bg-glass-active text-text'
           : 'bg-glass-surface text-text-muted hover:bg-glass-hover hover:text-text'
       "
       title="Drag to reorder or move to another pane; drag outside the window to open in a new window"
@@ -324,7 +332,7 @@ async function onTabDragEnd(e: DragEvent): Promise<void> {
            tab would insert. -->
       <span
         v-if="tabDropTarget?.tabId === tab.id"
-        class="pointer-events-none absolute top-0 h-full w-0.5 bg-blue-400"
+        class="pointer-events-none absolute top-0 h-full w-0.5 bg-[var(--accent)]"
         :class="tabDropTarget.position === 'before' ? 'left-0' : 'right-0'"
       />
       <span class="max-w-32 truncate">{{ tab.title }}</span>
@@ -340,7 +348,7 @@ async function onTabDragEnd(e: DragEvent): Promise<void> {
          the dragged tab would drop into the empty space past the last tab. -->
     <span
       v-if="dropAtEnd"
-      class="pointer-events-none w-0.5 self-stretch shrink-0 bg-blue-400"
+      class="pointer-events-none w-0.5 self-stretch shrink-0 bg-[var(--accent)]"
     />
   </div>
 </template>

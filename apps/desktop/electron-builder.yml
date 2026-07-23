@@ -21,9 +21,13 @@
 #   - Icons: no branded `app.icns` / `app.ico` exist yet. electron-builder falls
 #     back to Electron's default icon and warns. Drop `build/icon.{png,icns,ico}`
 #     (512x512+) to brand; uncomment the per-OS `icon` fields below.
-#   - Code signing / notarization: no certs. `--publish never` builds unsigned
-#     artifacts (fine for local/dev). Add `afterSign`/`notarize`/entitlements
-#     for distribution (mac hardenedRuntime + notarize, win signtool).
+#   - Code signing / notarization: no certs yet. The release pipeline
+#     (`.github/workflows/release.yml`) publishes UNSIGNED artifacts
+#     (`CSC_IDENTITY_AUTO_DISCOVERY: false`) — macOS updates need a one-time
+#     Gatekeeper bypass, Windows NSIS shows a SmartScreen warning. Add
+#     `afterSign`/`notarize`/entitlements + `CSC_LINK`/`CSC_KEY_PASSWORD` (and a
+#     Windows cert) for clean end-to-end auto-update; the pipeline is identical
+#     once certs are added.
 #   - Cross-arch builds (mac x64, win arm64, linux arm64) need the matching
 #     native-module prebuilds/toolchain; the host-arch build is the reliable
 #     default. The arch lists below follow the roadmap; a release pipeline
@@ -149,8 +153,11 @@ snap:
 
 # Drives `electron-updater` (Phase 6.2): electron-builder generates
 # `app-update.yml` from this and bakes it into the app. The dev build is a
-# no-op (updater only runs when `app.isPackaged`); a real release overrides
-# owner/repo/channel via env or edits this. `--publish never` skips uploading.
+# no-op (updater only runs when `app.isPackaged`). The release pipeline
+# (`.github/workflows/release.yml`, tag-triggered) builds with
+# `--publish onTagOrDraft` so electron-builder uploads `latest*.yml` + the
+# installers to the GitHub Release for the tag — which this provider reads.
+# Local `package*` scripts keep `--publish never` (never publish from dev).
 publish:
   provider: github
   owner: marcolaux

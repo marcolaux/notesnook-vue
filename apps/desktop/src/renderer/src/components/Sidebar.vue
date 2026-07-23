@@ -17,8 +17,8 @@ import { useDialogStore } from "@/stores/dialog";
 import { topViews, bottomViews } from "@/router/routes";
 import { desktop } from "@/platform/desktop-bridge";
 import NotebookNode from "@/components/NotebookNode.vue";
+import TagNode from "@/components/TagNode.vue";
 import {
-  buildTagMenu,
   buildShortcutMenu,
   buildColorRowMenu,
   buildSidebarSectionMenu,
@@ -63,13 +63,19 @@ const syncText = computed(() =>
   syncStatusText(auth.isLoggedIn, status.syncState, status.lastSynced, status.hasUnsyncedChanges, status.now)
 );
 
-/** Function ref for the tag rename `<input>`: focus it as soon as it mounts
- *  (avoids the v-for array-ref trap — only the renaming row renders an input).
- *  Typed `any` because Vue's VNodeRef passes either an Element or a component
- *  instance; we narrow at runtime. */
+/** Function ref for a row's inline-rename `<input>` (used by the color row
+ *  here — the tag rows own their rename inside `TagNode.vue`): focus + select
+ *  it as soon as it mounts (avoids the v-for array-ref trap — only the
+ *  renaming row renders an input). Selecting the placeholder lets the user
+ *  type over it immediately, including a freshly created color. Typed `any`
+ *  because Vue's VNodeRef passes either an Element or a component instance;
+ *  we narrow at runtime. */
 function focusTagRename(el: unknown): void {
-  const node = el as HTMLElement | null;
-  if (node && typeof node.focus === "function") node.focus();
+  const node = el as HTMLInputElement | null;
+  if (node && typeof node.focus === "function") {
+    node.focus();
+    node.select();
+  }
 }
 
 /** Local collapse for the Shortcuts section (the collections store only owns
@@ -93,10 +99,17 @@ const noteDropOver = ref<
   | null
 >(null);
 
-/** Plain-link top views (All Notes / Monographs / Archive) — Notebooks &
- * Tags render as expandable collection sections below. */
-const linkTopViews = topViews.filter(
-  (v) => v.name !== "notebooks" && v.name !== "tags"
+/** Plain-link top views (All Notes / Archive; Monographs only when logged in)
+ * — Notebooks & Tags render as expandable collection sections below.
+ * Monographs is the published-notes view, which needs a logged-in account
+ * (publishing is a server call), so it is hidden in local-only mode. */
+const linkTopViews = computed(() =>
+  topViews.filter(
+    (v) =>
+      v.name !== "notebooks" &&
+      v.name !== "tags" &&
+      (v.name !== "monographs" || auth.isLoggedIn)
+  )
 );
 // Settings opens its own window (singleton) via IPC, so it is NOT a router
 // link here — render it as a button below the Trash link.
@@ -128,9 +141,11 @@ function isContextTarget(id: string): boolean {
   return contextMenu.contextId === id;
 }
 
-/** "All Notes" drops any active collection filter + selection. */
+/** "All Notes" drops any active collection filter + selection, and leaves the
+ *  Tasks view (its filter is mutually exclusive with the full list). */
 function showAllNotes(): void {
   notes.clearCollectionFilter();
+  notes.setTasksFilterActive(false);
   collections.clearSelection();
 }
 
@@ -211,26 +226,6 @@ function shortcutGlyph(type: ShortcutMenuTarget["type"]): string {
   return "file-text";
 }
 
-/** Is a tag row currently in inline-rename mode? */
-function isTagRenaming(id: string): boolean {
-  return collections.renaming?.kind === "tag" && collections.renaming.id === id;
-}
-
-/** Right-click a tag row → tag context menu at the cursor. */
-function onTagContext(tag: { id: string; title: string }, e: MouseEvent): void {
-  if (isTagRenaming(tag.id)) return;
-  const entries = buildTagMenu(tag, {
-    toggleShortcut: (id) => void shortcuts.toggle(id, "tag"),
-    isShortcut: (id) => shortcuts.isShortcut(id),
-    rename: (id, title) => {
-      collections.startRename("tag", id, title);
-    },
-    confirm: (opts) => dialog.confirm(opts),
-    deleteTag: (id) => collections.deleteTag(id)
-  });
-  contextMenu.show(entries, e.clientX, e.clientY, tag.id);
-}
-
 /** Right-click a color row → color-row context menu (Rename… / Delete color)
  *  at the cursor. Rename enters inline-rename mode for the row (same UX as the
  *  tag row): the label swaps to an `<input>`; Enter/blur commits via
@@ -256,17 +251,6 @@ function onShortcutContext(sc: ShortcutMenuTarget, e: MouseEvent): void {
     removeShortcut: (id) => removeShortcut(sc)
   });
   contextMenu.show(entries, e.clientX, e.clientY, sc.id);
-}
-
-/** Bound to a tag rename `<input>`. */
-function onTagRenameInput(e: Event): void {
-  collections.setRenameText((e.target as HTMLInputElement).value);
-}
-function onTagRenameCommit(): void {
-  void collections.commitRename();
-}
-function onTagRenameCancel(): void {
-  collections.cancelRename();
 }
 
 /** Is a color row currently in inline-rename mode? (The collections store owns
@@ -378,18 +362,6 @@ function onNoteTargetDragLeave(
     noteDropOver.value = null;
 }
 
-/** Drop notes on a tag row → assign the tag to every dragged note (idempotent
- *  on a tag a note already has). */
-function onTagNoteDrop(tag: { id: string }, e: DragEvent): void {
-  if (!isNoteDrag(e)) return;
-  const payload = readNotePayload(e);
-  noteDropOver.value = null;
-  if (!payload) return;
-  e.preventDefault();
-  markNoteDropHandled();
-  void properties.addTagToMany(tag.id, payload.ids).then(() => void collections.load());
-}
-
 /** Drop notes on the Archive link → archive every dragged note. */
 function onArchiveNoteDrop(e: DragEvent): void {
   if (!isNoteDrag(e)) return;
@@ -456,6 +428,33 @@ function onShortcutDrop(sc: ShortcutMenuTarget, e: DragEvent): void {
   shortcuts.setOrder(next);
 }
 
+// --- section-header create (+) buttons -------------------------------------
+/** Header `+` → create a new root notebook and enter inline-rename. The store
+ *  creates the notebook + starts rename; `NotebookNode`'s rename watch focuses
+ *  + selects the input on mount. */
+function createNotebookFromHeader(): void {
+  void collections.createNotebook();
+}
+
+/** Header `+` → create a new top-level tag and enter inline-rename (the store
+ *  starts rename seeded with the leaf; `TagNode` focuses + selects it). */
+function createTagFromHeader(): void {
+  void collections.createTag();
+}
+
+/** Header `+` → create a new standalone color, then enter inline-rename.
+ *  Color rename commit is view-layer (`onColorRenameCommit` → `colors.renameColor`),
+ *  so the collections store just owns the shared `renaming` UI state; the color
+ *  row's `focusTagRename` function-ref focuses + selects the input on mount. */
+async function createColorFromHeader(): Promise<void> {
+  const id = await colors.createColor();
+  if (!id) return;
+  // Seed with the actual created title (`createColor` suffixes to "New color 2"
+  // etc. on a duplicate) so the input shows what was really created.
+  const title = colors.items.find((c) => c.id === id)?.title ?? "New color";
+  collections.startRename("color", id, title);
+}
+
 // --- section-header context menus (Reset manual order) ---------------------
 /** Right-click the Notebooks header → a "Reset manual order" entry (disabled
  *  when no local manual order is stored). */
@@ -499,7 +498,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           ? 'bg-glass-active text-text'
           : 'text-text hover:bg-glass-hover',
         v.name === 'archive' && noteDropOver?.kind === 'archive'
-          ? 'ring-2 ring-blue-400 bg-blue-400/10'
+          ? 'ring-2 ring-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]'
           : ''
       ]"
       @click="v.name === 'all' ? showAllNotes() : undefined"
@@ -558,7 +557,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           <!-- Drop indicator: a 2px accent line at the top (before) / bottom (after). -->
           <span
             v-if="shortcutDropTarget?.id === sc.id"
-            class="pointer-events-none absolute inset-x-0 h-0.5 bg-blue-400"
+            class="pointer-events-none absolute inset-x-0 h-0.5 bg-[var(--accent)]"
             :class="shortcutDropTarget.position === 'before' ? '-top-px' : '-bottom-px'"
           />
           <button
@@ -588,7 +587,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
     <!-- Notebooks section (expandable; pinned-first) -->
     <div class="mt-1">
       <button
-        class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
+        class="titlebar-no-drag group/section flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
         :class="isContextTarget('section:notebooks') ? 'context-target-row' : ''"
         @click="collections.toggleSection('notebooks')"
         @contextmenu.prevent="onNotebooksHeaderContext"
@@ -600,7 +599,14 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           :class="collections.collapsed.notebooks ? '' : 'rotate-90'"
         />
         <span>{{ t("sidebar.notebooks") }}</span>
-        <span class="ml-auto text-[10px] text-text-muted">{{ collections.notebookCount }}</span>
+        <Icon
+          name="plus"
+          :size="12"
+          class="ml-auto shrink-0 text-text-muted opacity-0 transition-opacity hover:text-text group-hover/section:opacity-100"
+          :title="t('sidebar.newNotebook')"
+          @click.stop="createNotebookFromHeader"
+        />
+        <span class="text-[10px] text-text-muted">{{ collections.notebookCount }}</span>
       </button>
       <div v-if="!collections.collapsed.notebooks" class="mt-0.5 flex flex-col gap-0.5">
         <NotebookNode
@@ -618,10 +624,11 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
       </div>
     </div>
 
-    <!-- Tags section (expandable; flat — subtags deferred) -->
+    <!-- Tags section (expandable; hierarchical — `/` in a tag title nests it,
+         e.g. `task/todo` renders under a `task` parent via `TagNode.vue`). -->
     <div class="mt-1">
       <button
-        class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
+        class="titlebar-no-drag group/section flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
         @click="collections.toggleSection('tags')"
       >
         <Icon
@@ -631,50 +638,22 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           :class="collections.collapsed.tags ? '' : 'rotate-90'"
         />
         <span>{{ t("sidebar.tags") }}</span>
-        <span class="ml-auto text-[10px] text-text-muted">{{ collections.tags.length }}</span>
+        <Icon
+          name="plus"
+          :size="12"
+          class="ml-auto shrink-0 text-text-muted opacity-0 transition-opacity hover:text-text group-hover/section:opacity-100"
+          :title="t('sidebar.newTag')"
+          @click.stop="createTagFromHeader"
+        />
+        <span class="text-[10px] text-text-muted">{{ collections.tags.length }}</span>
       </button>
       <div v-if="!collections.collapsed.tags" class="mt-0.5 flex flex-col gap-0.5 pl-3">
-        <button
-          v-for="tag in collections.sortedTags"
-          :key="tag.id"
-          class="titlebar-no-drag group flex items-center gap-1 rounded px-2 py-1 text-left text-[12px] transition-colors"
-          :class="[
-            isSelected('tag', tag.id)
-              ? 'bg-glass-active text-text'
-              : 'text-text hover:bg-glass-hover',
-            noteDropOver && noteDropOver.kind === 'tag' && noteDropOver.id === tag.id
-              ? 'ring-2 ring-blue-400 bg-blue-400/10'
-              : '',
-            isContextTarget(tag.id) ? 'context-target-row' : ''
-          ]"
-          @click="!isTagRenaming(tag.id) && selectCollection('tag', tag.id)"
-          @contextmenu.prevent="onTagContext(tag, $event)"
-          @dragover="onNoteTargetDragOver('tag', tag.id, $event)"
-          @dragleave="onNoteTargetDragLeave('tag', tag.id)"
-          @drop="onTagNoteDrop(tag, $event)"
-        >
-          <span class="text-text-muted">#</span>
-          <input
-            v-if="isTagRenaming(tag.id)"
-            :ref="focusTagRename"
-            :value="collections.renaming?.text ?? tag.title"
-            class="titlebar-no-drag min-w-0 flex-1 rounded-sm border border-glass-active bg-glass-surface px-1 py-0 text-[12px] text-text focus:outline-none"
-            @input="onTagRenameInput"
-            @click.stop
-            @keydown.enter.prevent="onTagRenameCommit"
-            @keydown.esc.prevent="onTagRenameCancel"
-            @blur="onTagRenameCommit"
-          />
-          <template v-else>
-            <span class="truncate">{{ tag.title }}</span>
-            <span
-              class="ml-auto shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
-              :class="shortcuts.isShortcut(tag.id) ? 'text-amber-300/80 opacity-100' : 'text-text-muted'"
-              :title="shortcuts.isShortcut(tag.id) ? t('sidebar.removeFromShortcuts') : t('sidebar.addToShortcuts')"
-              @click.stop="toggleShortcut('tag', tag.id)"
-            ><Icon name="star" :size="10" :class="shortcuts.isShortcut(tag.id) ? 'thin-outline' : ''" :fill="shortcuts.isShortcut(tag.id) ? 'currentColor' : 'none'" /></span>
-          </template>
-        </button>
+        <TagNode
+          v-for="node in collections.treeTags"
+          :key="node.path"
+          :node="node"
+          :depth="0"
+        />
         <div
           v-if="collections.tags.length === 0"
           class="px-2 py-1 text-[10px] text-text-muted"
@@ -690,7 +669,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
          is visible even before any color is created via the note-row menu. -->
     <div class="mt-1">
       <button
-        class="titlebar-no-drag flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
+        class="titlebar-no-drag group/section flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-text-muted hover:bg-glass-hover"
         :class="isContextTarget('section:colors') ? 'context-target-row' : ''"
         @click="colorsCollapsed = !colorsCollapsed"
         @contextmenu.prevent="onColorsHeaderContext"
@@ -702,7 +681,14 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           :class="colorsCollapsed ? '' : 'rotate-90'"
         />
         <span>{{ t("sidebar.colors") }}</span>
-        <span class="ml-auto text-[10px] text-text-muted">{{ colors.items.length }}</span>
+        <Icon
+          name="plus"
+          :size="12"
+          class="ml-auto shrink-0 text-text-muted opacity-0 transition-opacity hover:text-text group-hover/section:opacity-100"
+          :title="t('sidebar.newColor')"
+          @click.stop="createColorFromHeader"
+        />
+        <span class="text-[10px] text-text-muted">{{ colors.items.length }}</span>
       </button>
       <div v-if="!colorsCollapsed" class="mt-0.5 flex flex-col gap-0.5 pl-3">
         <button
@@ -714,7 +700,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
               ? 'bg-glass-active text-text'
               : 'text-text hover:bg-glass-hover',
             noteDropOver && noteDropOver.kind === 'color' && noteDropOver.id === color.id
-              ? 'ring-2 ring-blue-400 bg-blue-400/10'
+              ? 'ring-2 ring-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]'
               : '',
             isContextTarget(color.id) ? 'context-target-row' : ''
           ]"
@@ -729,12 +715,11 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           <!-- Drop indicator: a 2px accent line at the top (before) / bottom (after). -->
           <span
             v-if="colorDropTarget?.id === color.id"
-            class="pointer-events-none absolute inset-x-0 h-0.5 bg-blue-400"
+            class="pointer-events-none absolute inset-x-0 h-0.5 bg-[var(--accent)]"
             :class="colorDropTarget.position === 'before' ? '-top-px' : '-bottom-px'"
           />
           <span
-            class="inline-block h-2.5 w-2.5 shrink-0 rounded-full thin-outline transition-opacity"
-            :class="isSelected('color', color.id) ? '' : 'opacity-60'"
+            class="inline-block h-2.5 w-2.5 shrink-0 rounded-full thin-outline"
             :style="{ background: color.colorCode }"
           />
           <input
@@ -752,7 +737,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
             <span class="truncate">{{ color.title }}</span>
             <span
               class="ml-auto shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
-              :class="colors.isFavoriteColor(color.id) ? 'text-amber-300/80 opacity-100' : 'text-text-muted'"
+              :class="colors.isFavoriteColor(color.id) ? 'text-amber-500 opacity-100' : 'text-text-muted'"
               :title="colors.isFavoriteColor(color.id) ? t('sidebar.removeFromShortcuts') : t('sidebar.addToShortcuts')"
               @click.stop="colors.toggleFavoriteColor(color.id)"
             ><Icon name="star" :size="10" :class="colors.isFavoriteColor(color.id) ? 'thin-outline' : ''" :fill="colors.isFavoriteColor(color.id) ? 'currentColor' : 'none'" /></span>
@@ -777,7 +762,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           ? 'bg-glass-active text-text'
           : 'text-text-muted hover:bg-glass-hover',
         v.name === 'trash' && noteDropOver?.kind === 'trash'
-          ? 'ring-2 ring-blue-400 bg-blue-400/10'
+          ? 'ring-2 ring-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]'
           : ''
       ]"
       @dragover="v.name === 'trash' && onNoteTargetDragOver('trash', undefined, $event)"
@@ -813,13 +798,22 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
         <span class="shrink-0 text-[10px] text-text-muted" :title="syncText">{{ syncText }}</span>
       </div>
     </div>
-    <button
-      v-else
-      class="mt-1 rounded-md px-2 py-1.5 text-left text-[11px] text-text-muted hover:bg-glass-hover"
-      @click="auth.requestSignIn()"
-    >
-      Sign in
-    </button>
+    <div v-else class="mt-1 flex items-center gap-1.5">
+      <button
+        class="rounded-md px-2 py-1.5 text-left text-[11px] text-text-muted hover:bg-glass-hover"
+        @click="auth.requestSignIn()"
+      >
+        Sign in
+      </button>
+      <!-- Local-only chip: shown only while in local mode (`skippedLogin` is the
+           sole login gate there). Disappears once Sign in re-arms the login screen. -->
+      <span
+        v-if="auth.skippedLogin"
+        class="shrink-0 rounded-full bg-glass-surface px-2 py-0.5 text-[10px] text-text-muted"
+        title="Your notes stay on this device and don't sync. Sign in to sync across devices."
+        >Local only</span
+      >
+    </div>
 
   </nav>
 </template>

@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useNotesStore } from "@/stores/notes";
+import { useCollectionsStore } from "@/stores/collections";
 import type { NoteListItem } from "@/stores/notes";
 
 // `notes.ts` imports `getDatabase` from the platform bootstrap; stub it so the
@@ -65,7 +66,14 @@ describe("notes store — collection filter", () => {
   it("filterByCollection('tag') resolves notes via db.relations.from().resolve()", async () => {
     // Tag→note relations are stored `from=tag, to=note`, so notes are resolved
     // from the tag's **from** side (not `.to`, which would look for tags on the
-    // to side and always return empty).
+    // to side and always return empty). The tag must be present in the
+    // collections store's loaded `tags` list (the sidebar only lets you click a
+    // tag once it's loaded); `filterByCollection` resolves the slash-path from
+    // the matching tag's title, then unions every matching tag's notes.
+    const collections = useCollectionsStore();
+    collections.tags = [
+      { id: "t1", title: "todo", dateCreated: 0, dateModified: 0 }
+    ];
     mockDb.relations.from = (ref: any, type: any) => {
       expect(type).toBe("note");
       expect(ref).toEqual({ type: "tag", id: "t1" });
@@ -78,6 +86,59 @@ describe("notes store — collection filter", () => {
       type: "tag",
       id: "t1",
       noteIds: new Set(["c", "d"])
+    });
+  });
+
+  it("filterByCollection('tag') on a grouping-only parent unions all descendants", async () => {
+    // No real "task" tag — `task/todo` and `task/done` are real tags; clicking
+    // the grouping-only `task` node (key = the slash-path) filters to the union
+    // of every descendant tag's notes (deduped).
+    const collections = useCollectionsStore();
+    collections.tags = [
+      { id: "t_todo", title: "task/todo", dateCreated: 0, dateModified: 0 },
+      { id: "t_done", title: "task/done", dateCreated: 0, dateModified: 0 },
+      { id: "t_other", title: "inbox", dateCreated: 0, dateModified: 0 }
+    ];
+    mockDb.relations.from = (ref: any, type: any) => {
+      expect(type).toBe("note");
+      if (ref.id === "t_todo") return { resolve: async () => [{ id: "a" }, { id: "b" }] };
+      if (ref.id === "t_done") return { resolve: async () => [{ id: "b" }, { id: "c" }] };
+      return { resolve: async () => [] };
+    };
+    const notes = useNotesStore();
+    notes.items = ALL;
+    await notes.filterByCollection("tag", "task"); // path key — no real "task" tag
+    expect(notes.collectionFilter).toEqual({
+      type: "tag",
+      id: "task",
+      noteIds: new Set(["a", "b", "c"])
+    });
+  });
+
+  it("filterByCollection('tag') on a real parent tag includes exact + descendants", async () => {
+    // A real `task` tag exists AND `task/todo` exists — selecting the real
+    // `task` tag by id resolves its path to "task" and unions the exact `task`
+    // tag's notes with every descendant's.
+    const collections = useCollectionsStore();
+    collections.tags = [
+      { id: "t_task", title: "task", dateCreated: 0, dateModified: 0 },
+      { id: "t_todo", title: "task/todo", dateCreated: 0, dateModified: 0 },
+      { id: "t_deep", title: "task/todo/now", dateCreated: 0, dateModified: 0 }
+    ];
+    mockDb.relations.from = (ref: any, type: any) => {
+      expect(type).toBe("note");
+      if (ref.id === "t_task") return { resolve: async () => [{ id: "a" }] };
+      if (ref.id === "t_todo") return { resolve: async () => [{ id: "b" }] };
+      if (ref.id === "t_deep") return { resolve: async () => [{ id: "c" }] };
+      return { resolve: async () => [] };
+    };
+    const notes = useNotesStore();
+    notes.items = ALL;
+    await notes.filterByCollection("tag", "t_task"); // real tag id
+    expect(notes.collectionFilter).toEqual({
+      type: "tag",
+      id: "t_task",
+      noteIds: new Set(["a", "b", "c"])
     });
   });
 

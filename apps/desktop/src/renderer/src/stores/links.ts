@@ -27,8 +27,9 @@ export interface NoteLinkRef {
 }
 
 /** Map a core `Note` to the minimal chip reference. "Untitled" fallback mirrors
- * the notes-list + properties mappers. */
-function toLinkRef(n: Note): NoteLinkRef {
+ * the notes-list + properties mappers. Exported so the per-pane footer
+ * composable (`composables/use-note-footer.ts`) can reuse the same mapping. */
+export function toLinkRef(n: Note): NoteLinkRef {
   return { id: n.id, title: n.title || "Untitled" };
 }
 
@@ -77,9 +78,14 @@ export const useLinksStore = defineStore("links", () => {
     }
   }
 
-  /** Link the active note → `noteId` (outgoing). No-op for self-links. */
-  async function link(noteId: string): Promise<boolean> {
-    const id = activeNoteId.value;
+  /** Link the active note (or `sourceNoteId` when given) → `noteId` (outgoing).
+   *  No-op for self-links. `sourceNoteId` lets the per-pane footer composable
+   *  mutate a background pane's note that isn't the active one (mirrors the
+   *  properties-store id-aware pattern); the store's shared `outgoing`/
+   *  `incoming` refs are only reloaded for the active note, so a background
+   *  caller must reload its own local state (the composable does). */
+  async function link(noteId: string, sourceNoteId?: string): Promise<boolean> {
+    const id = sourceNoteId ?? activeNoteId.value;
     if (!id || noteId === id) return false;
     busy.value = true;
     try {
@@ -88,7 +94,9 @@ export const useLinksStore = defineStore("links", () => {
         { id, type: "note" },
         { id: noteId, type: "note" }
       );
-      await load();
+      // Only refresh the shared (active-note) refs when operating on the
+      // active note — a background-pane caller owns its own local reload.
+      if (id === activeNoteId.value) await load();
       lastError.value = null;
       return true;
     } catch (e) {
@@ -101,9 +109,10 @@ export const useLinksStore = defineStore("links", () => {
     }
   }
 
-  /** Remove the active note → `noteId` outgoing link. */
-  async function unlink(noteId: string): Promise<boolean> {
-    const id = activeNoteId.value;
+  /** Remove the active note (or `sourceNoteId` when given) → `noteId` outgoing
+   *  link. See {@link link} for the `sourceNoteId` semantics. */
+  async function unlink(noteId: string, sourceNoteId?: string): Promise<boolean> {
+    const id = sourceNoteId ?? activeNoteId.value;
     if (!id) return false;
     busy.value = true;
     try {
@@ -112,7 +121,7 @@ export const useLinksStore = defineStore("links", () => {
         { id, type: "note" },
         { id: noteId, type: "note" }
       );
-      await load();
+      if (id === activeNoteId.value) await load();
       lastError.value = null;
       return true;
     } catch (e) {

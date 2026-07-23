@@ -42,6 +42,7 @@ import type {
   SQLiteQueryResult,
   SQLiteServer
 } from "../contracts/router";
+import { DB_LOCKED_MARKER } from "../contracts/db-locked";
 
 type SqliteDB = Database.Database;
 type SqliteStatement = Database.Statement<unknown[], unknown>;
@@ -79,7 +80,14 @@ class SQLite {
         : path.join(app.getPath("userData"), filename) + ".sql";
     if (!isPathAllowed(this.filePath))
       throw new Error("Database path is not allowed: " + this.filePath);
-    this.sqlite = new Database(this.filePath).unsafeMode(true);
+    try {
+      this.sqlite = new Database(this.filePath).unsafeMode(true);
+    } catch (e) {
+      // Open itself rarely acquires the exclusive lock (the first write-class
+      // PRAGMA does), but cover it so a held lock surfaces as the marked error
+      // rather than a bare SqliteError with no marker.
+      throw wrapSqliteError(e, "(open)");
+    }
     return filename; // id == the filename requested (matches upstream: handle = filePath)
   }
 
@@ -100,6 +108,12 @@ class SQLite {
       return prepared;
     } catch (ex) {
       console.error(ex);
+      // A held lock (another instance) is not a flaky transient — fail fast
+      // with the marked error instead of burning 5 instant retries.
+      if (isDatabaseLockedError(ex)) {
+        this.retryCounter[sql] = 0;
+        throw wrapSqliteError(ex, sql);
+      }
       if ((this.retryCounter[sql] ?? 0) < 5) {
         this.retryCounter[sql] = (this.retryCounter[sql] ?? 0) + 1;
         console.warn("Failed to prepare statement. Retrying:", sql);
@@ -140,8 +154,7 @@ class SQLite {
         };
       }
     } catch (e) {
-      if (e instanceof Error) throw rewriteError(e, `${e.message} (query: ${sql})`);
-      throw e;
+      throw wrapSqliteError(e, sql);
     } finally {
       // SQLite3MC v2 needs the DB decrypted before FTS5 extensions can load.
       if (LOAD_FTS5_EXTENSIONS && !this.extensionsLoaded && (await this.isDatabaseReady())) {
@@ -162,6 +175,27 @@ class SQLite {
     await this.close();
     const { rm } = await import("node:fs/promises");
     await rm(this.filePath, { force: true, maxRetries: 5, retryDelay: 500 });
+  }
+
+  /**
+   * Force-unlock a stuck database: release our connection (if still open) and
+   * delete the `-wal`/`-shm` journal sidecars so the next `open` rebuilds them
+   * cleanly. Recovers from a crash/bug that left a torn journal holding the
+   * lock — the on-disk file lock dies with the holding process, but a corrupt
+   * WAL can still block re-open, and a closed connection here releases our own
+   * half-open handles.
+   *
+   * The main `.sql` file (the data) is KEPT; only the journal is dropped. Any
+   * committed-but-not-yet-checkpointed writes still sitting in the WAL are lost
+   * — the trade-off the user accepts (via the renderer's confirm dialog) in
+   * exchange for getting back a stuck DB. Safe ONLY when no other process has
+   * the file open: deleting a LIVE instance's WAL would corrupt it, so the
+   * renderer warns the user to close other Notesnook windows first.
+   */
+  async forceUnlock(): Promise<void> {
+    await this.close();
+    if (!this.filePath || this.filePath === ":memory:") return;
+    await clearJournalSidecars(this.filePath);
   }
 
   private loadExtensions(): void {
@@ -216,11 +250,75 @@ function rewriteError(e: Error, message: string): Error {
   return error;
 }
 
+/**
+ * SQLite held-lock error codes that mean another OS process (another app
+ * instance) is holding the database's WAL/exclusive lock. `better-sqlite3`'s
+ * `SqliteError` exposes `.code` as an own enumerable property — readable here
+ * in main, but lost crossing Electron IPC, so on a hit we embed
+ * `DB_LOCKED_MARKER` in the message (the only channel the renderer retains).
+ *
+ * Excludes the same-connection re-entrancy throws ("This database connection is
+ * busy executing a query"), which are `SqliteError`s with code `"SQLITE_BUSY"`
+ * too but surface as `TypeError`s from the native guard and aren't cross-process
+ * locks — those keep the generic `(query: …)` rewrite.
+ */
+const LOCKED_CODES = new Set([
+  "SQLITE_BUSY",
+  "SQLITE_BUSY_RECOVERY",
+  "SQLITE_BUSY_SNAPSHOT",
+  "SQLITE_LOCKED",
+  "SQLITE_LOCKED_SHAREDCACHE",
+  "SQLITE_LOCKED_VTAB"
+]);
+
+function isDatabaseLockedError(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  return typeof code === "string" && LOCKED_CODES.has(code);
+}
+
+/**
+ * Wrap a caught SQLite error for the renderer. A held-lock error becomes a
+ * marked, friendly failure (`DB_LOCKED_MARKER` prefix) so the boot overlay can
+ * distinguish "another instance holds the lock" from a generic startup failure
+ * and offer a Retry. Anything else keeps the existing `(query: …)` rewrite.
+ */
+function wrapSqliteError(e: unknown, sql: string): Error {
+  if (isDatabaseLockedError(e)) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return new Error(`${DB_LOCKED_MARKER}: ${detail}`);
+  }
+  if (e instanceof Error) {
+    return rewriteError(e, `${e.message} (query: ${sql})`);
+  }
+  return new Error(String(e));
+}
+
 function isPathAllowed(databasePath: string): boolean {
   if (databasePath === ":memory:") return true;
   const base = app.getPath("userData");
   const resolved = path.resolve(databasePath);
   return resolved.startsWith(base + path.sep);
+}
+
+/**
+ * Delete the `-wal`/`-shm` journal sidecars for a database base path. Best-
+ * effort: a failure to remove one sidecar is logged and swallowed (the other
+ * is still tried) — the next `open` rebuilds whatever it can't find. Never
+ * throws so `forceUnlock` can't strand the user in a worse state than they're
+ * already in.
+ */
+async function clearJournalSidecars(basePath: string): Promise<void> {
+  if (basePath === ":memory:") return;
+  if (!isPathAllowed(basePath)) return;
+  const { rm } = await import("node:fs/promises");
+  for (const suffix of ["-wal", "-shm"]) {
+    const sidecar = basePath + suffix;
+    try {
+      await rm(sidecar, { force: true, maxRetries: 3, retryDelay: 200 });
+    } catch (e) {
+      console.error(`[sqlite] forceUnlock: could not remove ${sidecar}:`, e);
+    }
+  }
 }
 
 /**
@@ -254,6 +352,27 @@ export const sqliteServer: SQLiteServer = {
     if (!sqlite) throw new Error("Database not found for id: " + id);
     await sqlite.delete();
     databases.delete(id);
+  },
+  async forceUnlock(filePath) {
+    // If we have an open connection for this id (open succeeded earlier),
+    // close it + clear its journal via the instance (which knows its real
+    // path). Then drop it from the registry so the next `open` re-creates it.
+    const sqlite = databases.get(filePath);
+    if (sqlite) {
+      await sqlite.forceUnlock();
+      databases.delete(filePath);
+      return;
+    }
+    // The locked-boot case: `open` never completed so there's no instance in
+    // the registry. Resolve the path the same way `open` does and clear the
+    // journal sidecars directly.
+    const base =
+      filePath === ":memory:"
+        ? filePath
+        : path.join(app.getPath("userData"), filePath) + ".sql";
+    if (!isPathAllowed(base))
+      throw new Error("Database path is not allowed: " + base);
+    await clearJournalSidecars(base);
   }
 };
 

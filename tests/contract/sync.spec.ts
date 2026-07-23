@@ -174,11 +174,14 @@ describe("useSyncStore", () => {
 });
 
 describe("app:sync-now command", () => {
-  function stubCtx(showShell: boolean): CommandContext {
+  function stubCtx(isLoggedIn: boolean): CommandContext {
     return {
       editor: undefined,
       notes: undefined as unknown as CommandContext["notes"],
-      auth: { showShell } as unknown as CommandContext["auth"],
+      // `app:sync-now` gates on `isLoggedIn`, not `showShell`: local mode
+      // (skipped login) has no token, so a sync attempt there only fails — and
+      // can trip a core logout event that clears the local-mode skip flag.
+      auth: { isLoggedIn, showShell: true } as unknown as CommandContext["auth"],
       shell: undefined as unknown as CommandContext["shell"],
       sync: useSyncStore(),
       updater: undefined as unknown as CommandContext["updater"],
@@ -199,7 +202,7 @@ describe("app:sync-now command", () => {
     expect(getCommand("app:sync-now")).toBeDefined();
   });
 
-  it("visible when the shell is showing, hidden otherwise", () => {
+  it("visible only when logged into a server account (not in local mode)", () => {
     const cmd = getCommand("app:sync-now")!;
     expect(cmd.when?.(stubCtx(true))).toBe(true);
     expect(cmd.when?.(stubCtx(false))).toBe(false);

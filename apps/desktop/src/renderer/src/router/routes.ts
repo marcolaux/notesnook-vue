@@ -16,6 +16,7 @@ export const RouteName = {
   login: "login",
   shell: "shell",
   all: "all",
+  tasks: "tasks",
   notebooks: "notebooks",
   tags: "tags",
   monographs: "monographs",
@@ -45,6 +46,7 @@ export interface ViewEntry {
  */
 export const VIEWS: readonly ViewEntry[] = [
   { path: "/all", name: RouteName.all, label: "All Notes", position: "top" },
+  { path: "/tasks", name: RouteName.tasks, label: "Tasks", position: "top" },
   {
     path: "/notebooks",
     name: RouteName.notebooks,
@@ -112,6 +114,12 @@ export const routes: RouteRecordRaw[] = [
         path: "all",
         name: RouteName.all,
         component: () => import("@/components/NotesView.vue")
+      },
+      {
+        path: "tasks",
+        name: RouteName.tasks,
+        component: () => import("@/components/TasksView.vue"),
+        meta: { title: "Tasks" }
       },
       {
         path: "notebooks",

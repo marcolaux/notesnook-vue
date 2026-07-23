@@ -183,7 +183,7 @@ function onSearchKeydown(e: KeyboardEvent): void {
             <Check
               v-if="languageDefinition?.filename === lang.filename"
               :size="12"
-              class="text-indigo-500"
+              class="text-accent"
             />
             <span v-else-if="lang.alias" class="text-[9px] text-text-muted">
               {{ lang.alias.slice(0, 3).join(", ").toUpperCase() }}

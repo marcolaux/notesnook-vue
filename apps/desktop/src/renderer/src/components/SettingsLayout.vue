@@ -20,16 +20,16 @@
  * Editor, Notifications, App lock). The Vault nav item is always shown so a
  * user with no vault can create one (Phase 2 added create-vault + management).
  */
-import { ref, computed, type Component } from "vue";
+import { ref, computed, onMounted, type Component } from "vue";
 import { useTitleBarStore } from "@/stores/titlebar";
 import AppearanceSection from "./settings-sections/AppearanceSection.vue";
 import LanguageSection from "./settings-sections/LanguageSection.vue";
-import SpellCheckSection from "./settings-sections/SpellCheckSection.vue";
 import NotesSection from "./settings-sections/NotesSection.vue";
 import VaultSection from "./settings-sections/VaultSection.vue";
 import SyncSection from "./settings-sections/SyncSection.vue";
 import BackupSection from "./settings-sections/BackupSection.vue";
 import AttachmentsSection from "./settings-sections/AttachmentsSection.vue";
+import UpdatesSection from "./settings-sections/UpdatesSection.vue";
 
 const titlebar = useTitleBarStore();
 
@@ -51,7 +51,6 @@ const groups: SectionGroup[] = [
     items: [
       { id: "appearance", label: "Appearance", component: AppearanceSection },
       { id: "language", label: "Language", component: LanguageSection },
-      { id: "spellcheck", label: "Spell check", component: SpellCheckSection },
       { id: "notes", label: "Notes", component: NotesSection }
     ]
   },
@@ -66,6 +65,10 @@ const groups: SectionGroup[] = [
       { id: "backup", label: "Backup & Export", component: BackupSection },
       { id: "attachments", label: "Attachments", component: AttachmentsSection }
     ]
+  },
+  {
+    group: "About",
+    items: [{ id: "updates", label: "Updates", component: UpdatesSection }]
   }
 ];
 
@@ -76,7 +79,21 @@ const visibleGroups = computed(() =>
     .filter((g) => g.items.length > 0)
 );
 
+/** All known section ids — used to validate a `?section=` deep-link query. */
+const knownIds = new Set(groups.flatMap((g) => g.items.map((it) => it.id)));
+
 const activeId = ref("appearance");
+
+// Deep-link: `openSettings({ section })` loads the settings window with
+// `?section=<id>`; seed the active section from it on mount so a caller (e.g.
+// the title-bar update badge) lands directly on the requested section.
+onMounted(() => {
+  const requested =
+    typeof URLSearchParams !== "undefined"
+      ? new URLSearchParams(location.search).get("section")
+      : null;
+  if (requested && knownIds.has(requested)) activeId.value = requested;
+});
 
 /** The component for the active section, falling back to the first visible
  *  section if the active one is hidden (e.g. vault deleted while viewing it). */

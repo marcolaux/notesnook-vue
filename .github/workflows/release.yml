@@ -1,0 +1,176 @@
+name: Release
+
+# Continuous single-channel auto-update: pushing a `v*` tag builds + publishes
+# distributable installers to the GitHub Release for that tag. electron-builder
+# uploads `latest.yml` (win) / `latest-mac.yml` (mac) / `latest-linux.yml`
+# (linux) + blockmaps + installers, which `electron-updater` (baked
+# `app-update.yml` → `provider: github`, `channel: latest`) consumes — so any
+# packaged app on an older version finds and offers the update. One continuous
+# channel: every tag is a full (non-prerelease) release on `latest`.
+#
+# Mirrors the `ci.yml` package job's setup exactly (so the artifacts are
+# runnable — same native-module Electron-ABI rebuild, oxide bindings, macOS
+# DMG flake workaround) but swaps `--publish never` for `--publish onTagOrDraft`
+# with the auto `GITHUB_TOKEN`. A `verify` gate (typecheck + contract tests)
+# runs first so a broken build is never published.
+#
+# Unsigned (alpha): no code-signing certs yet (`CSC_IDENTITY_AUTO_DISCOVERY:
+# false`). macOS updates need a one-time Gatekeeper bypass; Windows NSIS shows
+# a SmartScreen warning. The pipeline is identical once certs are added —
+# signing layers on via `CSC_LINK`/`CSC_KEY_PASSWORD` + `afterSign`/notarize.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Each tag is its own release; don't cancel a publish because another tag landed.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # the auto GITHUB_TOKEN needs this to create/upload the release
+
+jobs:
+  # Gate: typecheck + contract tests on Linux before any artifact is published.
+  verify:
+    name: Verify (typecheck + contract tests)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Vendor drift guard
+        run: npm run vendor:check
+
+      - name: Typecheck (node + web + contracts)
+        run: npm run typecheck
+
+      - name: Contract tests
+        run: npm run test:contract
+
+  # Cross-OS publish: build + package + upload to the GitHub Release for the tag.
+  package:
+    name: Publish ${{ matrix.os-name }}
+    needs: [verify]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os-name: macos-arm64
+            os: macos-latest
+            # `--mac` only — arm64 is pinned in electron-builder.yml
+            # (`mac.target[].arch: [arm64]`). Don't pass `--arm64`: when the
+            # config target lists explicit arches, electron-builder IGNORES the
+            # CLI arch flag and builds every configured arch.
+            targets: "--mac"
+            oxide-pkg: "@tailwindcss/oxide-darwin-arm64"
+          - os-name: windows
+            os: windows-latest
+            targets: "--win"
+            oxide-pkg: "@tailwindcss/oxide-win32-x64-msvc"
+          - os-name: linux
+            os: ubuntu-latest
+            targets: "--linux AppImage"
+            oxide-pkg: "@tailwindcss/oxide-linux-x64-gnu"
+
+    env:
+      # No code-signing certs; disable auto-discovery so electron-builder skips
+      # the identity lookup and produces unsigned artifacts without hanging.
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+      # electron-builder publishes to the GitHub Release for the tag via the
+      # auto-provided token (needs `permissions: contents: write` above).
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Use latest npm
+        # Pin to the latest npm 11 (matches the lockfile generator; fully
+        # extracts the large binary helper packages). `cache: npm` OFF — see
+        # ci.yml package job (a bad cache entry failed to extract app-builder-bin).
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Tailwind oxide native binding (${{ matrix.os-name }})
+        shell: bash
+        run: |
+          OXIDE_VER=$(node -p "require('./node_modules/@tailwindcss/oxide/package.json').version")
+          echo "Installing ${{ matrix.oxide-pkg }}@${OXIDE_VER}"
+          npm install --no-save --no-fund --no-audit "${{ matrix.oxide-pkg }}@${OXIDE_VER}"
+
+      - name: Sync app version from tag
+        # electron-builder reads the version from `apps/desktop/package.json`
+        # to name artifacts + write `latest*.yml`, and the renderer's
+        # `__APP_VERSION__` Vite `define` reads it at build time. Strip the
+        # leading `v` from the tag and write it in before the build so all
+        # three carry the tag version in sync.
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          echo "Setting apps/desktop version to ${VER}"
+          node -e "const f='apps/desktop/package.json',p=require('./'+f);p.version=process.argv[1];require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')" "$VER"
+
+      - name: Build (main + preload + renderer)
+        run: npm run build
+
+      - name: Rebuild native SQLite module for the Electron ABI
+        # `npm ci` installs a host-Node-ABI prebuild; the app runs in Electron
+        # (a different ABI). Without this rebuild the packaged app dies on
+        # startup. `npmRebuild: false` (electron-builder.yml) means
+        # electron-builder won't redo this — it ships our pre-rebuilt .node.
+        run: npm run rebuild:electron
+
+      - name: Disable Spotlight indexing (macOS DMG detach workaround)
+        if: runner.os == 'macOS'
+        run: sudo mdutil -i off /
+
+      - name: Package + publish installer(s)
+        working-directory: apps/desktop
+        shell: bash
+        # Retry the whole packaging+publish pass a few times: macOS DMG
+        # creation can flake transiently at `hdiutil detach` even with Spotlight
+        # off (hdiutil detach races with other runner processes). `release/` is
+        # wiped before each attempt so electron-builder starts clean; its
+        # Electron download is cached, so retries are fast. electron-builder's
+        # publish is idempotent — it creates the release if absent and uploads
+        # assets, so a retry after a partial upload just completes the set.
+        run: |
+          for i in 1 2 3; do
+            echo "::group::Package+publish attempt $i"
+            rm -rf release
+            if npx electron-builder --config electron-builder.yml ${{ matrix.targets }} --publish onTagOrDraft; then
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            if [ "$i" -eq 3 ]; then
+              echo "::error::Package+publish failed after 3 attempts"
+              exit 1
+            fi
+            echo "Attempt $i failed; retrying in 10s…"
+            sleep 10
+          done

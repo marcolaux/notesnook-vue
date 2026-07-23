@@ -40,3 +40,52 @@ export type Glassmorphism = {
 
 /** A Notesnook `ThemeDefinition` plus our optional glassmorphism extension. */
 export type VueTheme = ThemeDefinition & { glassmorphism?: Glassmorphism };
+
+/**
+ * A reduced color set derived from a theme's scopes (every value falls back to
+ * `base.primary.*`, or `base.success.icon` for the status-bar icon) — used to
+ * render a theme preview card without the full scope/variant payload. Vendored
+ * port of upstream `PreviewColors` (`packages/theme/src/theme-engine/types.ts`).
+ */
+export type PreviewColors = {
+  editor: string;
+  accentForeground: string;
+  navigationMenu: {
+    shade: string;
+    accent: string;
+    background: string;
+    icon: string;
+  };
+  list: {
+    heading: string;
+    accent: string;
+    accentForeground: string;
+    background: string;
+  };
+  statusBar: {
+    paragraph: string;
+    background: string;
+    icon: string;
+  };
+  border: string;
+  paragraph: string;
+  background: string;
+  accent: string;
+};
+
+/**
+ * A `ThemeDefinition` plus the catalog metadata the themes server attaches
+ * (`sourceURL`, `totalInstalls`, `previewColors`). The `installTheme` response
+ * is a full `CompiledThemeDefinition` (incl. `scopes` + `codeBlockCSS`); a
+ * `ThemeMetadata` (catalog list item) is the same minus `scopes`/`codeBlockCSS`.
+ * Vendored because `@notesnook/themes-server` is private (not on npm).
+ */
+export type CompiledThemeDefinition = VueTheme & {
+  sourceURL?: string;
+  totalInstalls?: number;
+  previewColors: PreviewColors;
+};
+
+/** Catalog list item — a compiled theme with the heavy `scopes`/`codeBlockCSS`
+ *  stripped (the server only returns those on `installTheme`). */
+export type ThemeMetadata = Omit<CompiledThemeDefinition, "scopes" | "codeBlockCSS">;

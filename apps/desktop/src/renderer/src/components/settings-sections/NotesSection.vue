@@ -15,14 +15,20 @@ import { computed, onMounted } from "vue";
 import { Surface, Flex, Text, Input } from "@notesnook-vue/ui-vue";
 import { useSettingsStore } from "@/stores/settings";
 import { useCollectionsStore } from "@/stores/collections";
+import { useTemplatesStore } from "@/stores/templates";
+import { useConfigStore } from "@/stores/config";
 
 const settings = useSettingsStore();
 const collections = useCollectionsStore();
+const templates = useTemplatesStore();
+const config = useConfigStore();
 
 onMounted(() => {
   // The settings window is its own Pinia app — load the collections so the
   // notebook/tag pickers populate.
   void collections.load();
+  // Load templates so the default-note/task-template pickers populate.
+  void templates.load();
 });
 
 const trashOptions: { value: number; label: string }[] = [
@@ -58,6 +64,14 @@ const tagOptions = computed(() => [
   ...collections.sortedTags.map((t) => ({ value: t.id, label: t.title }))
 ]);
 
+/** Template picker options: a leading "None" (clears the default) followed by
+ *  the loaded template notes. `""` represents None at the `<select>` level and
+ *  is converted to `null` in the change handler. */
+const templateOptions = computed(() => [
+  { value: "", label: "None" },
+  ...templates.templates.map((t) => ({ value: t.id, label: t.title }))
+]);
+
 function pickTime(e: Event): void {
   settings.setTimeFormat((e.target as HTMLSelectElement).value as "12-hour" | "24-hour");
 }
@@ -77,6 +91,14 @@ function pickDefaultNotebook(e: Event): void {
 function pickDefaultTag(e: Event): void {
   const v = (e.target as HTMLSelectElement).value;
   settings.setDefaultTag(v === "" ? undefined : v);
+}
+function pickDefaultNoteTemplate(e: Event): void {
+  const v = (e.target as HTMLSelectElement).value;
+  config.setDefaultNoteTemplate(v === "" ? null : v);
+}
+function pickDefaultTaskTemplate(e: Event): void {
+  const v = (e.target as HTMLSelectElement).value;
+  config.setDefaultTaskTemplate(v === "" ? null : v);
 }
 </script>
 
@@ -167,6 +189,35 @@ function pickDefaultTag(e: Event): void {
           </select>
         </Flex>
       </div>
+
+      <Flex direction="column" :gap="2">
+        <Text variant="body" size="sm" class="text-text-muted">Templates</Text>
+        <Text v-if="templates.templates.length === 0" variant="body" size="sm" class="text-text-muted">
+          No templates yet — run “New template” from the command palette, or tag a note with “template”.
+        </Text>
+        <div class="grid grid-cols-2 gap-4">
+          <Flex direction="column" :gap="1">
+            <Text variant="body" size="sm" class="text-text-muted">Default template for notes</Text>
+            <select
+              :value="config.defaultNoteTemplate ?? ''"
+              class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              @change="pickDefaultNoteTemplate"
+            >
+              <option v-for="o in templateOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+            </select>
+          </Flex>
+          <Flex direction="column" :gap="1">
+            <Text variant="body" size="sm" class="text-text-muted">Default template for tasks</Text>
+            <select
+              :value="config.defaultTaskTemplate ?? ''"
+              class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              @change="pickDefaultTaskTemplate"
+            >
+              <option v-for="o in templateOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+            </select>
+          </Flex>
+        </div>
+      </Flex>
     </Flex>
   </Surface>
 </template>

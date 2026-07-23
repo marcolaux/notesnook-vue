@@ -21,7 +21,7 @@
  * Live update verification (provider URL, signature, restart loop) is an
  * on-site / release gate — it needs a published, signed build + network.
  */
-import { app, type BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
 import { registerUpdaterServer, type UpdateStatus, type UpdaterServer } from "../contracts/router";
 
 const IDLE: UpdateStatus = { available: false, version: null, downloaded: false, progress: 0 };
@@ -46,31 +46,34 @@ async function getAutoUpdater(): Promise<import("electron-updater").AppUpdater |
   return autoUpdater;
 }
 
-/** Attach the state-mirroring listeners exactly once. */
+/** Attach the state-mirroring listeners exactly once. Each handler also pushes
+ *  the new snapshot to every live window so the renderer's live-progress IPC
+ *  subscription updates without a concurrent `check`/`download` request. */
 function bindEvents(au: import("electron-updater").AppUpdater): void {
   if (eventsBound) return;
   eventsBound = true;
   au.on("update-downloaded", () => {
     status = { ...status, downloaded: true, progress: 100, available: true };
+    emitState();
   });
   au.on("download-progress", (p: { percent: number }) => {
     status = { ...status, progress: Math.round(p.percent) };
+    emitState();
   });
   au.on("error", () => {
     // Surface as "no update" without clobbering a previously-known version.
     status = { ...status, progress: 0 };
+    emitState();
   });
 }
 
-/** Optional window to forward state changes to (renderer can listen on-site). */
-let targetWindow: BrowserWindow | undefined;
-export function setUpdaterWindow(window: BrowserWindow | undefined): void {
-  targetWindow = window;
-}
-
+/** Forward the current snapshot to every live window. The Settings window is a
+ *  separate renderer (and the Updates section lives there), so broadcasting to
+ *  all windows — not just the main one — ensures the live progress + "ready to
+ *  install" state reaches the Updates UI too. No-op when no window is alive. */
 function emitState(): void {
-  if (targetWindow && !targetWindow.isDestroyed()) {
-    targetWindow.webContents.send("updater:status", status);
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send("updater:status", status);
   }
 }
 
@@ -128,7 +131,8 @@ export const updaterServer: UpdaterServer = {
   }
 };
 
-export function registerUpdater(window?: BrowserWindow): void {
-  setUpdaterWindow(window);
+export function registerUpdater(_window?: BrowserWindow): void {
+  // `emitState` broadcasts to all live windows, so we no longer pin a single
+  // target window — the `_window` arg is retained only for call-site parity.
   registerUpdaterServer(updaterServer);
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import { useRouter } from "vue-router";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
@@ -13,6 +14,8 @@ import { useRemindersStore } from "@/stores/reminders";
 import { useDialogStore } from "@/stores/dialog";
 import { usePublishStore } from "@/stores/publish";
 import { usePublishDialogStore } from "@/stores/publish-dialog";
+import { useAuthStore } from "@/stores/auth";
+import { useSettingsStore } from "@/stores/settings";
 import { formatPublishUrl } from "@/utils/publish";
 import { getDatabase } from "@/platform/bootstrap";
 import { desktop } from "@/platform/desktop-bridge";
@@ -47,6 +50,9 @@ const reminders = useRemindersStore();
 const dialog = useDialogStore();
 const publish = usePublishStore();
 const publishDialog = usePublishDialogStore();
+const auth = useAuthStore();
+const settings = useSettingsStore();
+const router = useRouter();
 
 /** Core's `DefaultColors` (name → hex) as title-cased preset entries for the
  *  Color submenu — picking one creates the color in the db + assigns it. */
@@ -98,6 +104,12 @@ function segmentsOf(text: string): { text: string; match: boolean }[] {
 function clearCollectionFilter(): void {
   notes.clearCollectionFilter();
   collections.clearSelection();
+}
+
+/** Leave the Tasks view (chip ×): drop the filter and return to All Notes. */
+function clearTasksFilter(): void {
+  notes.setTasksFilterActive(false);
+  void router.push("/all");
 }
 
 /** Whether a row should render the multi-selection treatment (accent bg +
@@ -268,6 +280,9 @@ async function onNoteContext(
   const target: NoteMenuTarget = { ...note, published, colorId, tagIds, notebookIds };
 
   const entries = buildNoteMenu(target, {
+    // Hide the Publish/Unpublish section in local-only mode — publishing is a
+    // server call gated on a logged-in account.
+    canPublish: auth.isLoggedIn,
     openInWindow: (id) => {
       void desktop.window.openNote.mutate({ noteId: id }).catch(() => undefined);
     },
@@ -528,12 +543,14 @@ function formatDate(ts: number): string {
   <div class="flex h-full flex-col bg-glass-surface">
     <!-- The search input moved to the title bar (global search); this header
          row now only holds the New Note button + the count/sort/selection
-         readouts. -->
-    <div class="flex h-7 shrink-0 items-center gap-2 border-b border-glass-border px-3 text-[10px] text-text-muted">
+         readouts. It wraps to a second line when the chips + grouping/sort
+         controls exceed the available width (e.g. a Tasks filter chip + a
+         collection chip + the sort controls on a narrow list). -->
+    <div class="flex min-h-7 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-glass-border px-3 text-[10px] text-text-muted">
       <button
-        class="titlebar-no-drag grid h-5 w-5 place-items-center rounded-sm text-text-muted hover:bg-glass-hover"
-        title="New Note"
-        @click="notes.create()"
+        class="titlebar-no-drag grid h-5 w-5 shrink-0 place-items-center rounded-sm text-text-muted hover:bg-glass-hover"
+        :title="notes.tasksFilterActive ? 'New task' : 'New note'"
+        @click="notes.tasksFilterActive ? notes.create({ task: true }) : notes.create()"
       >
         <Icon name="plus" :size="14" />
       </button>
@@ -572,7 +589,35 @@ function formatDate(ts: number): string {
           <Icon name="x" :size="8" :stroke-width="3" />
         </button>
       </span>
-      <span class="ml-auto flex items-center gap-1">
+      <!-- Tasks-view filter chip with a clear (×) button + inline "Show completed"
+           toggle (only while the Tasks filter is active). -->
+      <span
+        v-if="notes.tasksFilterActive"
+        class="titlebar-no-drag flex shrink-0 items-center gap-1.5 rounded-full bg-glass-hover px-1.5 py-0.5 text-text-muted"
+      >
+        <Icon name="list-checks" :size="11" />
+        <span>Tasks</span>
+        <label
+          class="flex items-center gap-1"
+          title="Also show notes whose tasks are all completed"
+        >
+          <input
+            type="checkbox"
+            class="h-3 w-3 accent-[var(--accent)]"
+            :checked="settings.tasksShowCompleted"
+            @change="settings.setTasksShowCompleted(($event.target as HTMLInputElement).checked)"
+          />
+          <span class="text-[0.7rem]">Completed</span>
+        </label>
+        <button
+          class="grid h-3.5 w-3.5 place-items-center rounded-full text-text-muted hover:bg-glass-active hover:text-text"
+          title="Leave Tasks"
+          @click="clearTasksFilter()"
+        >
+          <Icon name="x" :size="8" :stroke-width="3" />
+        </button>
+      </span>
+      <span class="ml-auto flex shrink-0 items-center gap-1">
         <select
           class="titlebar-no-drag rounded-sm border border-glass-border bg-glass-surface px-1 py-0.5 text-text-muted focus:outline-none"
           :value="notes.groupKey"
@@ -631,15 +676,15 @@ function formatDate(ts: number): string {
               v-if="noteRowSelected(note.id)"
               name="check"
               :size="10"
-              class="text-blue-400"
+              class="text-accent"
               title="Selected"
             />
-            <Icon v-if="note.pinned" name="pin" :size="10" class="text-amber-300/80" fill="currentColor" title="Pinned" />
-            <Icon v-if="note.favorite" name="star" :size="10" class="text-amber-300/80 thin-outline" fill="currentColor" title="Favorite" />
+            <Icon v-if="note.pinned" name="pin" :size="10" class="text-amber-500 thin-outline" fill="currentColor" title="Pinned" />
+            <Icon v-if="note.favorite" name="star" :size="10" class="text-amber-500 thin-outline" fill="currentColor" title="Favorite" />
             <Icon v-if="notes.publishedIds.has(note.id)" name="globe" :size="10" class="text-text-muted" title="Published" />
             <span class="truncate text-xs font-medium text-text">
               <template v-for="(seg, i) in segmentsOf(note.title)" :key="i">
-                <mark v-if="seg.match" class="rounded-sm bg-amber-400/30 px-0.5 text-text">{{ seg.text }}</mark>
+                <mark v-if="seg.match" class="rounded-sm bg-[color-mix(in_srgb,var(--accent)_30%,transparent)] px-0.5 text-text">{{ seg.text }}</mark>
                 <template v-else>{{ seg.text }}</template>
               </template>
             </span>
@@ -657,7 +702,7 @@ function formatDate(ts: number): string {
               <div class="truncate text-[10px] text-text-muted">
                 <template v-if="note.headline">
                   <template v-for="(seg, i) in segmentsOf(note.headline)" :key="i">
-                    <mark v-if="seg.match" class="rounded-sm bg-amber-400/30 px-0.5 text-text-muted">{{ seg.text }}</mark>
+                    <mark v-if="seg.match" class="rounded-sm bg-[color-mix(in_srgb,var(--accent)_30%,transparent)] px-0.5 text-text-muted">{{ seg.text }}</mark>
                     <template v-else>{{ seg.text }}</template>
                   </template>
                 </template>
@@ -676,7 +721,7 @@ function formatDate(ts: number): string {
             <template v-if="previewOf(note.id)?.checklist && previewOf(note.id)!.checklist!.total > 0">
               <div class="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-glass-hover">
                 <div
-                  class="h-full rounded-full bg-emerald-400/70"
+                  class="h-full rounded-full bg-[var(--accent-success)]"
                   :style="{ width: `${progressWidth(previewOf(note.id)!)}%` }"
                 />
               </div>

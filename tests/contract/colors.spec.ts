@@ -187,6 +187,28 @@ describe("useColorsStore", () => {
     expect(s.items[0].title).toBe("Crimson");
   });
 
+  it("createColor creates a `New color` with the first unused palette code", async () => {
+    const s = useColorsStore();
+    const id = await s.createColor();
+    expect(id).toBeTruthy();
+    expect(s.items.find((c) => c.id === id)?.title).toBe("New color");
+    // created with the first palette code (#5b8def), not colliding with any.
+    expect(s.items.find((c) => c.id === id)?.colorCode).toBe("#5b8def");
+    expect(s.lastError).toBeNull();
+  });
+
+  it("createColor suffixes the title AND skips an in-use colorCode", async () => {
+    // First color already uses the first palette code (#5b8def).
+    db.colors._store.set("c1", fakeColor({ id: "c1", title: "New color", colorCode: "#5b8def" }));
+    const s = useColorsStore();
+    await s.refresh();
+    const id = await s.createColor();
+    expect(id).toBeTruthy();
+    const created = s.items.find((c) => c.id === id);
+    expect(created?.title).toBe("New color 2"); // title suffixed
+    expect(created?.colorCode).toBe("#22c55e"); // next palette code (first was in use)
+  });
+
   it("remove no-ops on empty + reloads otherwise", async () => {
     const s = useColorsStore();
     await s.remove([]);

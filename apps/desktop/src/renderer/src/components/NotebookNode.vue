@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { Icon } from "@notesnook-vue/ui-vue";
@@ -74,6 +74,23 @@ const isRenaming = computed(
     collections.renaming?.kind === "notebook" && collections.renaming.id === props.node.item.id
 );
 
+/** Focus + select the rename input whenever this row enters rename mode —
+ *  covers both the context-menu rename of an existing row and a freshly
+ *  created row that mounts already in rename mode (`createNotebook`/
+ *  `createSubNotebook` call `startRename` before the row mounts). Selecting
+ *  the placeholder lets the user type over it immediately. */
+watch(
+  isRenaming,
+  (renaming) => {
+    if (renaming)
+      void nextTick().then(() => {
+        renameInput.value?.focus();
+        renameInput.value?.select();
+      });
+  },
+  { immediate: true }
+);
+
 /** Select the notebook, restrict the notes list to it (descendants included
  *  via `db.notebooks.notes`), and show the notes view. */
 async function select(): Promise<void> {
@@ -109,8 +126,6 @@ function onContext(e: MouseEvent): void {
     togglePinnedToTop: (id) => void collections.toggleNotebookPinned(id),
     rename: (id, title) => {
       collections.startRename("notebook", id, title);
-      // Focus the inline input once it renders.
-      void nextTick().then(() => renameInput.value?.focus());
     },
     setIcon: async (id) => {
       const result = await iconDialog.openPicker(notebookIcons.icons[id]);
@@ -208,7 +223,7 @@ function onDrop(e: DragEvent): void {
       class="titlebar-no-drag group relative flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-[12px] transition-colors"
       :class="[
         isSelected() ? 'bg-glass-active text-text' : 'text-text hover:bg-glass-hover',
-        noteDropOver ? 'ring-2 ring-blue-400 bg-blue-400/10' : '',
+        noteDropOver ? 'ring-2 ring-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]' : '',
         isContextTarget() ? 'context-target-row' : ''
       ]"
       :style="{ paddingLeft: props.depth * 12 + 8 + 'px' }"
@@ -225,7 +240,7 @@ function onDrop(e: DragEvent): void {
            showing where the dragged root notebook would insert. -->
       <span
         v-if="canReorder && dropTarget"
-        class="pointer-events-none absolute inset-x-0 h-0.5 bg-blue-400"
+        class="pointer-events-none absolute inset-x-0 h-0.5 bg-[var(--accent)]"
         :class="dropTarget.position === 'before' ? '-top-px' : '-bottom-px'"
       />
       <!-- Expand/collapse chevron (only if it has children), else a spacer. -->
@@ -262,7 +277,7 @@ function onDrop(e: DragEvent): void {
           v-if="node.item.pinned"
           name="pin"
           :size="10"
-          class="shrink-0 text-amber-300/80"
+          class="shrink-0 text-amber-500 thin-outline"
           fill="currentColor"
           title="Pinned"
         />
@@ -284,7 +299,7 @@ function onDrop(e: DragEvent): void {
             name="star"
             :size="10"
             class="transition-opacity"
-            :class="shortcuts.isShortcut(node.item.id) ? 'text-amber-300/80 opacity-100 thin-outline' : 'text-text-muted opacity-0 group-hover:opacity-100'"
+            :class="shortcuts.isShortcut(node.item.id) ? 'text-amber-500 opacity-100 thin-outline' : 'text-text-muted opacity-0 group-hover:opacity-100'"
             :fill="shortcuts.isShortcut(node.item.id) ? 'currentColor' : 'none'"
             :title="shortcuts.isShortcut(node.item.id) ? t('sidebar.removeFromShortcuts') : t('sidebar.addToShortcuts')"
             @click.stop="toggleShortcut"

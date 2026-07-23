@@ -6,6 +6,7 @@ import {
   toNotebookListItem,
   toTagListItem,
   buildNotebookTree,
+  buildTagTree,
   readNotebookOrder,
   writeNotebookOrder,
   clearNotebookOrder,
@@ -14,6 +15,7 @@ import {
   type NotebookListItem,
   type NotebookTreeNode,
   type TagListItem,
+  type TagTreeNode,
   type CollectionSortKey,
   type SortDir
 } from "@/utils/collections";
@@ -50,6 +52,11 @@ export const useCollectionsStore = defineStore("collections", () => {
   const children = ref<Record<string, NotebookListItem[]>>({});
   /** Per-notebook expand state (which rows show their children). */
   const expanded = ref<Set<string>>(new Set());
+  /** Per-tag-path expand state. Keyed by the tag node's full slash-path (a
+   *  real tag's title, or a grouping-only prefix) — NOT a tag id, since
+   *  grouping-only nodes have none. The tag tree is fully client-side (no
+   *  lazy load), so toggling just flips membership. */
+  const expandedTags = ref<Set<string>>(new Set());
 
   const tags = ref<TagListItem[]>([]);
   const trashCount = ref(0);
@@ -100,15 +107,27 @@ export const useCollectionsStore = defineStore("collections", () => {
     )
   );
 
+  /** The recursive tag tree — tags nested by the `/` in their titles
+   *  (`task/todo` → `task › todo`). Pure client-side transform of the sorted
+   *  flat tag list; no `db.relations` involved (tags have no upstream
+   *  hierarchy). Grouping-only prefixes render as `tag: null` nodes. */
+  const treeTags = computed<TagTreeNode[]>(() =>
+    buildTagTree(sortedTags.value, sortKey.value, sortDir.value)
+  );
+
   /** Human label of the selected collection (for the notes-list filter chip),
-   * or `null` when nothing is selected. */
+   * or `null` when nothing is selected. For tags the selection key may be a
+   * real tag id OR a slash-path (a grouping-only node) — resolve a real tag
+   * id to its title, else fall back to the path itself as the label. */
   const selectedLabel = computed<string | null>(() => {
     const s = selected.value;
     if (!s) return null;
     if (s.type === "notebook") {
       return notebooks.value.find((n) => n.id === s.id)?.title ?? "Notebook";
     }
-    return tags.value.find((t) => t.id === s.id)?.title ?? "Tag";
+    if (s.type !== "tag") return "Tag"; // colors fall through as before
+    const realTag = tags.value.find((t) => t.id === s.id);
+    return realTag ? realTag.title : s.id; // `s.id` is the slash-path
   });
 
   /** Load notebooks (all + roots), tags, the trash count, and the archive
@@ -185,6 +204,16 @@ export const useCollectionsStore = defineStore("collections", () => {
     expanded.value = next;
   }
 
+  /** Expand/collapse a tag tree node (keyed by its full slash-path). No lazy
+   *  load — the tag tree is built entirely client-side from titles, so this
+   *  just flips membership in `expandedTags`. Idempotent. */
+  function toggleTagExpand(path: string): void {
+    const next = new Set(expandedTags.value);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    expandedTags.value = next;
+  }
+
   /**
    * Create a sub-notebook under `parentId`: add a notebook, link it parent→child
    * via `db.relations.add`, then reload the parent's children + the all-list +
@@ -209,6 +238,8 @@ export const useCollectionsStore = defineStore("collections", () => {
       // Refresh the flat all-list so lookups (selectedLabel, counts) see it.
       const all = await getDatabase().notebooks.all.items().catch(() => []);
       notebooks.value = all.map(toNotebookListItem);
+      // Enter inline-rename so the user can name the new sub-notebook directly.
+      startRename("notebook", childId, "New notebook");
       return childId;
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -218,17 +249,85 @@ export const useCollectionsStore = defineStore("collections", () => {
   }
 
   /**
+   * Create a sub-tag under the node at `parentPath` (a real tag's full title or
+   * a grouping-only prefix): a new tag whose title is `<parentPath>/New tag`.
+   * Unlike notebooks there is no parent→child relation — the hierarchy is
+   * purely the `/` in the title (see {@link buildTagTree}). A numeric suffix is
+   * appended if `<parentPath>/New tag` already exists (`db.tags.add` throws on
+   * a duplicate title), so repeated `+` clicks each create a distinct tag.
+   * Reloads the tag list, expands the parent, and enters inline-rename seeded
+   * with the new tag's **leaf** (`New tag` / `New tag 2`) so the user names it
+   * directly — the parent prefix is preserved on commit (see {@link renameTag}).
+   * Never throws — returns the new id, or `null`.
+   */
+  async function createSubTag(parentPath: string): Promise<string | null> {
+    try {
+      const db = getDatabase();
+      let title = `${parentPath}/New tag`;
+      let n = 2;
+      while (tags.value.some((t) => t.title === title)) {
+        title = `${parentPath}/New tag ${n++}`;
+      }
+      const id = await db.tags.add({ title });
+      if (!id) return null;
+      await reloadTags();
+      // Ensure the parent is expanded so the new child is visible.
+      if (!expandedTags.value.has(parentPath)) {
+        const next = new Set(expandedTags.value);
+        next.add(parentPath);
+        expandedTags.value = next;
+      }
+      // Enter inline-rename seeded with the leaf (the segment the user edits).
+      startRename("tag", id, title.slice(parentPath.length + 1));
+      return id;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[collections] createSubTag failed:", e);
+      return null;
+    }
+  }
+
+  /**
    * Create a new root notebook (tray "New Notebook" / future palette command),
-   * then reload so the sidebar lists it. Never throws — returns the new id, or
-   * `null` on failure. Mirrors `notes.create()`'s `db.notes.add({ title })`.
+   * then reload so the sidebar lists it, then enter inline-rename so the user
+   * can name it directly. Never throws — returns the new id, or `null` on
+   * failure. Mirrors `notes.create()`'s `db.notes.add({ title })`.
    */
   async function createNotebook(): Promise<string | null> {
     try {
       const db = getDatabase();
       const id = await db.notebooks.add({ title: "New notebook" });
+      if (!id) return null;
       await load();
+      startRename("notebook", id, "New notebook");
       return id;
     } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Create a new top-level tag titled `New tag` (a numeric suffix is appended
+   * if it already exists — `db.tags.add` throws on a duplicate title), reload
+   * the tag list, and enter inline-rename seeded with the leaf so the user
+   * names it directly. Never throws — returns the new id, or `null`.
+   */
+  async function createTag(): Promise<string | null> {
+    try {
+      const db = getDatabase();
+      let title = "New tag";
+      let n = 2;
+      while (tags.value.some((t) => t.title === title)) {
+        title = `New tag ${n++}`;
+      }
+      const id = await db.tags.add({ title });
+      if (!id) return null;
+      await reloadTags();
+      startRename("tag", id, title);
+      return id;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[collections] createTag failed:", e);
       return null;
     }
   }
@@ -387,13 +486,24 @@ export const useCollectionsStore = defineStore("collections", () => {
    * Rename a tag via `db.tags.add({id, title})` (upsert-by-id; core throws on a
    * title collision with another tag), then reload the tags list. Returns
    * `true` on success, `false` on failure (e.g. duplicate title).
+   *
+   * `title` is the **last path segment** the user typed in the inline input
+   * (seeded with `node.label`, not the full title). The parent prefix is
+   * preserved: renaming `task/todo`'s input (showing `todo`) to `done` writes
+   * `task/done`, NOT `done` (which would orphan the tag out of its parent).
+   * A top-level tag (no `/` in its title) is written verbatim. The leaf may
+   * itself contain `/` to push the tag deeper (`todo`→`todo/now` writes
+   * `task/todo/now`).
    */
   async function renameTag(id: string, title: string): Promise<boolean> {
     const trimmed = title.trim();
     if (!trimmed) return false;
     try {
       const db = getDatabase();
-      await db.tags.add({ id, title: trimmed });
+      const current = tags.value.find((t) => t.id === id)?.title ?? "";
+      const slash = current.lastIndexOf("/");
+      const fullTitle = slash >= 0 ? current.slice(0, slash + 1) + trimmed : trimmed;
+      await db.tags.add({ id, title: fullTitle });
       await reloadTags();
       return true;
     } catch (e) {
@@ -469,6 +579,7 @@ export const useCollectionsStore = defineStore("collections", () => {
     roots,
     children,
     expanded,
+    expandedTags,
     tags,
     trashCount,
     archiveCount,
@@ -482,14 +593,18 @@ export const useCollectionsStore = defineStore("collections", () => {
     sortedTags,
     notebookCount,
     treeNotebooks,
+    treeTags,
     selectedLabel,
     load,
     reloadTrashCount,
     reloadArchiveCount,
     loadChildren,
     toggleExpand,
+    toggleTagExpand,
     createSubNotebook,
+    createSubTag,
     createNotebook,
+    createTag,
     toggleSection,
     setSortKey,
     setSortDir,

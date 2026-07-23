@@ -204,8 +204,8 @@ function plainText(html: string): string {
                   :key="i"
                   class="whitespace-pre-wrap break-words px-2 py-0.5"
                   :class="{
-                    'bg-green-500/10 text-green-600 dark:text-green-400': line.type === 'add',
-                    'bg-red-500/10 text-red-600 dark:text-red-400': line.type === 'del',
+                    'bg-[color-mix(in_srgb,var(--accent-success)_10%,transparent)] text-[var(--paragraph-success)]': line.type === 'add',
+                    'bg-[color-mix(in_srgb,var(--accent-error)_10%,transparent)] text-[var(--paragraph-error)]': line.type === 'del',
                     'text-text-muted': line.type === 'ctx'
                   }"
                 >
@@ -248,7 +248,7 @@ function plainText(html: string): string {
         </li>
       </ol>
 
-      <div v-if="lastError" class="mt-2 text-[11px] text-red-400">{{ lastError }}</div>
+      <div v-if="lastError" class="mt-2 text-[11px] text-[var(--paragraph-error)]">{{ lastError }}</div>
     </div>
   </div>
 </template>

@@ -35,8 +35,8 @@ export function createWindowServer(preloadPath: string): WindowServer {
     setNativeTheme(mode: "light" | "dark" | "system"): void {
       nativeTheme.themeSource = mode;
     },
-    openSettings(): void {
-      openSettingsWindow(preloadPath);
+    openSettings(section: string | undefined): void {
+      openSettingsWindow(preloadPath, section);
     },
     openNote(noteId: string, bounds?: WindowBounds | undefined, contextId?: string | undefined): void {
       openNoteWindow(preloadPath, noteId, bounds, contextId);

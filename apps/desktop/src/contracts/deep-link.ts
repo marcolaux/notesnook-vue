@@ -22,6 +22,13 @@ export type DeepLinkKind = "note" | "notebook" | "monograph";
 export interface DeepLinkTarget {
   kind: DeepLinkKind;
   id: string;
+  /**
+   * Optional block/heading id targeting a specific section within the note
+   * (the `?blockId=<id>` query on an `nn://note/<id>` link). Absent on plain
+   * whole-note deep links. Kept optional so every pre-existing target (and
+   * every caller that ignores extra fields) keeps working unchanged.
+   */
+  blockId?: string;
 }
 
 const KINDS: readonly DeepLinkKind[] = ["note", "notebook", "monograph"];
@@ -56,10 +63,19 @@ export function parseDeepLink(url: string): DeepLinkTarget | null {
   const id = segments[0]!;
   if (!id) return null;
 
-  return { kind, id };
+  // `?blockId=<id>` (note section links) is tolerated and surfaced here.
+  // Other query params are ignored — only `blockId` is meaningful.
+  const blockId = parsed.searchParams.get("blockId") ?? undefined;
+
+  return { kind, id, ...(blockId ? { blockId } : {}) };
 }
 
-/** Build an `nn://<kind>/<id>` URL from a target. */
+/** Build an `nn://<kind>/<id>` URL from a target, appending `?blockId=<id>` when present. */
 export function buildDeepLink(target: DeepLinkTarget): string {
-  return `${NN_PROTOCOL}://${target.kind}/${target.id}`;
+  const base = `${NN_PROTOCOL}://${target.kind}/${target.id}`;
+  if (!target.blockId) return base;
+  // Use the URL API for safe encoding of the query param.
+  const url = new URL(base);
+  url.searchParams.set("blockId", target.blockId);
+  return url.toString();
 }

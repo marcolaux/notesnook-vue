@@ -206,23 +206,23 @@ function moveOrCreateTab(noteId: string, targetGroupId: string): void {
       <div v-if="activeZone" class="pointer-events-none absolute inset-0 z-10">
         <div
           v-if="activeZone === 'center'"
-          class="absolute inset-[30%] rounded-md border-2 border-blue-400/70 bg-blue-400/10"
+          class="absolute inset-[30%] rounded-md border-2 border-[color-mix(in_srgb,var(--accent)_70%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]"
         />
         <div
           v-else-if="activeZone === 'left'"
-          class="absolute inset-y-0 left-0 w-[30%] border-r-2 border-blue-400 bg-blue-400/15"
+          class="absolute inset-y-0 left-0 w-[30%] border-r-2 border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_15%,transparent)]"
         />
         <div
           v-else-if="activeZone === 'right'"
-          class="absolute inset-y-0 right-0 w-[30%] border-l-2 border-blue-400 bg-blue-400/15"
+          class="absolute inset-y-0 right-0 w-[30%] border-l-2 border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_15%,transparent)]"
         />
         <div
           v-else-if="activeZone === 'top'"
-          class="absolute inset-x-0 top-0 h-[30%] border-b-2 border-blue-400 bg-blue-400/15"
+          class="absolute inset-x-0 top-0 h-[30%] border-b-2 border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_15%,transparent)]"
         />
         <div
           v-else-if="activeZone === 'bottom'"
-          class="absolute inset-x-0 bottom-0 h-[30%] border-t-2 border-blue-400 bg-blue-400/15"
+          class="absolute inset-x-0 bottom-0 h-[30%] border-t-2 border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_15%,transparent)]"
         />
       </div>
     </div>

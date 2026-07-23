@@ -58,6 +58,74 @@
   --color-code-bg: color-mix(in oklab, var(--background) 88%, var(--paragraph) 12%);
 }
 
+/* Editor + active-tab "paper" surface — applied to EVERY pane's editor body
+   and active tab, but at two intensities: the focused pane (`editor-pane-
+   surface` / `editor-tab-active`) at full intensity, inactive panes
+   (`editor-pane-inactive` / `editor-tab-inactive`) at half intensity, so the
+   focused pane reads as "the pane you're in" while the others still feel like
+   editors (not flat shell). `Editor.vue` / `NoteTabs.vue` pick the class from
+   `layout.activeGroupId === groupId`. (Unlayered, so it beats the single-class
+   `.bg-glass-*` utilities, which `@theme inline` inlines into Tailwind's
+   `utilities` layer.) */
+
+/* Theme-agnostic default: `--background` flips with the theme (dark in dark
+   themes, light in light themes) and every theme — including 3rd-party
+   catalog themes whose `data-theme` id isn't one of the two built-ins below —
+   provides it. A semi-translucent `--background` mix reads as a soft "paper"
+   sheet over the translucent shell — the theme bg dominates but a touch of
+   transparency lets the acrylic/vibrancy behind it soften the intensity, in
+   the right direction for any theme. Inactive panes use half the opacity
+   (50% less intensity). The two built-in rules below override these for their
+   author-tuned look (higher specificity 0,2,0 beats this 0,1,0). */
+.editor-pane-surface,
+.editor-tab-active {
+  background-color: color-mix(in oklab, var(--background) 62%, transparent);
+}
+.editor-pane-inactive,
+.editor-tab-inactive {
+  background-color: color-mix(in oklab, var(--background) 31%, transparent);
+}
+
+/* Built-in light theme: `--paragraph` is dark, so a `--background` sheet alone
+   is fine, but the author-tuned look brightens it to a near-white "paper" (a
+   white mix with a small `--paragraph` tint), slightly translucent so a hint
+   of the acrylic still shows through. The active tab shares this surface so it
+   blends seamlessly into the editor below it (toolbar root is transparent, so
+   tab → toolbar → editor form one continuous band). Inactive panes halve the
+   outer opacity (92% → 46%). */
+[data-theme="default-light"] .editor-pane-surface,
+[data-theme="default-light"] .editor-tab-active {
+  background-color: color-mix(
+    in oklab,
+    color-mix(in oklab, white 88%, var(--paragraph)) 92%,
+    transparent
+  );
+}
+[data-theme="default-light"] .editor-pane-inactive,
+[data-theme="default-light"] .editor-tab-inactive {
+  background-color: color-mix(
+    in oklab,
+    color-mix(in oklab, white 88%, var(--paragraph)) 46%,
+    transparent
+  );
+}
+
+/* Built-in dark theme: the shell sits at `--glass-surface` — a faint LIGHT
+   tint over the dark acrylic, which lifts it. For the focused editor we want
+   the opposite: DARKEN it relative to the rest of the app. A moderate BLACK
+   tint over transparent darkens the editor while keeping the acrylic showing
+   through (translucent, not near-black). The active tab shares this surface
+   so it blends into the editor. Inactive panes halve the black tint (28% →
+   14%). */
+[data-theme="default-dark"] .editor-pane-surface,
+[data-theme="default-dark"] .editor-tab-active {
+  background-color: color-mix(in oklab, black 28%, transparent);
+}
+[data-theme="default-dark"] .editor-pane-inactive,
+[data-theme="default-dark"] .editor-tab-inactive {
+  background-color: color-mix(in oklab, black 14%, transparent);
+}
+
 html,
 body,
 #app {
@@ -67,6 +135,26 @@ body,
   color: var(--color-text);
   font-family: "Inter", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Opaque-root opt-out from the acrylic/glass look. Two triggers, both set on
+   <html> (see main.ts): `data-platform="linux"` (forced — Linux has no
+   OS-level acrylic/vibrancy, and compositors ignore a transparent native bg,
+   so the desktop/black would show through) and `data-transparency="off"` (the
+   user's Appearance setting, available on every platform). Painting an opaque
+   theme background on the root makes the translucent `bg-glass-*` surfaces +
+   `backdrop-filter` composite over an opaque base instead of the OS blur, so
+   the app reads as a normal opaque app while keeping the same surface tints
+   (they just sit on `--background`). The `#181818` fallback covers the first
+   paint, before `bootstrap()` injects the theme vars (it matches the default
+   dark theme's `--background` and the opaque native bg in `main/titlebar.ts`). */
+html[data-platform="linux"],
+html[data-platform="linux"] body,
+html[data-platform="linux"] #app,
+html[data-transparency="off"],
+html[data-transparency="off"] body,
+html[data-transparency="off"] #app {
+  background: var(--background, #181818);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -492,7 +580,7 @@ body,
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 4px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px color-mix(in srgb, black 40%, transparent);
   font-size: 12px;
 }
 .pop-item {
@@ -534,91 +622,18 @@ body,
   background: var(--color-border);
 }
 
-/* Code-block node-view syntax palettes (Phase 2.4c → light-mode fix).
-   `CodeBlockComponent` hardcoded a GitHub-dark Prism token palette in a scoped
-   `<style>`; with the code surface now theme-aware (`--color-code-bg`), that
-   light-on-dark palette rendered invisible in light mode. The palette lives here
-   (global, so no Vue scoped-specificity games) and branches by `<html
-   data-theme>`: GitHub-dark by default, GitHub-light under
-   `[data-theme="default-light"]` (the prefix raises specificity so it wins). */
+/* Code-block node-view — syntax colors now come from the active theme's own
+   `codeBlockCSS` (injected by `injectTheme` into the `<style id="nn-theme">`),
+   so each upstream theme's Prism palette (One Dark / One Light / …) applies to
+   our `.codeblock-node` `.token.*` spans and `pre.node-content-wrapper` (which
+   carries the `language-*` class the theme CSS targets via
+   `pre[class*="language-"]`). Only the font stack is pinned here (structural,
+   not a theme color); the block background stays theme-aware via
+   `bg-code-bg` (`--color-code-bg`). Replaces the former hardcoded
+   GitHub-dark/light palettes that branched on `data-theme` (which broke for any
+   third theme). */
 .codeblock-node pre.node-content-wrapper {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-.codeblock-node .token.comment,
-.codeblock-node .token.prolog,
-.codeblock-node .token.doctype,
-.codeblock-node .token.cdata {
-  color: #8b949e;
-}
-.codeblock-node .token.punctuation {
-  color: #c9d1d9;
-}
-.codeblock-node .token.keyword,
-.codeblock-node .token.boolean,
-.codeblock-node .token.tag {
-  color: #ff7b72;
-}
-.codeblock-node .token.string,
-.codeblock-node .token.attr-value,
-.codeblock-node .token.char {
-  color: #a5d6ff;
-}
-.codeblock-node .token.function,
-.codeblock-node .token.class-name {
-  color: #d2a8ff;
-}
-.codeblock-node .token.number,
-.codeblock-node .token.constant,
-.codeblock-node .token.symbol {
-  color: #79c0ff;
-}
-.codeblock-node .token.property,
-.codeblock-node .token.attr-name {
-  color: #79c0ff;
-}
-.codeblock-node .token.operator,
-.codeblock-node .token.entity,
-.codeblock-node .token.url {
-  color: #ffa657;
-}
-
-/* GitHub-light Prism palette — applied only in the light theme. */
-[data-theme="default-light"] .codeblock-node .token.comment,
-[data-theme="default-light"] .codeblock-node .token.prolog,
-[data-theme="default-light"] .codeblock-node .token.doctype,
-[data-theme="default-light"] .codeblock-node .token.cdata {
-  color: #6e7781;
-}
-[data-theme="default-light"] .codeblock-node .token.punctuation {
-  color: #24292f;
-}
-[data-theme="default-light"] .codeblock-node .token.keyword,
-[data-theme="default-light"] .codeblock-node .token.boolean,
-[data-theme="default-light"] .codeblock-node .token.tag {
-  color: #cf222e;
-}
-[data-theme="default-light"] .codeblock-node .token.string,
-[data-theme="default-light"] .codeblock-node .token.attr-value,
-[data-theme="default-light"] .codeblock-node .token.char {
-  color: #0a3069;
-}
-[data-theme="default-light"] .codeblock-node .token.function,
-[data-theme="default-light"] .codeblock-node .token.class-name {
-  color: #8250df;
-}
-[data-theme="default-light"] .codeblock-node .token.number,
-[data-theme="default-light"] .codeblock-node .token.constant,
-[data-theme="default-light"] .codeblock-node .token.symbol {
-  color: #0550ae;
-}
-[data-theme="default-light"] .codeblock-node .token.property,
-[data-theme="default-light"] .codeblock-node .token.attr-name {
-  color: #0550ae;
-}
-[data-theme="default-light"] .codeblock-node .token.operator,
-[data-theme="default-light"] .codeblock-node .token.entity,
-[data-theme="default-light"] .codeblock-node .token.url {
-  color: #0550ae;
 }
 /* Per-tab Find & Replace match highlights (FindReplace extension decorations).
    Reuses --color-accent so it tracks the active theme, like ::selection above. */
@@ -634,22 +649,25 @@ body,
   outline: 1px solid color-mix(in oklab, var(--color-accent) 80%, transparent);
 }
 
-/* Subtle super-thin outline for small filled glyphs/dots that are low-contrast
-   on light acrylic — the filled amber ★ (fav star) and the sidebar color dots
-   (a white/light color dot is near-invisible on a light surface). Four 0-offset
-   / 0-blur drop-shadows trace the element's alpha silhouette as a uniform thin
-   border (cheaper + crisper than a blur halo, and it follows the shape exactly
-   — the star's points and the dot's circle). Dark on light = the visible fix;
-   dark on dark (the dark theme) = invisible, so it's harmless there. Used on
-   the FILLED (pinned/favorited) star (the outline unpinned star needs no edge)
-   and on the color dots (replacing the former `border border-black/20`, so the
-   star and the dots share one tunable intensity). */
+/* Thin dark outline for small filled glyphs/dots that are low-contrast on
+   light acrylic — the filled amber ★ (fav star), the 📌 (pinned) glyph, and the
+   sidebar color dots (a white/light color dot is near-invisible on a light
+   surface). Four 0-offset / 0-blur drop-shadows trace the element's alpha
+   silhouette as a uniform thin border (cheaper + crisper than a blur halo, and
+   it follows the shape exactly — the star's points and the dot's circle).
+   The intensity is tuned for LIGHT themes, where these glyphs are otherwise hard
+   to pick out: ~1px / 0.5 alpha is strong enough to clearly define the edge on
+   a 10px icon. Dark on light = the visible fix; dark on dark (the dark theme)
+   = invisible, so it's harmless there. Used on the FILLED (pinned/favorited)
+   star AND the pin (the outline unpinned star needs no edge) and on the color
+   dots (replacing the former `border border-black/20`, so the star, the pin, and
+   the dots share one tunable intensity). */
 .thin-outline {
   filter:
-    drop-shadow(0.4px 0 0 rgba(0, 0, 0, 0.22))
-    drop-shadow(-0.4px 0 0 rgba(0, 0, 0, 0.22))
-    drop-shadow(0 0.4px 0 0 rgba(0, 0, 0, 0.22))
-    drop-shadow(0 -0.4px 0 0 rgba(0, 0, 0, 0.22));
+    drop-shadow(1px 0 0 rgba(0, 0, 0, 0.5))
+    drop-shadow(-1px 0 0 rgba(0, 0, 0, 0.5))
+    drop-shadow(0 1px 0 0 rgba(0, 0, 0, 0.5))
+    drop-shadow(0 -1px 0 0 rgba(0, 0, 0, 0.5));
 }
 
 /* The row an open context menu targets — a dashed accent outline so the user

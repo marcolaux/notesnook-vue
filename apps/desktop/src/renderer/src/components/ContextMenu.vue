@@ -326,10 +326,10 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 1px;
   border-radius: 8px;
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
-  background: var(--color-surface-solid, rgba(24, 24, 24, 0.94));
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-solid);
   backdrop-filter: blur(var(--backdrop-blur-base, 24px));
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 40px color-mix(in srgb, black 50%, transparent);
   font-size: 12px;
   color: var(--color-text, rgba(255, 255, 255, 0.85));
   outline: none;
@@ -385,10 +385,10 @@ onBeforeUnmount(() => {
   cursor: default;
 }
 .context-menu__item.is-danger {
-  color: var(--color-danger, #f87171);
+  color: var(--paragraph-error, var(--color-text));
 }
 .context-menu__item.is-danger.is-active {
-  background: rgba(248, 113, 113, 0.18);
+  background: color-mix(in srgb, var(--accent-error) 18%, transparent);
 }
 
 .context-menu__check {
@@ -402,7 +402,7 @@ onBeforeUnmount(() => {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.25);
+  border: 1px solid color-mix(in srgb, var(--paragraph) 25%, transparent);
   vertical-align: middle;
 }
 .context-menu__icon {

@@ -45,7 +45,7 @@ function toggle(): void {
       class="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border transition-colors"
       :class="
         checked
-          ? 'border-indigo-500 bg-indigo-500 text-white'
+          ? 'border-accent bg-accent text-accent-foreground'
           : 'border-glass-active bg-transparent hover:border-text-muted'
       "
       @click.prevent="toggle"

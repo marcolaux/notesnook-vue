@@ -35,6 +35,7 @@ import { useEditorStore } from "@/stores/editor";
 import { useNotesStore } from "@/stores/notes";
 import { usePublishStore } from "@/stores/publish";
 import { useCollectionsStore } from "@/stores/collections";
+import { useTemplatesStore } from "@/stores/templates";
 import { useAuthStore } from "@/stores/auth";
 import { useShellStore } from "@/stores/shell";
 import { useSyncStore } from "@/stores/sync";
@@ -114,6 +115,11 @@ export const useOmnibarStore = defineStore("omnibar", () => {
   const editorStore = useEditorStore();
   const notes = useNotesStore();
   const collections = useCollectionsStore();
+  // Referenced in `visibleCommands` so the command list re-evaluates when the
+  // dynamically-synced template commands change (the registry itself is a
+  // plain non-reactive Map, so without this dep newly-registered per-template
+  // commands could be served stale between palette opens).
+  const templates = useTemplatesStore();
   const auth = useAuthStore();
   const shell = useShellStore();
   const sync = useSyncStore();
@@ -162,9 +168,14 @@ export const useOmnibarStore = defineStore("omnibar", () => {
     closePalette: close
   }));
 
-  /** All commands whose `when` predicate currently passes. */
+  /** All commands whose `when` predicate currently passes. Reading
+   *  `templates.templates` here ties the (non-reactive) registry to the
+   *  templates list so the dynamic per-template commands refresh when
+   *  templates are added/removed/renamed. */
   const visibleCommands = computed<Command[]>(() => {
     const c = ctx.value;
+    // Touch the templates array length to track it as a dependency.
+    void templates.templates.length;
     return getCommands().filter((cmd) => !cmd.when || cmd.when(c));
   });
 

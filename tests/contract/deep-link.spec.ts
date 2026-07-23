@@ -100,3 +100,49 @@ describe("buildDeepLink", () => {
     }
   });
 });
+
+describe("blockId (note section links)", () => {
+  it("parseDeepLink surfaces a ?blockId= query param", () => {
+    expect(parseDeepLink("nn://note/abc?blockId=blk-1")).toEqual<DeepLinkTarget>({
+      kind: "note",
+      id: "abc",
+      blockId: "blk-1"
+    });
+    expect(parseDeepLink("nn://notebook/nb-7?blockId=x")).toEqual<DeepLinkTarget>({
+      kind: "notebook",
+      id: "nb-7",
+      blockId: "x"
+    });
+  });
+
+  it("parseDeepLink omits blockId when the query has no blockId", () => {
+    // A non-blockId query (e.g. `?foo=bar`) must not set blockId, and the
+    // resulting target must still equal a plain `{ kind, id }` (toEqual ignores
+    // absent keys — but here blockId is genuinely absent from the object).
+    const t = parseDeepLink("nn://note/abc?foo=bar");
+    expect(t).toEqual<DeepLinkTarget>({ kind: "note", id: "abc" });
+    expect(t).not.toHaveProperty("blockId");
+  });
+
+  it("parseDeepLink omits blockId for a plain link", () => {
+    expect(parseDeepLink("nn://note/abc")).toEqual<DeepLinkTarget>({
+      kind: "note",
+      id: "abc"
+    });
+  });
+
+  it("buildDeepLink appends ?blockId= when present", () => {
+    expect(buildDeepLink({ kind: "note", id: "abc", blockId: "blk-1" })).toBe(
+      "nn://note/abc?blockId=blk-1"
+    );
+  });
+
+  it("buildDeepLink omits the query when blockId is absent", () => {
+    expect(buildDeepLink({ kind: "note", id: "abc" })).toBe("nn://note/abc");
+  });
+
+  it("round-trips a block link through build → parse", () => {
+    const target: DeepLinkTarget = { kind: "note", id: "abc", blockId: "blk-1" };
+    expect(parseDeepLink(buildDeepLink(target))).toEqual(target);
+  });
+});

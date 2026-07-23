@@ -10,6 +10,7 @@ import { VIEWS } from "@/router/routes";
 import { desktop } from "@/platform/desktop-bridge";
 import { usePublishDialogStore } from "@/stores/publish-dialog";
 import { useDialogStore } from "@/stores/dialog";
+import { useTemplatesStore } from "@/stores/templates";
 
 const appCommands: Command[] = [
   {
@@ -22,6 +23,57 @@ const appCommands: Command[] = [
     }
   },
   {
+    id: "app:new-task",
+    title: "New task",
+    keywords: ["create", "add", "task", "todo", "checklist"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => {
+      // Navigate to /tasks first (so the new note is created in that view) then
+      // create. The default task template (config.defaultTaskTemplate)
+      // auto-applies inside `create`; with no template it seeds a blank line +
+      // an empty checklist so the note appears in Tasks immediately.
+      ctx.router?.push("/tasks");
+      void ctx.notes.create({ task: true });
+    }
+  },
+  {
+    id: "app:new-template",
+    title: "New template",
+    keywords: ["template", "create", "new"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: () => {
+      void useTemplatesStore().createTemplate();
+    }
+  },
+  {
+    id: "app:save-as-template",
+    title: "Save as template",
+    keywords: ["template", "save", "convert", "turn"],
+    group: "app",
+    when: (ctx) =>
+      !!ctx.notes.activeNote &&
+      !useTemplatesStore().isTemplate(ctx.notes.activeNote.id),
+    run: (ctx) => {
+      const id = ctx.notes.activeNote?.id;
+      if (id) void useTemplatesStore().toggleTemplate(id);
+    }
+  },
+  {
+    id: "app:remove-template",
+    title: "Remove template",
+    keywords: ["template", "remove", "untag", "delete"],
+    group: "app",
+    when: (ctx) =>
+      !!ctx.notes.activeNote &&
+      useTemplatesStore().isTemplate(ctx.notes.activeNote.id),
+    run: (ctx) => {
+      const id = ctx.notes.activeNote?.id;
+      if (id) void useTemplatesStore().toggleTemplate(id);
+    }
+  },
+  {
     id: "app:close-tab",
     title: "Close tab",
     keywords: ["tab", "close", "editor"],
@@ -30,6 +82,21 @@ const appCommands: Command[] = [
     run: (ctx) => {
       const id = ctx.notes.activeTabId;
       if (id) ctx.notes.closeTab(id);
+    }
+  },
+  {
+    id: "app:close-tab-and-trash",
+    title: "Close tab and move to trash",
+    keywords: ["tab", "close", "trash", "delete", "note"],
+    group: "app",
+    when: (ctx) => !!ctx.notes.activeNote,
+    run: (ctx) => {
+      // `moveToTrash(noteId)` trashes the note AND closes any open tab for it,
+      // so this single call does both. Only meaningful for a note tab (the
+      // `when` guard ensures `activeNote` exists; attachment/search tabs have
+      // no associated note to trash).
+      const id = ctx.notes.activeNote?.id;
+      if (id) void ctx.notes.moveToTrash(id);
     }
   },
   // Split-pane + tab navigation commands (Phase 4.2/4.3). `split-*` add a new
@@ -242,7 +309,10 @@ const appCommands: Command[] = [
     title: "Sync now",
     keywords: ["sync", "synchronize", "push", "pull", "refresh"],
     group: "app",
-    when: (ctx) => ctx.auth.showShell,
+    // Sync needs a server account; local mode (skipped login) has no token, so a
+    // sync attempt here only fails and — worse — can trip a core logout event
+    // that clears the local-mode skip flag. Gate on `isLoggedIn`, not `showShell`.
+    when: (ctx) => ctx.auth.isLoggedIn,
     run: (ctx) => {
       void ctx.sync.startSync({ type: "full" });
     }
@@ -307,7 +377,7 @@ const appCommands: Command[] = [
     title: "Publish note",
     keywords: ["publish", "monograph", "public", "web", "share"],
     group: "app",
-    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote && !ctx.publish.published,
+    when: (ctx) => ctx.auth.isLoggedIn && !!ctx.notes.activeNote && !ctx.publish.published,
     run: (ctx) => {
       const note = ctx.notes.activeNote;
       if (!note) return;
@@ -324,7 +394,7 @@ const appCommands: Command[] = [
     title: "Unpublish note",
     keywords: ["unpublish", "monograph", "private", "remove", "web"],
     group: "app",
-    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote && ctx.publish.published,
+    when: (ctx) => ctx.auth.isLoggedIn && !!ctx.notes.activeNote && ctx.publish.published,
     run: (ctx) => {
       const note = ctx.notes.activeNote;
       if (!note) return;
@@ -346,7 +416,7 @@ const appCommands: Command[] = [
     title: "Copy monograph URL",
     keywords: ["copy", "monograph", "url", "link", "share"],
     group: "app",
-    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote && ctx.publish.published,
+    when: (ctx) => ctx.auth.isLoggedIn && !!ctx.notes.activeNote && ctx.publish.published,
     run: (ctx) => {
       const url = ctx.publish.publishUrl;
       if (url) void navigator.clipboard.writeText(url);
@@ -357,7 +427,7 @@ const appCommands: Command[] = [
     title: "Open monograph in browser",
     keywords: ["open", "monograph", "browser", "web", "view"],
     group: "app",
-    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote && ctx.publish.published,
+    when: (ctx) => ctx.auth.isLoggedIn && !!ctx.notes.activeNote && ctx.publish.published,
     run: (ctx) => {
       const url = ctx.publish.publishUrl;
       // `window.open` is intercepted by `setWindowOpenHandler` → `shell.openExternal`,
@@ -379,7 +449,11 @@ const gotoCommands: Command[] = navViews.map((v) => ({
   title: `Go to ${v.label}`,
   keywords: ["go", "goto", "navigate", "open", "view", v.label.toLowerCase()],
   group: "app",
-  when: (ctx) => ctx.auth.showShell && !!ctx.router,
+  // Monographs is hidden in local-only mode — it's the published-notes view,
+  // which needs a logged-in account (publishing is a server call). The other
+  // views are local-only-safe.
+  when: (ctx) =>
+    ctx.auth.showShell && !!ctx.router && (v.name !== "monographs" || ctx.auth.isLoggedIn),
   run: (ctx) => {
     ctx.router?.push(v.path);
   }

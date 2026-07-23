@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useSettingsStore } from "@/stores/settings";
 import type { TimeFormat, TrashCleanupInterval, Profile, DayFormat, WeekFormat } from "@notesnook-vue/contracts";
+import { ThemeDark, ThemeLight } from "@notesnook-vue/theme-vue";
 
 // In-memory fake db.settings: each getter reads from _d; setters mutate + the
 // store re-reads via the getter (matching core's set-then-get contract).
@@ -137,6 +138,8 @@ describe("useSettingsStore — defaults + load", () => {
     expect(s.profile).toBeUndefined();
     expect(s.themeMode).toBe("dark"); // empty localStorage → default
     expect(s.themeChangeSignal).toBe(0);
+    expect(s.transparencyEnabled).toBe(true); // empty localStorage → default
+    expect(s.transparencyChangeSignal).toBe(0);
   });
 
   it("themeMode is read from localStorage at construction", () => {
@@ -272,6 +275,102 @@ describe("useSettingsStore — setters", () => {
     s.setThemeMode("light");
     expect(s.themeChangeSignal).toBe(2);
     expect(storage.getItem("notesnook.themeMode")).toBe("light");
+  });
+
+  it("transparencyEnabled is read from localStorage at construction", () => {
+    storage.setItem("notesnook.transparencyEnabled", "false");
+    setActivePinia(createPinia());
+    const s = useSettingsStore();
+    expect(s.transparencyEnabled).toBe(false);
+  });
+
+  it("invalid localStorage transparencyEnabled falls back to default (true)", () => {
+    storage.setItem("notesnook.transparencyEnabled", "maybe");
+    setActivePinia(createPinia());
+    const s = useSettingsStore();
+    expect(s.transparencyEnabled).toBe(true);
+  });
+
+  it("setTransparencyEnabled updates state + persists + bumps the signal", () => {
+    const s = useSettingsStore();
+    expect(s.transparencyEnabled).toBe(true);
+    s.setTransparencyEnabled(false);
+    expect(s.transparencyEnabled).toBe(false);
+    expect(s.transparencyChangeSignal).toBe(1);
+    expect(storage.getItem("notesnook.transparencyEnabled")).toBe("false");
+    s.setTransparencyEnabled(true);
+    expect(s.transparencyChangeSignal).toBe(2);
+    expect(storage.getItem("notesnook.transparencyEnabled")).toBe("true");
+  });
+
+  it("darkTheme/lightTheme default to the vendored built-ins", () => {
+    const s = useSettingsStore();
+    expect(s.darkTheme.id).toBe("default-dark");
+    expect(s.lightTheme.id).toBe("default-light");
+  });
+
+  it("a stored theme is read back into the slot at construction", () => {
+    const custom = { ...ThemeDark, id: "custom-dark", name: "Custom" };
+    storage.setItem("notesnook.theme.dark", JSON.stringify(custom));
+    setActivePinia(createPinia());
+    const s = useSettingsStore();
+    expect(s.darkTheme.id).toBe("custom-dark");
+  });
+
+  it("setActiveTheme swaps the matching slot, persists + bumps (mode unchanged)", () => {
+    const s = useSettingsStore();
+    s.setThemeMode("light"); // start from light mode
+    const customDark = { ...ThemeDark, id: "custom-dark", name: "Custom Dark" };
+    s.setActiveTheme(customDark);
+    expect(s.darkTheme.id).toBe("custom-dark");
+    expect(s.themeMode).toBe("light"); // installing a dark theme does NOT change the mode
+    expect(s.themeChangeSignal).toBe(2); // setThemeMode bumped 1, setActiveTheme bumped 2
+    expect(JSON.parse(storage.getItem("notesnook.theme.dark")!).id).toBe("custom-dark");
+    expect(s.lightTheme.id).toBe("default-light"); // other slot untouched
+  });
+
+  it("setActiveTheme on a light theme does not change themeMode", () => {
+    const s = useSettingsStore();
+    s.setThemeMode("dark");
+    const customLight = { ...ThemeLight, id: "custom-light", name: "Custom Light" };
+    s.setActiveTheme(customLight);
+    expect(s.lightTheme.id).toBe("custom-light");
+    expect(s.themeMode).toBe("dark"); // unchanged — installing never flips the mode
+    expect(JSON.parse(storage.getItem("notesnook.theme.light")!).id).toBe("custom-light");
+  });
+
+  it("restoreStockThemes resets installed slots to built-in defaults, removes stored themes, and bumps signal", () => {
+    const s = useSettingsStore();
+    const customDark = { ...ThemeDark, id: "custom-dark", name: "Custom Dark" };
+    const customLight = { ...ThemeLight, id: "custom-light", name: "Custom Light" };
+    s.setActiveTheme(customDark);
+    s.setActiveTheme(customLight);
+    expect(s.darkTheme.id).toBe("custom-dark");
+    expect(s.lightTheme.id).toBe("custom-light");
+    expect(storage.getItem("notesnook.theme.dark")).not.toBeNull();
+    expect(storage.getItem("notesnook.theme.light")).not.toBeNull();
+
+    const signalBefore = s.themeChangeSignal;
+    s.restoreStockThemes();
+
+    expect(s.darkTheme.id).toBe("default-dark");
+    expect(s.lightTheme.id).toBe("default-light");
+    expect(storage.getItem("notesnook.theme.dark")).toBeNull();
+    expect(storage.getItem("notesnook.theme.light")).toBeNull();
+    expect(s.themeChangeSignal).toBe(signalBefore + 1);
+  });
+
+  it("isThemeApplied reports either slot", () => {
+    const s = useSettingsStore();
+    expect(s.isThemeApplied("default-dark")).toBe(true);
+    expect(s.isThemeApplied("default-light")).toBe(true);
+    expect(s.isThemeApplied("nope")).toBe(false);
+  });
+
+  it("getTheme returns the slot for a colorScheme", () => {
+    const s = useSettingsStore();
+    expect(s.getTheme("dark").id).toBe("default-dark");
+    expect(s.getTheme("light").id).toBe("default-light");
   });
 
   it("setter failure leaves the previous value intact (never throws)", async () => {

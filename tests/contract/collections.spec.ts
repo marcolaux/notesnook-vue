@@ -5,6 +5,7 @@ import {
   sortCollections,
   toNotebookListItem,
   toTagListItem,
+  buildTagTree,
   DEFAULT_COLLECTION_SORT_KEY,
   DEFAULT_COLLECTION_SORT_DIR
 } from "@/utils/collections";
@@ -21,7 +22,7 @@ let mockDb: {
     roots: { items: () => Promise<Notebook[]> };
     add: (arg: Partial<Notebook>) => Promise<string>;
   };
-  tags: { all: { items: () => Promise<Tag[]> } };
+  tags: { all: { items: () => Promise<Tag[]> }; add: (arg: Partial<Tag>) => Promise<string> };
   trash: { all: () => Promise<unknown[]> };
   notes: { archived: { ids: () => Promise<string[]> } };
   relations: {
@@ -33,6 +34,8 @@ let mockDb: {
   // backing list for all notebooks (so createSubNotebook's all-items reload sees new ids).
   _all: Notebook[];
   _roots: Notebook[];
+  // backing list for all tags (so createSubTag's reload sees the new tag).
+  _tags: Tag[];
 };
 vi.mock("@/platform/bootstrap", () => ({
   getDatabase: () => mockDb,
@@ -83,6 +86,7 @@ beforeEach(() => {
     _all: [...NOTEBOOKS],
     _roots: [...NOTEBOOKS],
     _childMap: new Map<string, Notebook[]>(),
+    _tags: [...TAGS],
     notebooks: {
       all: { items: async () => mockDb._all },
       roots: { items: async () => mockDb._roots },
@@ -96,7 +100,23 @@ beforeEach(() => {
         return id;
       })
     },
-    tags: { all: { items: async () => TAGS } },
+    tags: {
+      all: { items: async () => mockDb._tags },
+      add: vi.fn(async (arg: Partial<Tag>) => {
+        // Upsert-by-id (core's rename path): if `id` matches an existing tag,
+        // update its title in place; otherwise append a new tag.
+        if (arg.id && mockDb._tags.some((t) => t.id === arg.id)) {
+          mockDb._tags = mockDb._tags.map((t) =>
+            t.id === arg.id ? { ...t, title: arg.title ?? t.title } : t
+          );
+          return arg.id;
+        }
+        const id = arg.id ?? `t-new-${mockDb._tags.length + 1}`;
+        const created = tag({ id, title: arg.title ?? "Untitled", dateCreated: 0, dateModified: 0 });
+        mockDb._tags = [...mockDb._tags, created];
+        return id;
+      })
+    },
     trash: { all: async () => [{ id: "x" }, { id: "y" }] },
     notes: { archived: { ids: async () => [] } },
     relations: {
@@ -383,5 +403,169 @@ describe("sub-notebooks (nested notebooks via db.relations)", () => {
       throw new Error("nope");
     };
     await expect(c.createSubNotebook("a")).resolves.toBeNull();
+  });
+
+  it("createSubTag adds a tag titled <parent>/New tag, reloads + expands the parent", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    const id = await c.createSubTag("task");
+    expect(id).toBeTruthy();
+    expect(mockDb.tags.add).toHaveBeenCalledWith({ title: "task/New tag" });
+    // the new tag is now in the loaded list + the parent is expanded.
+    expect(c.tags.some((t) => t.title === "task/New tag")).toBe(true);
+    expect(c.expandedTags.has("task")).toBe(true);
+  });
+
+  it("createSubTag avoids a duplicate title by appending a numeric suffix", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    // Seed an existing `task/New tag` so the next `+` must disambiguate.
+    mockDb._tags = [...mockDb._tags, tag({ id: "existing", title: "task/New tag", dateCreated: 0, dateModified: 0 })];
+    await c.load();
+    await c.createSubTag("task");
+    expect(mockDb.tags.add).toHaveBeenCalledWith({ title: "task/New tag 2" });
+    expect(c.tags.some((t) => t.title === "task/New tag 2")).toBe(true);
+  });
+
+  it("createSubTag never throws + returns null on db failure", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    mockDb.tags.add = async () => {
+      throw new Error("nope");
+    };
+    await expect(c.createSubTag("task")).resolves.toBeNull();
+  });
+
+  it("renameTag preserves the parent prefix (the input is seeded with the leaf)", async () => {
+    // The inline-rename input shows the LAST segment (`node.label`); committing
+    // reconstructs the full title from the current prefix + the typed leaf, so
+    // editing `task/todo`'s `todo` → `done` writes `task/done` (not `done`).
+    const c = useCollectionsStore();
+    mockDb._tags = [
+      tag({ id: "t_todo", title: "task/todo", dateCreated: 0, dateModified: 0 })
+    ];
+    await c.load();
+    const ok = await c.renameTag("t_todo", "done");
+    expect(ok).toBe(true);
+    expect(mockDb.tags.add).toHaveBeenCalledWith({ id: "t_todo", title: "task/done" });
+    expect(c.tags.find((t) => t.id === "t_todo")?.title).toBe("task/done");
+  });
+
+  it("renameTag on a top-level tag writes the leaf verbatim (no prefix)", async () => {
+    const c = useCollectionsStore();
+    mockDb._tags = [tag({ id: "t1", title: "work", dateCreated: 0, dateModified: 0 })];
+    await c.load();
+    const ok = await c.renameTag("t1", "personal");
+    expect(ok).toBe(true);
+    expect(mockDb.tags.add).toHaveBeenCalledWith({ id: "t1", title: "personal" });
+    expect(c.tags.find((t) => t.id === "t1")?.title).toBe("personal");
+  });
+
+  it("renameTag lets a leaf with a `/` push the tag deeper", async () => {
+    const c = useCollectionsStore();
+    mockDb._tags = [tag({ id: "t_todo", title: "task/todo", dateCreated: 0, dateModified: 0 })];
+    await c.load();
+    await c.renameTag("t_todo", "todo/now");
+    expect(mockDb.tags.add).toHaveBeenCalledWith({ id: "t_todo", title: "task/todo/now" });
+  });
+
+  it("createNotebook creates a root notebook + enters inline-rename", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    const id = await c.createNotebook();
+    expect(id).toBeTruthy();
+    expect(c.notebooks.some((n) => n.title === "New notebook")).toBe(true);
+    expect(c.renaming).toEqual({ kind: "notebook", id, text: "New notebook" });
+  });
+
+  it("createSubNotebook creates a child + expands the parent + enters rename", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    const id = await c.createSubNotebook("a");
+    expect(id).toBeTruthy();
+    expect(c.expanded.has("a")).toBe(true);
+    expect(c.children["a"]?.some((n) => n.id === id)).toBe(true);
+    expect(c.renaming).toEqual({ kind: "notebook", id, text: "New notebook" });
+  });
+
+  it("createTag creates a top-level tag + enters inline-rename (leaf seed)", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    const id = await c.createTag();
+    expect(id).toBeTruthy();
+    expect(mockDb.tags.add).toHaveBeenCalledWith({ title: "New tag" });
+    expect(c.tags.some((t) => t.title === "New tag")).toBe(true);
+    expect(c.renaming).toEqual({ kind: "tag", id, text: "New tag" });
+  });
+
+  it("createTag avoids a duplicate title + still enters rename", async () => {
+    const c = useCollectionsStore();
+    mockDb._tags = [...mockDb._tags, tag({ id: "existing", title: "New tag", dateCreated: 0, dateModified: 0 })];
+    await c.load();
+    const id = await c.createTag();
+    expect(mockDb.tags.add).toHaveBeenCalledWith({ title: "New tag 2" });
+    expect(c.renaming).toEqual({ kind: "tag", id, text: "New tag 2" });
+  });
+
+  it("createSubTag creates the child + expands the parent + enters rename (leaf seed)", async () => {
+    const c = useCollectionsStore();
+    await c.load();
+    const id = await c.createSubTag("task");
+    expect(id).toBeTruthy();
+    expect(mockDb.tags.add).toHaveBeenCalledWith({ title: "task/New tag" });
+    expect(c.expandedTags.has("task")).toBe(true);
+    // rename seeded with the LEAF, so the user names just the segment.
+    expect(c.renaming).toEqual({ kind: "tag", id, text: "New tag" });
+  });
+});
+
+describe("buildTagTree", () => {
+  // Tags with a `/` in the title nest by prefix; a prefix with no real tag of
+  // its own becomes a grouping-only node (`tag: null`).
+  const tags = [
+    toTagListItem(tag({ id: "t_todo", title: "task/todo", dateCreated: 10, dateModified: 30 })),
+    toTagListItem(tag({ id: "t_done", title: "task/done", dateCreated: 20, dateModified: 20 })),
+    toTagListItem(tag({ id: "t_inbox", title: "inbox", dateCreated: 30, dateModified: 10 })),
+    toTagListItem(tag({ id: "t_deep", title: "task/todo/now", dateCreated: 40, dateModified: 5 }))
+  ];
+
+  it("nests slash titles under a grouping-only parent and leaves flat tags as roots", () => {
+    const tree = buildTagTree(tags, "title", "asc");
+    // Top-level nodes: "inbox" (leaf) and "task" (grouping-only parent).
+    const top = tree.map((n) => n.path);
+    expect(top).toEqual(["inbox", "task"]); // title asc
+    const inbox = tree.find((n) => n.path === "inbox")!;
+    expect(inbox.tag?.id).toBe("t_inbox");
+    expect(inbox.children).toEqual([]);
+    const task = tree.find((n) => n.path === "task")!;
+    expect(task.tag).toBeNull(); // no real "task" tag → grouping-only
+    expect(task.children.map((c) => c.path)).toEqual(["task/done", "task/todo"]); // asc
+  });
+
+  it("nests deeper paths recursively (task › todo › now)", () => {
+    const tree = buildTagTree(tags, "title", "asc");
+    const todo = tree.find((n) => n.path === "task")!.children.find((c) => c.path === "task/todo")!;
+    expect(todo.tag?.id).toBe("t_todo");
+    expect(todo.children.map((c) => c.path)).toEqual(["task/todo/now"]);
+    expect(todo.children[0].tag?.id).toBe("t_deep");
+  });
+
+  it("a real tag at a parent path carries its tag AND its children", () => {
+    const withRoot = [
+      ...tags,
+      toTagListItem(tag({ id: "t_task", title: "task", dateCreated: 1, dateModified: 99 }))
+    ];
+    const tree = buildTagTree(withRoot, "title", "asc");
+    const task = tree.find((n) => n.path === "task")!;
+    expect(task.tag?.id).toBe("t_task"); // real parent
+    expect(task.children.map((c) => c.path)).toEqual(["task/done", "task/todo"]);
+  });
+
+  it("a grouping-only node derives its dateModified from the most-recent descendant", () => {
+    const tree = buildTagTree(tags, "dateModified", "desc");
+    const task = tree.find((n) => n.path === "task")!;
+    // descendants: todo(30), done(20), now(5) → max 30
+    expect(task.dateModified).toBe(30);
+    expect(task.tag).toBeNull();
   });
 });

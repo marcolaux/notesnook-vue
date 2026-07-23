@@ -12,7 +12,14 @@
  * Recursive **sub-notebooks** are nested notebooks linked parent→child via
  * `db.relations` (`{type:"notebook", id: parent} → {type:"notebook", id: child}`;
  * `Topic` is `@deprecated`). `buildNotebookTree` below nests roots + a lazy
- * children map. Tags have no upstream hierarchy → stay flat.
+ * children map.
+ *
+ * **Hierarchical tags** are a pure client-side view transform: tags have no
+ * upstream hierarchy, but a tag whose `title` contains a `/` (e.g. `task/todo`)
+ * is rendered as a sub-tag of its first segment. `buildTagTree` below splits
+ * each title on `/` and nests by prefix. A parent segment that has no real tag
+ * of its own becomes a grouping-only node (`tag: null`) — still selectable
+ * (filters to all descendants) but not renameable/deletable/pinnable.
  */
 import type { Notebook, Tag } from "@notesnook-vue/contracts";
 
@@ -159,6 +166,115 @@ export function buildNotebookTree(
     return { item, children: sorted.map(build) };
   };
   return sortCollections(roots, key, dir, order).map(build);
+}
+
+// --- hierarchical tags (client-side, slash-in-title) ------------------------
+/**
+ * A tag rendered as a tree node. Unlike {@link NotebookTreeNode} there is no
+ * upstream hierarchy — the tree is built purely by splitting each tag's
+ * `title` on `/`. A node whose path matches a real tag's title carries that
+ * `tag`; a parent prefix with no real tag of its own is a **grouping-only**
+ * node (`tag: null`) — selectable (filters to all descendants) but not
+ * renameable/deletable/pinnable.
+ *
+ * `dateModified`/`dateCreated` make the node a {@link SortableCollectionItem}
+ * (so {@link sortCollections} works on it): the real tag's timestamps if it
+ * has one, else the **max** across descendants (a grouping node sorts by its
+ * most-recently-changed child). `title` (for the sorter) is the `label`.
+ */
+export interface TagTreeNode {
+  /** Slash-joined full path, e.g. `"task/todo"`. Unique tree key. */
+  path: string;
+  /** Display label = final path segment, e.g. `"todo"`. */
+  label: string;
+  /** The real tag at exactly this path, or `null` for a grouping-only node. */
+  tag: TagListItem | null;
+  children: TagTreeNode[];
+  dateModified: number;
+  dateCreated: number;
+  /** `= label`; satisfies {@link SortableCollectionItem} so {@link sortCollections}
+   *  can sort nodes by their display segment (the "title" sort key). Distinct
+   *  from `tag.title` (the full path) on purpose. */
+  title: string;
+}
+
+/**
+ * Build a tag tree by nesting tags on the `/` in their titles (`task/todo` →
+ * `task › todo`). Pure client-side transform — no `db.relations` involved.
+ *
+ * Each real tag is inserted at its `title.split("/")` path; a node's `tag` is
+ * set only when a real tag's title equals the node's full path. Grouping-only
+ * parents (a prefix with no real tag) get `tag: null`. Levels are sorted via
+ * {@link sortCollections} (pinned-first is a no-op for tags — no `pinned`
+ * flag). Non-mutating.
+ *
+ * Tag titles are unique upstream (`db.tags.add` throws on a duplicate), so a
+ * full path is a unique key — no merge collisions.
+ */
+export function buildTagTree(
+  tags: readonly TagListItem[],
+  key: CollectionSortKey,
+  dir: SortDir
+): TagTreeNode[] {
+  // Mutable trie node: children by segment; `tag` attached when a real tag
+  // lands exactly at this path.
+  interface Trie {
+    children: Map<string, Trie>;
+    tag: TagListItem | null;
+  }
+  const root: Trie = { children: new Map(), tag: null };
+  for (const tag of tags) {
+    const title = tag.title || "Untitled";
+    const segments = title.split("/");
+    let node = root;
+    for (const seg of segments) {
+      let child = node.children.get(seg);
+      if (!child) {
+        child = { children: new Map(), tag: null };
+        node.children.set(seg, child);
+      }
+      node = child;
+    }
+    node.tag = tag; // a real tag lives at its full title path
+  }
+
+  // Recursively materialize the trie into sorted TagTreeNodes, deriving
+  // timestamps for grouping-only nodes from their descendants.
+  const build = (trie: Trie, path: string): TagTreeNode => {
+    // `path` is always non-empty here (top-level passes a non-empty trie key,
+    // recursion appends `/seg`), so `pop()` always yields the final segment.
+    const label = path.split("/").pop() ?? "";
+    const childEntries = Array.from(trie.children.entries());
+    const built = childEntries.map(([seg, child]) =>
+      build(child, path ? `${path}/${seg}` : seg)
+    );
+    // Sort each level via sortCollections (pinned-first is a no-op for tags),
+    // mirroring buildNotebookTree's per-level sort.
+    const children = sortCollections(built, key, dir);
+    // Timestamps: the real tag's if present, else the most-recent descendant.
+    let dateModified = trie.tag?.dateModified ?? 0;
+    let dateCreated = trie.tag?.dateCreated ?? 0;
+    if (!trie.tag) {
+      for (const c of children) {
+        dateModified = Math.max(dateModified, c.dateModified);
+        dateCreated = Math.max(dateCreated, c.dateCreated);
+      }
+    }
+    return {
+      path,
+      label,
+      tag: trie.tag,
+      children,
+      dateModified,
+      dateCreated,
+      title: label
+    };
+  };
+
+  const topLevel = Array.from(root.children.entries()).map(([seg, child]) =>
+    build(child, seg)
+  );
+  return sortCollections(topLevel, key, dir);
 }
 
 // --- notebooks manual order (local-only, localStorage) ----------------------

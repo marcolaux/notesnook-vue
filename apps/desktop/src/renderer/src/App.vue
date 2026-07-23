@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
@@ -13,25 +13,34 @@ import { useBackupsStore } from "@/stores/backup";
 import { useSpellCheckerStore } from "@/stores/spell-checker";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useShellStore } from "@/stores/shell";
-import { useSettingsStore, THEME_MODE_KEY } from "@/stores/settings";
+import { useSettingsStore, THEME_MODE_KEY, TRANSPARENCY_ENABLED_KEY, THEME_DARK_KEY, THEME_LIGHT_KEY } from "@/stores/settings";
 import { useConfigStore } from "@/stores/config";
 import { useUpstreamNotifierStore } from "@/stores/upstream-notifier";
+import { useUpdaterStore } from "@/stores/updater";
 import { useShortcutsStore } from "@/stores/shortcuts";
 import { useRemindersStore } from "@/stores/reminders";
 import { useToolbarStore } from "@/stores/toolbar";
 import { useNotebookIconsStore } from "@/stores/notebook-icons";
+import { useTemplatesStore } from "@/stores/templates";
 import { useMonographsStore } from "@/stores/monographs";
 import { bootstrap } from "@/platform/bootstrap";
 import { desktop } from "@/platform/desktop-bridge";
 import { restoreSession } from "@/platform/session-restore";
-import { readCurrentContext } from "@/platform/account-context";
+import { readCurrentContext, dbFileName } from "@/platform/account-context";
+import { useDialogStore } from "@/stores/dialog";
 import {
   useSessionPersistence,
   flushNow,
   setPersistenceSuppressed
 } from "@/composables/use-session-persistence";
 import { dropZoneFromPoint } from "@/utils/tab-dnd";
-import { setTheme, ThemeDark, ThemeLight } from "@notesnook-vue/theme-vue";
+import { autoUpdateInstalledThemes } from "@/composables/use-themes-catalog";
+import {
+  isDatabaseLockedMessage,
+  DB_LOCKED_HEADLINE,
+  DB_LOCKED_BODY
+} from "@contracts/db-locked";
+import { setTheme, ThemeDark, ThemeLight, type VueTheme } from "@notesnook-vue/theme-vue";
 import { useReminderNotifications } from "@/composables/use-reminder-notifications";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -44,6 +53,59 @@ const router = useRouter();
 
 const bootState = ref<"loading" | "ready" | "error">("loading");
 const bootError = ref<string>("");
+// True when the boot failure was a "database locked by another instance"
+// (surfaced from main as a marked message — see contracts/db-locked.ts). Drives
+// the friendlier overlay copy + Retry affordance vs the generic Startup-failed
+// card.
+const dbLocked = computed(
+  () => bootState.value === "error" && isDatabaseLockedMessage(bootError.value)
+);
+
+const dialog = useDialogStore();
+const forceUnlocking = ref(false);
+
+/** Retry the boot from the error overlay. A full reload re-runs the whole boot
+ *  cleanly (stores re-init from scratch — no partial-state hazard). For the
+ *  locked-by-another-instance case it re-fails until the other instance
+ *  releases the lock, which is the expected loop the overlay copy describes. */
+function retryBoot(): void {
+  location.reload();
+}
+
+/**
+ * Force-unlock the current context's database: asks main to release our
+ * connection + delete the `-wal`/`-shm` journal sidecars, then reloads so the
+ * boot re-opens the DB from a clean journal. Recovery path for a DB stuck
+ * locked by a crash/bug (a torn WAL that blocks re-open). The main `.sql` file
+ * is kept; the trade-off is that any committed-but-not-yet-checkpointed writes
+ * still in the WAL are lost — confirmed via the dialog, which also warns the
+ * user to close other Notesnook windows first (deleting a LIVE instance's WAL
+ * would corrupt it). No-ops if the boot error isn't a held-lock failure. Never
+ * leaves the user worse off: on any error it logs and still reloads.
+ */
+async function forceUnlock(): Promise<void> {
+  if (!dbLocked.value || forceUnlocking.value) return;
+  const ok = await dialog.confirm({
+    title: "Force unlock database?",
+    message:
+      "This closes the database and deletes its journal (-wal/-shm) to clear a stuck lock from a crash. Any notes written since the last checkpoint may be lost. Make sure no other Notesnook window is open, then continue.",
+    confirmLabel: "Force unlock",
+    cancelLabel: "Cancel",
+    danger: true
+  });
+  if (!ok) return;
+  forceUnlocking.value = true;
+  try {
+    await desktop.sqlite.forceUnlock.mutate({
+      filePath: dbFileName(readCurrentContext())
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[boot] forceUnlock failed:", e);
+  } finally {
+    location.reload();
+  }
+}
 
 // The separate Settings window loads the renderer with `?window=settings`.
 // It runs a *minimal* boot (DB + settings + spell-check + i18n only) and
@@ -95,7 +157,10 @@ function resolveSystemDark(): boolean {
 
 function applyTheme(mode: "light" | "dark" | "system"): void {
   const effective = mode === "system" ? (resolveSystemDark() ? "dark" : "light") : mode;
-  setTheme(effective === "dark" ? ThemeDark : ThemeLight);
+  // Resolve the active theme from the two slots (dark/light) rather than the
+  // hardcoded ThemeDark/ThemeLight — a theme installed from the catalog or
+  // imported from a file lives in the slot and is applied here.
+  setTheme(effective === "dark" ? settings.darkTheme : settings.lightTheme);
   // nativeTheme.themeSource accepts "system" natively (tracks OS); for
   // light/dark it pins the material. Best-effort — never throws.
   void desktop.window.setNativeTheme.mutate(mode).catch(() => {
@@ -113,7 +178,20 @@ function applyTheme(mode: "light" | "dark" | "system"): void {
  */
 function applyThemeCss(mode: "light" | "dark" | "system"): void {
   const effective = mode === "system" ? (resolveSystemDark() ? "dark" : "light") : mode;
-  setTheme(effective === "dark" ? ThemeDark : ThemeLight);
+  setTheme(effective === "dark" ? settings.darkTheme : settings.lightTheme);
+}
+
+/**
+ * Apply the transparency preference to <html> as `data-transparency`
+ * (`on`/`off`). The opaque-root CSS in style.css opts out of the acrylic/glass
+ * look when this is `off` (and unconditionally on Linux via `data-platform`).
+ * DOM-free store keeps the value; this is the on-site application, mirroring
+ * `applyTheme`/`applyThemeCss`. Idempotent and safe in a non-DOM (test) env.
+ */
+function applyTransparency(enabled: boolean): void {
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.transparency = enabled ? "on" : "off";
+  }
 }
 
 let mediaCleanup: (() => void) | undefined;
@@ -146,6 +224,27 @@ function bindCrossWindowThemeListener(): void {
       // the right value, then re-apply the renderer CSS.
       settings.syncThemeMode(e.newValue);
       applyThemeCss(e.newValue);
+    }
+    if (e.key === TRANSPARENCY_ENABLED_KEY && (e.newValue === "true" || e.newValue === "false")) {
+      // Mirror + re-apply the transparency attr (no signal bump — see
+      // `syncTransparencyEnabled`; the originating window already applied it).
+      const enabled = e.newValue === "true";
+      settings.syncTransparencyEnabled(enabled);
+      applyTransparency(enabled);
+    }
+    if (e.key === THEME_DARK_KEY || e.key === THEME_LIGHT_KEY) {
+      // A theme slot changed in another window (catalog install / file import / restore stock).
+      // Mirror the parsed theme into this window's slot and re-apply the active
+      // theme in case the changed slot is the active one. Malformed JSON is
+      // ignored (the originating window validated before writing).
+      try {
+        const fallback = e.key === THEME_DARK_KEY ? ThemeDark : ThemeLight;
+        const theme = e.newValue != null ? (JSON.parse(e.newValue) as VueTheme) : fallback;
+        settings.syncStoredTheme(e.key === THEME_DARK_KEY ? "dark" : "light", theme);
+        applyThemeCss(settings.themeMode);
+      } catch {
+        /* ignore malformed slot value */
+      }
     }
   };
   window.addEventListener("storage", onStorage);
@@ -240,6 +339,7 @@ onMounted(async () => {
   // the theme. Then route to /settings and surface the UI.
   if (isSettingsWindow) {
     applyTheme(settings.themeMode);
+    applyTransparency(settings.transparencyEnabled);
     bindSystemThemeListener();
     bindCrossWindowThemeListener();
     try {
@@ -324,11 +424,19 @@ onMounted(async () => {
     void useNotesStore().handleRemoteNoteChanged(noteId);
   });
 
+  // Auto-updater: subscribe to the live `updater:status` IPC push (download
+  // progress + "ready to install") and kick the periodic update check so a
+  // published update surfaces as a title-bar badge without user action.
+  // Idempotent; runs in both the main + settings windows (the Updates section
+  // lives in the settings window and needs the IPC push). Dev is a no-op.
+  useUpdaterStore().init();
+
   // Apply the stored theme on boot (corrects bootstrap's dark default to the
   // user's choice) + listen for OS preference changes while in system mode.
   // Also bind the cross-window theme listener so a theme change made in the
   // Settings window re-applies here (the main window).
   applyTheme(settings.themeMode);
+  applyTransparency(settings.transparencyEnabled);
   bindSystemThemeListener();
   bindCrossWindowThemeListener();
 
@@ -368,6 +476,9 @@ onMounted(async () => {
     status.bindSyncEvents();
     status.startClock();
     void status.refreshSync();
+    // Best-effort: silently upgrade any catalog-installed themes to their
+    // newest server version (main window only; never throws on boot).
+    if (!isSettingsWindow && !isNoteWindow) void autoUpdateInstalledThemes();
     // Bind the SSE-driven auto-pull once (idempotent): when the server pushes
     // `triggerSync` (another device synced), core publishes
     // `databaseSyncRequested` and this triggers a `db.sync()` so the change
@@ -434,6 +545,10 @@ onMounted(async () => {
       // and `load()` swaps in custom icons if any are stored. Decorative only,
       // so safe to run alongside the list fan-out (no IPC dependency).
       void useNotebookIconsStore().load();
+      // Load the templates list (notes tagged "template") so the command
+      // palette's per-template commands + the Notes settings pickers populate.
+      // Fire-and-forget like the neighboring fan-out calls.
+      void useTemplatesStore().load();
       // Restore the saved editor session for this account (open tabs + split
       // layout + torn-off note windows). After `notes.load()` so the list is
       // the source of valid note ids for filtering. Main window only — note /
@@ -469,6 +584,12 @@ onMounted(async () => {
 watch(
   () => settings.themeChangeSignal,
   () => applyTheme(settings.themeMode)
+);
+
+// Re-apply the transparency preference when the user toggles it in Settings.
+watch(
+  () => settings.transparencyChangeSignal,
+  () => applyTransparency(settings.transparencyEnabled)
 );
 
 // Auto-sync after a save (debounced + gated inside the sync store). Without
@@ -647,15 +768,33 @@ if (!isSettingsWindow) {
       <!-- Boot overlay -->
       <div
         v-if="bootState !== 'ready'"
-        class="absolute inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm"
+        class="absolute inset-0 z-50 grid place-items-center bg-[var(--color-backdrop)] backdrop-blur-sm"
       >
         <div class="max-w-md rounded-lg border border-glass-border bg-glass-surface px-6 py-5 text-center">
           <template v-if="bootState === 'loading'">
             <div class="text-sm text-text-muted">Initialising database…</div>
           </template>
           <template v-else>
-            <div class="text-sm font-medium text-red-400">Startup failed</div>
-            <div class="mt-2 text-xs text-text-muted">{{ bootError }}</div>
+            <div class="text-sm font-medium text-[var(--paragraph-error)]">
+              {{ dbLocked ? DB_LOCKED_HEADLINE : "Startup failed" }}
+            </div>
+            <div class="mt-2 text-xs text-text-muted">
+              {{ dbLocked ? DB_LOCKED_BODY : bootError }}
+            </div>
+            <button
+              class="titlebar-no-drag mt-4 rounded-md border border-glass-border bg-glass-hover px-3 py-1.5 text-xs text-text-main transition-colors hover:opacity-90"
+              @click="retryBoot"
+            >
+              Retry
+            </button>
+            <button
+              v-if="dbLocked"
+              class="titlebar-no-drag mt-4 ml-2 rounded-md border border-glass-border px-3 py-1.5 text-xs text-[var(--accent-error)] transition-colors hover:opacity-90 disabled:opacity-50"
+              :disabled="forceUnlocking"
+              @click="forceUnlock"
+            >
+              {{ forceUnlocking ? "Unlocking…" : "Force unlock" }}
+            </button>
           </template>
         </div>
       </div>

@@ -88,28 +88,28 @@ onBeforeUnmount(() => {
   z-index: 80;
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--color-backdrop, color-mix(in srgb, black 40%, transparent));
   backdrop-filter: blur(2px);
 }
 .confirm-dialog__panel {
   width: min(380px, 92vw);
   padding: 18px 18px 14px;
   border-radius: 10px;
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
-  background: var(--color-surface-solid, rgba(24, 24, 24, 0.96));
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-solid);
   backdrop-filter: blur(var(--backdrop-blur-base, 24px));
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  color: var(--color-text, rgba(255, 255, 255, 0.85));
+  box-shadow: 0 12px 40px color-mix(in srgb, black 50%, transparent);
+  color: var(--color-text);
   font-size: 13px;
 }
 .confirm-dialog__title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-heading, #fff);
+  color: var(--color-heading);
   margin-bottom: 8px;
 }
 .confirm-dialog__message {
-  color: var(--color-text, rgba(255, 255, 255, 0.8));
+  color: var(--color-text);
   line-height: 1.45;
 }
 .confirm-dialog__actions {
@@ -121,25 +121,26 @@ onBeforeUnmount(() => {
 .confirm-dialog__btn {
   padding: 6px 14px;
   border-radius: 6px;
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+  border: 1px solid var(--color-border);
   background: transparent;
-  color: var(--color-text, rgba(255, 255, 255, 0.85));
+  color: var(--color-text);
   font: inherit;
   cursor: pointer;
 }
 .confirm-dialog__btn:hover {
-  background: var(--color-hover, rgba(255, 255, 255, 0.08));
+  background: var(--color-hover);
 }
 .confirm-dialog__btn--confirm {
-  background: var(--color-primary, rgba(255, 255, 255, 0.16));
-  color: var(--color-heading, #fff);
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+  border-color: var(--color-accent);
 }
 .confirm-dialog__btn--confirm.is-danger {
-  background: rgba(248, 113, 113, 0.22);
-  border-color: rgba(248, 113, 113, 0.5);
-  color: #fca5a5;
+  background: color-mix(in srgb, var(--accent-error) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent-error) 50%, transparent);
+  color: var(--paragraph-error, var(--color-text));
 }
 .confirm-dialog__btn--confirm.is-danger:hover {
-  background: rgba(248, 113, 113, 0.32);
+  background: color-mix(in srgb, var(--accent-error) 32%, transparent);
 }
 </style>

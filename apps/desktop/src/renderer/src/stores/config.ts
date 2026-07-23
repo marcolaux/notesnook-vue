@@ -73,7 +73,9 @@ export type ConfigKey =
   | "fontLigatures"
   | "hideNoteTitle"
   | "homepage"
-  | "imageCompression";
+  | "imageCompression"
+  | "defaultNoteTemplate"
+  | "defaultTaskTemplate";
 
 /** Default value for each config key (matches upstream's stores). */
 export const CONFIG_DEFAULTS: {
@@ -90,6 +92,12 @@ export const CONFIG_DEFAULTS: {
   hideNoteTitle: boolean;
   homepage: HomePage;
   imageCompression: ImageCompressionOptions;
+  /** Template note id applied to every "New note", or `null` for a blank note.
+   *  Local-only preference (the template notes themselves sync via db). */
+  defaultNoteTemplate: string | null;
+  /** Template note id applied to every "New task", or `null` for the task seed.
+   *  Local-only preference. */
+  defaultTaskTemplate: string | null;
 } = {
   syncEnabled: true,
   autoSyncEnabled: true,
@@ -103,7 +111,9 @@ export const CONFIG_DEFAULTS: {
   fontLigatures: false,
   hideNoteTitle: false,
   homepage: { type: "route", id: "notes" },
-  imageCompression: ImageCompressionOptions.ASK_EVERY_TIME
+  imageCompression: ImageCompressionOptions.ASK_EVERY_TIME,
+  defaultNoteTemplate: null,
+  defaultTaskTemplate: null
 };
 
 /** Build the full localStorage key for a config suffix. */
@@ -164,6 +174,14 @@ export const useConfigStore = defineStore("config", () => {
     readConfig("imageCompression", CONFIG_DEFAULTS.imageCompression)
   );
 
+  // --- templates (default note/task template note id; null = none) ----------
+  const defaultNoteTemplate = ref(
+    readConfig("defaultNoteTemplate", CONFIG_DEFAULTS.defaultNoteTemplate)
+  );
+  const defaultTaskTemplate = ref(
+    readConfig("defaultTaskTemplate", CONFIG_DEFAULTS.defaultTaskTemplate)
+  );
+
   /** Re-read every config value from localStorage (e.g. after another window
    *  changed one via the `storage` event, or after a logout/clear). */
   function load(): void {
@@ -197,6 +215,14 @@ export const useConfigStore = defineStore("config", () => {
     imageCompression.value = readConfig(
       "imageCompression",
       CONFIG_DEFAULTS.imageCompression
+    );
+    defaultNoteTemplate.value = readConfig(
+      "defaultNoteTemplate",
+      CONFIG_DEFAULTS.defaultNoteTemplate
+    );
+    defaultTaskTemplate.value = readConfig(
+      "defaultTaskTemplate",
+      CONFIG_DEFAULTS.defaultTaskTemplate
     );
   }
 
@@ -253,6 +279,14 @@ export const useConfigStore = defineStore("config", () => {
     imageCompression.value = v;
     writeConfig("imageCompression", v);
   }
+  function setDefaultNoteTemplate(v: string | null): void {
+    defaultNoteTemplate.value = v;
+    writeConfig("defaultNoteTemplate", v);
+  }
+  function setDefaultTaskTemplate(v: string | null): void {
+    defaultTaskTemplate.value = v;
+    writeConfig("defaultTaskTemplate", v);
+  }
 
   return {
     // sync
@@ -271,6 +305,8 @@ export const useConfigStore = defineStore("config", () => {
     hideNoteTitle,
     homepage,
     imageCompression,
+    defaultNoteTemplate,
+    defaultTaskTemplate,
     // actions
     load,
     setSyncEnabled,
@@ -285,6 +321,8 @@ export const useConfigStore = defineStore("config", () => {
     setFontLigatures,
     setHideNoteTitle,
     setHomepage,
-    setImageCompression
+    setImageCompression,
+    setDefaultNoteTemplate,
+    setDefaultTaskTemplate
   };
 });

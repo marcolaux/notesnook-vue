@@ -42,6 +42,10 @@ export default {
     removeFromShortcuts: "Remove from shortcuts",
     removeFromFavourites: "Remove from favourites",
     createSubNotebook: "Create sub-notebook",
+    createSubTag: "Create sub-tag",
+    newNotebook: "New notebook",
+    newTag: "New tag",
+    newColor: "New color",
     resetManualOrder: "Reset manual order",
     setIcon: "Set icon",
     removeIcon: "Remove icon",
@@ -51,5 +55,15 @@ export default {
     previewTitle: "Attachment",
     openExternally: "Open externally",
     unsupportedPreview: "No in-app preview for this file type."
+  },
+  linkNote: {
+    title: "Link to note",
+    searchPlaceholder: "Search notes…",
+    blockSearchPlaceholder: "Search section…",
+    linkWholeNote: "Link to whole note",
+    backToNotes: "Back to notes",
+    noResults: "No notes found",
+    noBlocks: "No sections in this note",
+    emptyBlock: "(empty)"
   }
 } as const;

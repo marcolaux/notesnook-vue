@@ -22,7 +22,10 @@ export type {
   ThemeScopes,
   Variants,
   Colors,
-  PartialVariants
+  PartialVariants,
+  PreviewColors,
+  CompiledThemeDefinition,
+  ThemeMetadata
 } from "./types";
 
 export { ThemeDark, ThemeLight } from "./defaults";
@@ -35,6 +38,7 @@ export {
   Variants as VariantKeys,
   StaticColors
 } from "./theme-to-css";
+export { getPreviewColors, THEME_COMPATIBILITY_VERSION } from "./preview";
 export { validateTheme } from "./validate-theme";
 export type { ThemeValidationResult } from "./validate-theme";
 export { injectTheme, setTheme, getCurrentTheme } from "./inject";

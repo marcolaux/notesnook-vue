@@ -135,10 +135,10 @@ const YOUTUBE_ALLOW = [
   border: 2px solid transparent;
   border-radius: 6px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--paragraph) 3%, transparent);
 }
 .embed-frame--selected {
-  border-color: rgba(99, 102, 241, 0.65);
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 .embed-iframe {
   display: block;
@@ -154,7 +154,7 @@ const YOUTUBE_ALLOW = [
   padding: 2px 6px;
   font-size: 14px;
   line-height: 1;
-  color: rgba(160, 160, 180, 0.7);
+  color: color-mix(in srgb, var(--paragraph) 70%, transparent);
   cursor: grab;
   user-select: none;
 }
@@ -166,7 +166,7 @@ const YOUTUBE_ALLOW = [
   align-items: center;
   justify-content: center;
   min-height: 80px;
-  color: rgba(200, 200, 220, 0.5);
+  color: color-mix(in srgb, var(--paragraph) 50%, transparent);
   font-size: 13px;
 }
 .embed-loading {
@@ -175,13 +175,13 @@ const YOUTUBE_ALLOW = [
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(20, 20, 30, 0.25);
+  background: color-mix(in srgb, var(--background) 25%, transparent);
 }
 .embed-spinner {
   width: 22px;
   height: 22px;
-  border: 2px solid rgba(160, 160, 180, 0.3);
-  border-top-color: rgba(160, 160, 180, 0.85);
+  border: 2px solid color-mix(in srgb, var(--paragraph) 30%, transparent);
+  border-top-color: color-mix(in srgb, var(--paragraph) 85%, transparent);
   border-radius: 50%;
   animation: embed-spin 0.8s linear infinite;
 }

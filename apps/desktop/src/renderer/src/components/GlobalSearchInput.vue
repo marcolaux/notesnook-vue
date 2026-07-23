@@ -103,8 +103,8 @@ watch(
 </script>
 
 <template>
-  <div class="global-search titlebar-no-drag flex-1">
-    <div ref="field" class="global-search__field">
+  <div class="global-search flex-1">
+    <div ref="field" class="global-search__field titlebar-no-drag">
       <Icon name="search" :size="14" class="global-search__icon" />
       <input
         ref="input"
@@ -204,8 +204,8 @@ watch(
   padding: 1px 5px;
   border-radius: 4px;
   border: 1px solid color-mix(in oklab, var(--paragraph) 14%, transparent);
-  color: var(--color-text-muted, rgba(255, 255, 255, 0.45));
-  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-muted);
+  background: color-mix(in srgb, var(--paragraph) 4%, transparent);
   font-size: 10px;
   line-height: 1.4;
   pointer-events: none;
@@ -227,7 +227,7 @@ watch(
   transition: background 0.12s ease, color 0.12s ease;
 }
 .global-search__cmd:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--color-text, rgba(255, 255, 255, 0.85));
+  background: color-mix(in srgb, var(--paragraph) 10%, transparent);
+  color: var(--color-text);
 }
 </style>

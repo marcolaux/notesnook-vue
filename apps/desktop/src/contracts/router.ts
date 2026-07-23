@@ -58,6 +58,14 @@ export interface SQLiteServer {
   close(id: string): Promise<void>;
   /** Close and remove the underlying database file. */
   delete(id: string): Promise<void>;
+  /**
+   * Force-unlock a stuck database: release this process's connection (if any)
+   * and delete the `-wal`/`-shm` journal sidecars so the next `open` rebuilds
+   * them cleanly. Recovers from a crash/bug that left a torn journal holding
+   * the lock. The main `.sql` file is kept; un-checkpointed WAL writes are
+   * lost. The `id` is the same `filePath` passed to `open`.
+   */
+  forceUnlock(filePath: string): Promise<void>;
 }
 
 let sqliteServer: SQLiteServer | undefined;
@@ -103,7 +111,6 @@ export interface SafeStorageServer {
   get(key: string): Promise<string | undefined>;
   remove(key: string): Promise<void>;
 }
-
 let safeStorageServer: SafeStorageServer | undefined;
 export function registerSafeStorageServer(server: SafeStorageServer): void {
   safeStorageServer = server;
@@ -321,8 +328,13 @@ export interface WindowServer {
   /**
    * Open the shared Settings window (singleton). Focuses the existing window
    * if one is already open; otherwise creates it. Called from any app window.
+   *
+   * Optional `section` deep-links into a specific settings section (e.g.
+   * `"updates"`) by appending `?section=<id>` to the loaded URL, which
+   * `SettingsLayout.vue` reads on mount to seed its active section. Omitted by
+   * callers that just want Settings opened at the default section.
    */
-  openSettings(): void;
+  openSettings(section: string | undefined): void;
   /**
    * Open a note in its own window (torn off from a tab in another window).
    * Focuses the existing window for that note if one is alive; otherwise
@@ -426,6 +438,43 @@ export function registerSessionServer(server: SessionServer): void {
 function requireSessionServer(): SessionServer {
   if (!sessionServer) throw new Error("Session server not registered (main boot incomplete)");
   return sessionServer;
+}
+
+// ---------------------------------------------------------------------------
+// App-state server — origin-independent persistence for small renderer flags
+// that MUST survive a renderer localStorage reset (the local-mode "Continue
+// without account" choice, `skippedLogin`, is the login gate in local mode and
+// is the sole such flag today). Stored in `userData/app-state.json` (main-
+// owned, atomic write — mirrors `session-state.ts` / `spell-checker.ts`) so it
+// is NOT subject to renderer localStorage leveldb loss/corruption on hard
+// quit, nor to the renderer origin scoping that lost it on dev-port drift.
+// Local-only; never synced. Implemented in `src/main/app-state.ts`.
+// ---------------------------------------------------------------------------
+export interface AppState {
+  /** The "Continue without account" choice. `undefined` until the user has
+   *  explicitly chosen (skip or sign-in) at least once. Authoritative across
+   *  restarts in local mode — see `stores/auth.ts` `init()` reconcile.
+   *  `| undefined` is required (not plain `?: boolean`) so zod's `.optional()`
+   *  (which allows an explicit `undefined`) is assignable under
+   *  `exactOptionalPropertyTypes` — see `set` mutation input below. */
+  skippedLogin?: boolean | undefined;
+}
+
+export interface AppStateServer {
+  /** Read the persisted app state (an empty object when none is saved). */
+  get(): Promise<AppState>;
+  /** Merge `patch` into the persisted state (read-modify-write) and persist
+   *  atomically. Returns the merged state. */
+  set(patch: Partial<AppState>): Promise<AppState>;
+}
+
+let appStateServer: AppStateServer | undefined;
+export function registerAppStateServer(server: AppStateServer): void {
+  appStateServer = server;
+}
+function requireAppStateServer(): AppStateServer {
+  if (!appStateServer) throw new Error("App-state server not registered (main boot incomplete)");
+  return appStateServer;
 }
 
 // ---------------------------------------------------------------------------
@@ -545,7 +594,9 @@ export const appRouter = t.router({
       .mutation(({ input }) => requireWindowServer().setNativeTheme(input)),
     // Open the shared Settings window (singleton). Any app window calls this
     // to surface Settings in its own window (see `src/main/settings-window.ts`).
-    openSettings: t.procedure.mutation(() => requireWindowServer().openSettings()),
+    openSettings: t.procedure
+      .input(z.object({ section: z.string().optional() }).optional())
+      .mutation(({ input }) => requireWindowServer().openSettings(input?.section)),
     // Open a note in its own window (torn off from a tab). Focuses the existing
     // window for that note if alive; otherwise creates one that boots into
     // focus mode with the note open (see `src/main/note-window.ts`). Optional
@@ -616,7 +667,10 @@ export const appRouter = t.router({
       .mutation(({ input }) => requireSQLite().close(input.id)),
     delete: t.procedure
       .input(z.object({ id: z.string() }))
-      .mutation(({ input }) => requireSQLite().delete(input.id))
+      .mutation(({ input }) => requireSQLite().delete(input.id)),
+    forceUnlock: t.procedure
+      .input(z.object({ filePath: z.string() }))
+      .mutation(({ input }) => requireSQLite().forceUnlock(input.filePath))
   }),
 
   // Compressor — node zlib in main
@@ -792,6 +846,18 @@ export const appRouter = t.router({
       .mutation(({ ctx, input }) =>
         requireSessionServer().bindContext((ctx as { senderId?: number }).senderId, input.contextId)
       )
+  }),
+
+  // App-state — origin-independent persistence for small renderer flags that
+  // must survive a renderer localStorage reset (`skippedLogin` today). Stored
+  // in `userData/app-state.json` by `src/main/app-state.ts`. `get` is read at
+  // boot by `stores/auth.ts` `init()` to reconcile the local-mode login gate;
+  // `set` mirrors `writeSkipped`. See the `AppStateServer` contract above.
+  appState: t.router({
+    get: t.procedure.query(() => requireAppStateServer().get()),
+    set: t.procedure
+      .input(z.object({ skippedLogin: z.boolean().optional() }))
+      .mutation(({ input }) => requireAppStateServer().set(input))
   })
 });
 

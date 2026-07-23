@@ -304,7 +304,7 @@ function onResizeStop(w: number, h: number): void {
   border: 2px solid transparent;
   border-radius: 6px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--paragraph) 3%, transparent);
 }
 /* Only the placeholder state needs a min-height (no <img> to size the box yet).
    A blanket min-height would force a small resized image (aspect-height < 80px)
@@ -313,7 +313,7 @@ function onResizeStop(w: number, h: number): void {
   min-height: 80px;
 }
 .image-frame--selected {
-  border-color: rgba(99, 102, 241, 0.65);
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 .image-img {
   display: block;
@@ -334,7 +334,7 @@ function onResizeStop(w: number, h: number): void {
   padding: 2px 6px;
   font-size: 14px;
   line-height: 1;
-  color: rgba(160, 160, 180, 0.7);
+  color: color-mix(in srgb, var(--paragraph) 70%, transparent);
   cursor: grab;
   user-select: none;
   z-index: 3;
@@ -349,8 +349,8 @@ function onResizeStop(w: number, h: number): void {
   padding: 2px 8px;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(220, 220, 235, 0.9);
-  background: rgba(40, 40, 55, 0.9);
+  color: var(--paragraph);
+  background: color-mix(in srgb, var(--background) 90%, transparent);
   border-radius: 4px;
   z-index: 4;
   user-select: none;
@@ -361,9 +361,9 @@ function onResizeStop(w: number, h: number): void {
   right: 8px;
   padding: 2px 8px;
   font-size: 12px;
-  color: rgba(220, 220, 235, 0.9);
-  background: rgba(40, 40, 55, 0.85);
-  border: 1px solid rgba(120, 120, 140, 0.4);
+  color: var(--paragraph);
+  background: color-mix(in srgb, var(--background) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--paragraph) 40%, transparent);
   border-radius: 999px;
   z-index: 2;
   user-select: none;
@@ -374,6 +374,6 @@ function onResizeStop(w: number, h: number): void {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(140, 140, 160, 0.6);
+  color: color-mix(in srgb, var(--paragraph) 60%, transparent);
 }
 </style>

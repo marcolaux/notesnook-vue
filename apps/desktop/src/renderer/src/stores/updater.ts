@@ -24,10 +24,22 @@ import type { UpdateStatus } from "@contracts/router";
  *
  * The store keeps the last known {@link UpdateStatus} snapshot; computeds
  * derive the phase + button gates from it via the pure helpers in
- * `utils/updater.ts`. It does not subscribe to the optional `updater:status`
- * IPC event (on-site UI may wire that for live progress); callers can poll
- * `refreshStatus()` or re-run `checkForUpdates()`.
+ * `utils/updater.ts`. `init()` (called once at boot from `App.vue`) subscribes
+ * to the `updater:status` IPC event so live download progress + "ready to
+ * install" state flow in without polling, and kicks an automatic update check
+ * (10s after boot, then every 4h) so a continuous-channel update surfaces as a
+ * title-bar badge without user action. Auto-download stays off — the user
+ * chooses when to download/install.
  */
+// `init()`-owned handles, kept module-level so init is idempotent across
+// hot-reloads / multiple component mounts (only the first call wires them).
+let initialized = false;
+let ipcUnsub: (() => void) | undefined;
+let checkTimer: ReturnType<typeof setTimeout> | undefined;
+let checkInterval: ReturnType<typeof setInterval> | undefined;
+const AUTO_CHECK_DELAY_MS = 10_000;
+const AUTO_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4h
+
 export const useUpdaterStore = defineStore("updater", () => {
   /** A `check` / `download` / `install` call is in flight. */
   const busy = ref(false);
@@ -59,6 +71,28 @@ export const useUpdaterStore = defineStore("updater", () => {
 
   function applyStatus(next: UpdateStatus): void {
     status.value = next;
+  }
+
+  /** Wire the live-progress IPC subscription + the automatic update check.
+   *  Idempotent — safe to call multiple times; only the first call attaches
+   *  (`initialized` gates it independent of the IPC handle, which may be
+   *  absent in non-browser environments). Call once at boot from `App.vue`
+   *  (both the main + settings windows). In dev the bridge no-ops (returns
+   *  IDLE) so the auto-check is silent and network-free. */
+  function init(): void {
+    if (initialized) return;
+    initialized = true;
+    if (typeof window !== "undefined" && window.appEvents) {
+      ipcUnsub = window.appEvents.onUpdaterStatus((next) => applyStatus(next));
+    }
+    // Delay the first check so it doesn't race with boot/DB init; re-check
+    // periodically so a published update surfaces without user action.
+    checkTimer = setTimeout(() => {
+      void checkForUpdates();
+    }, AUTO_CHECK_DELAY_MS);
+    checkInterval = setInterval(() => {
+      void checkForUpdates();
+    }, AUTO_CHECK_INTERVAL_MS);
   }
 
   /** Check the update provider for a newer release. Returns `true` on success
@@ -146,6 +180,22 @@ export const useUpdaterStore = defineStore("updater", () => {
     checkForUpdates,
     downloadUpdate,
     installUpdate,
-    refreshStatus
+    refreshStatus,
+    clearError,
+    init
   };
 });
+
+/** Test-only: reset the module-level init state (IPC handle + timers + flag).
+ *  Not called in production — the store is a singleton that lives for the app
+ *  lifetime, so `init()` wires once. Exported so the contract suite can test
+ *  `init()` (IPC subscription + auto-check) in isolation across cases. */
+export function resetUpdaterInitForTests(): void {
+  initialized = false;
+  ipcUnsub?.();
+  ipcUnsub = undefined;
+  if (checkTimer) clearTimeout(checkTimer);
+  if (checkInterval) clearInterval(checkInterval);
+  checkTimer = undefined;
+  checkInterval = undefined;
+}

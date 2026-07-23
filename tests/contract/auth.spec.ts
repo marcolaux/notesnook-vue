@@ -62,6 +62,18 @@ vi.mock("@/platform/bootstrap", () => ({
   switchContext: vi.fn(async () => undefined)
 }));
 
+// The auth store mirrors `skippedLogin` to the main-process app-state store
+// (`desktop.appState.*`). Stub the renderer wrapper so init()'s reconcile +
+// writeSkipped's mirror don't hit the real tRPC bridge (absent under vitest).
+// `appState` is the in-memory mirror the test can assert against / preset.
+const appState = vi.hoisted(() => ({ skippedLogin: undefined as boolean | undefined }));
+vi.mock("@/platform/app-state", () => ({
+  getAppState: vi.fn(async () => ({ skippedLogin: appState.skippedLogin })),
+  setAppState: vi.fn(async (patch: { skippedLogin?: boolean }) => {
+    if (typeof patch.skippedLogin === "boolean") appState.skippedLogin = patch.skippedLogin;
+  })
+}));
+
 import { useAuthStore } from "@/stores/auth";
 
 /** Build a fresh stub `Database` with a `user` whose methods are spies. */
@@ -100,6 +112,9 @@ beforeEach(() => {
   (globalThis as any).localStorage = new MemLocalStorage();
   setActivePinia(createPinia());
   mockDbRef.db = makeMockDb();
+  // Reset the mocked app-state mirror so a prior test's `skipLogin` doesn't
+  // leak into the next test's `init()` reconcile (main is authoritative).
+  appState.skippedLogin = undefined;
 });
 
 afterEach(() => {
@@ -281,6 +296,12 @@ describe("auth store", () => {
     expect(auth.user).toBeUndefined();
     expect(readCurrentContext()).toBe(LOCAL_CONTEXT);
     expect(auth.contextChangeSignal).toBe(before + 1);
+    // Logout returns to the login screen, NOT local mode: the skip flag is
+    // cleared so `showShell` is false and the user must choose again (sign in
+    // or "Continue without account").
+    expect(auth.skippedLogin).toBe(false);
+    expect(auth.showShell).toBe(false);
+    expect(localStorage.getItem("notesnook.skippedLogin")).toBeNull();
   });
 
   it("login failure → error status with message", async () => {
@@ -309,5 +330,39 @@ describe("auth store", () => {
     expect(auth.skippedLogin).toBe(false);
     expect(auth.showShell).toBe(false);
     expect(localStorage.getItem("notesnook.skippedLogin")).toBeNull();
+  });
+
+  it("init restores skippedLogin from the durable app-state store when localStorage lost it", async () => {
+    // Reproduces the reported bug: a hard quit / origin drift wiped renderer
+    // localStorage, so the local-mode choice ("1") is gone (reads false at
+    // store construction). The main-side `userData/app-state.json` mirror still
+    // holds it — `init()` reconciles from there (authoritative) so the shell
+    // shows on restart instead of the login screen.
+    mockDbRef.db = makeMockDb({ user: undefined });
+    // localStorage has no skip flag (simulating the loss).
+    expect(localStorage.getItem("notesnook.skippedLogin")).toBeNull();
+    // …but the durable main-side store still has the choice.
+    appState.skippedLogin = true;
+    const auth = useAuthStore();
+    // Store construction reads localStorage (false) → not skipped yet.
+    expect(auth.skippedLogin).toBe(false);
+    await auth.init();
+    // init() reconciled from the authoritative app-state store.
+    expect(auth.skippedLogin).toBe(true);
+    expect(auth.showShell).toBe(true);
+    // And resynced localStorage so the fast read path matches.
+    expect(localStorage.getItem("notesnook.skippedLogin")).toBe("1");
+  });
+
+  it("init keeps localStorage's skip flag when the app-state store has none (fresh install)", async () => {
+    mockDbRef.db = makeMockDb({ user: undefined });
+    localStorage.setItem("notesnook.skippedLogin", "1");
+    // No durable app-state yet (fresh install / pre-migration from the
+    // localStorage-only era) — localStorage stays authoritative.
+    appState.skippedLogin = undefined;
+    const auth = useAuthStore();
+    await auth.init();
+    expect(auth.skippedLogin).toBe(true);
+    expect(auth.showShell).toBe(true);
   });
 });

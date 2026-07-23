@@ -150,7 +150,7 @@ function open(noteId: string, matchIndex: number): void {
   color: var(--color-text, rgba(255, 255, 255, 0.85));
 }
 :deep(.find-match) {
-  background: rgba(250, 204, 21, 0.35);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
   border-radius: 2px;
   color: inherit;
 }

@@ -19,8 +19,11 @@ import {
 } from "@/utils/note-preview";
 import { toColorListItem, type ColorListItem } from "@/utils/colors";
 import type { CollectionType } from "@/stores/collections";
+import { useCollectionsStore } from "@/stores/collections";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useShellStore } from "@/stores/shell";
+import { useSettingsStore } from "@/stores/settings";
+import { useConfigStore } from "@/stores/config";
 import { desktop } from "@/platform/desktop-bridge";
 
 /** A collection filter applied to the notes list (sidebar selection). The
@@ -67,7 +70,16 @@ export interface EditorTab {
 type ContentState = "idle" | "loading" | "loaded" | "locked" | "error";
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-function toListItem(n: Note): NoteListItem {
+/** Body seeded into a "New task" with no task template: a blank first line (so
+ *  the user can type a heading/line above it) followed by a single empty
+ *  checklist item so the note appears in the Tasks view immediately. The
+ *  markup matches the editor's `TaskListNode` (`<ul class="checklist">` +
+ *  `<li class="checklist--item">`) and the preview parser counts the item as
+ *  `checklist.total >= 1`. */
+const TASK_SEED_HTML =
+  '<p><br></p><ul class="checklist"><li class="checklist--item"><p><br></p></li></ul>';
+
+export function toListItem(n: Note): NoteListItem {
   return {
     id: n.id,
     title: n.title || "Untitled",
@@ -126,6 +138,10 @@ export const useNotesStore = defineStore("notes", () => {
   // Tab state lives in the editor-layout store (Phase 4.1). The fields below
   // are facades over it so consumers don't change.
   const layout = useEditorLayoutStore();
+  // Client-only "show completed tasks" toggle (read inside `visibleItems` when
+  // the Tasks filter is active). Instantiated lazily to avoid a Pinia-not-ready
+  // call during store construction in minimal test mocks.
+  const getSettings = (): ReturnType<typeof useSettingsStore> => useSettingsStore();
 
   /**
    * Per-note content cache (Phase 4.2) — the HTML body + load state for each
@@ -204,6 +220,13 @@ export const useNotesStore = defineStore("notes", () => {
    * list is restricted to). `null` = show all. */
   const collectionFilter = ref<CollectionFilter | null>(null);
 
+  /** Tasks-view filter active flag. When true, `visibleItems` additionally
+   *  restricts to notes whose cached `previews[id].checklist` shows open tasks
+   *  (and, when the client-only "show completed" toggle is on, fully-completed
+   *  task notes too). Mutually exclusive with `collectionFilter`: setting a
+   *  collection clears this, and entering the Tasks view clears the collection. */
+  const tasksFilterActive = ref(false);
+
   // Per-note list previews (Phase 3.3 follow-up): thumbnail + checklist
   // progress, derived from each note's HTML body. Populated lazily and cached
   // by `loadPreview` so the list renders fast and previews trickle in.
@@ -271,11 +294,28 @@ export const useNotesStore = defineStore("notes", () => {
   );
 
   /** The list the `NotesList` renders: restricted to the active collection
-   * filter (if any), then filtered by `query`, then sorted. */
+   * filter (if any), then by the Tasks filter (if active), then filtered by
+   * `query`, then sorted.
+   *
+   * The Tasks predicate accesses `previews` ONLY when `tasksFilterActive` is
+   * true, so on the All Notes path `previews` is never tracked and the computed
+   * keeps its original behaviour (no recompute as previews trickle in). Under
+   * the Tasks view the `previews` dep is tracked, so notes appear as their
+   * preview parses — the same progressive reveal the progress bars use. */
   const visibleItems = computed<NoteListItem[]>(() => {
-    const base = collectionFilter.value
+    let base = collectionFilter.value
       ? items.value.filter((n) => collectionFilter.value!.noteIds.has(n.id))
       : items.value;
+    if (tasksFilterActive.value) {
+      const showCompleted = getSettings().tasksShowCompleted;
+      base = base.filter((n) => {
+        const cl = previews.value[n.id]?.checklist;
+        if (!cl || cl.total === 0) return false; // no tasks → never listed here
+        const open = cl.checked < cl.total;
+        const done = cl.checked === cl.total;
+        return open || (showCompleted && done);
+      });
+    }
     return sortNotes(filterNotes(base, query.value, { regex: regexSearch.value }), sortKey.value, sortDir.value);
   });
 
@@ -486,6 +526,8 @@ export const useNotesStore = defineStore("notes", () => {
    * {@link clearCollectionFilter}.
    */
   async function filterByCollection(type: CollectionType, id: string): Promise<void> {
+    // Selecting a collection leaves the Tasks view (mutual exclusion).
+    tasksFilterActive.value = false;
     const db = getDatabase();
     let noteIds: string[];
     if (type === "notebook") {
@@ -497,12 +539,24 @@ export const useNotesStore = defineStore("notes", () => {
       const colored = await db.relations.from({ type: "color", id }, "note").resolve();
       noteIds = colored.map((n) => n.id);
     } else {
-      // Tag→note relations are stored `from=tag, to=note` (upstream adds
-      // `relations.add({tag}, {note})`), so resolve notes from the tag's
-      // **from** side. Querying `.to(tag, "note")` would look for tags on the
-      // to side, which never happens → empty. See properties.addTag.
-      const tagged = await db.relations.from({ type: "tag", id }, "note").resolve();
-      noteIds = tagged.map((n) => n.id);
+      // Hierarchical tags: `id` is a real tag id (→ use its title as the
+      // slash-path) OR a slash-path for a grouping-only node (→ `id` IS the
+      // path, since grouping nodes have no tag id). Include that exact tag
+      // (if real) plus every descendant tag (title === path OR title starts
+      // with `path + "/"`), unioning their note relations. Tag→note relations
+      // are stored `from=tag, to=note` (upstream `relations.add({tag},{note})`),
+      // so resolve each from its **from** side. (`.to(tag,"note")` would look
+      // for tags on the to side — never happens → empty; see properties.addTag.)
+      const tagList = useCollectionsStore().tags;
+      const realTag = tagList.find((t) => t.id === id);
+      const path = realTag ? realTag.title : id;
+      const matching = tagList.filter(
+        (t) => t.title === path || t.title.startsWith(path + "/")
+      );
+      const groups = await Promise.all(
+        matching.map((t) => db.relations.from({ type: "tag", id: t.id }, "note").resolve())
+      );
+      noteIds = groups.flat().map((n) => (n as { id: string }).id);
     }
     collectionFilter.value = { type, id, noteIds: new Set(noteIds) };
   }
@@ -510,6 +564,14 @@ export const useNotesStore = defineStore("notes", () => {
   /** Clear the collection filter (back to all notes). */
   function clearCollectionFilter(): void {
     collectionFilter.value = null;
+  }
+
+  /** Activate/deactivate the Tasks-view filter. The Tasks view sets this true
+   *  on mount and false on unmount; clearing it (chip × / All Notes) returns to
+   *  the full list. Does NOT touch `collectionFilter` — the Tasks view clears
+   *  the collection on entry so the two are never both active. */
+  function setTasksFilterActive(active: boolean): void {
+    tasksFilterActive.value = active;
   }
 
   /** Load all notes from the database into the list. */
@@ -656,13 +718,69 @@ export const useNotesStore = defineStore("notes", () => {
    * satisfy that guard without seeding a real content row (the editor
    * creates one on the first keystroke, as before). Passing a literal like
    * "New note" would bypass `formatTitle` and pin a static, non-generated
-   * title instead. */
-  async function create(): Promise<void> {
+   * title instead.
+   *
+   * `opts` drives the seeded body (in priority order):
+   *  - `content`: use the given HTML verbatim (e.g. a duplicated note).
+   *  - `templateId`: read that template note's body via `db.content
+   *    .findByNoteId` and copy it in. A locked/missing template falls through
+   *    to the next option (no crash).
+   *  - else, if `task`: seed {@link TASK_SEED_HTML} so the note lands in Tasks.
+   *  - else: blank (the editor creates the content row on the first keystroke).
+   *
+   * When no `content`/`templateId` is given, the default template from the
+   * client-only config store auto-applies: `defaultTaskTemplate` for tasks,
+   * `defaultNoteTemplate` for notes (null → blank/task seed). Auto-apply lives
+   * here — not at each call site — so the palette, the NotesList "+", and the
+   * tray/menu "New note" all behave identically. The ephemeral draft path
+   * (`createDraft`) is deliberately separate and NEVER applies a template: a
+   * user typing into an empty pane must not suddenly get template content. */
+  async function create(
+    opts?: { task?: boolean; templateId?: string; content?: string }
+  ): Promise<string> {
     const db = getDatabase();
-    const id = await db.notes.add({ content: { type: "tiptap", data: "" } });
+    const data = await resolveCreateContent(opts);
+    const id = await db.notes.add({ content: { type: "tiptap", data } });
     await load();
     pendingTitleFocus.value = "select";
     layout.openNote(id);
+    return id;
+  }
+
+  /** Resolve the HTML body for a new note created via {@link create}. See the
+   *  `create` doc for the precedence rules. Returns "" for a blank note. */
+  async function resolveCreateContent(
+    opts?: { task?: boolean; templateId?: string; content?: string }
+  ): Promise<string> {
+    if (opts?.content) return opts.content;
+    const config = useConfigStore();
+    let templateId: string | null | undefined = opts?.templateId;
+    if (!templateId) {
+      templateId = opts?.task
+        ? config.defaultTaskTemplate
+        : config.defaultNoteTemplate;
+    }
+    if (templateId) {
+      const html = await readTemplateHtml(templateId);
+      if (html !== null) return html;
+    }
+    if (opts?.task) return TASK_SEED_HTML;
+    return "";
+  }
+
+  /** Read a template note's HTML body. Returns `null` if the note/its content
+   *  is missing or vault-locked (the caller falls back to a blank/task seed). */
+  async function readTemplateHtml(templateId: string): Promise<string | null> {
+    try {
+      const db = getDatabase();
+      const item = await db.content.findByNoteId(templateId);
+      if (!item || ("locked" in item && item.locked)) return null;
+      return typeof item.data === "string" ? item.data : "";
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] readTemplateHtml failed:", e);
+      return null;
+    }
   }
 
   /**
@@ -1229,6 +1347,8 @@ export const useNotesStore = defineStore("notes", () => {
     unarchiveMany,
     filterByCollection,
     clearCollectionFilter,
+    tasksFilterActive,
+    setTasksFilterActive,
     setQuery,
     toggleRegex,
     setSortKey,

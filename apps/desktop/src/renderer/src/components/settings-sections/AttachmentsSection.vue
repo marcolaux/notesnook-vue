@@ -122,7 +122,7 @@ async function onOpen(n: Note): Promise<void> {
             class="rounded px-1 text-[10px] tabular-nums"
             :class="
               attachments.filter === f.id
-                ? 'bg-black/10 text-accent-foreground'
+                ? 'bg-accent text-accent-foreground'
                 : 'bg-hover text-text-muted'
             "
             >{{ attachments.counts[f.id] }}</span

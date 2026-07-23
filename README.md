@@ -121,6 +121,34 @@ To bump or verify the vendored engine, see
 [`docs/updating-vendor.md`](docs/updating-vendor.md) and the `vendor:bump` /
 `vendor:check` scripts.
 
+Releases
+--------
+Releases are cut from `main` with a single command and published to GitHub
+Releases as one continuous auto-update channel — no beta/alpha/stable split;
+every tag is a full release on `latest`, and packaged apps find it via
+`electron-updater` (`provider: github`, `channel: latest`).
+
+```bash
+npm run release:bump -- patch    # 0.0.1 → 0.0.2  (or minor / major / X.Y.Z)
+```
+
+`release:bump` (in `scripts/release-bump.mjs`) refuses unless the working tree
+is clean and `main` is checked out, then bumps `apps/desktop/package.json` +
+the root `package.json`, commits `chore(release): vX.Y.Z`, tags `vX.Y.Z`, and
+pushes the commit + tag to `origin`. Pushing the `v*` tag triggers
+`.github/workflows/release.yml`, which gates on typecheck + contract tests,
+then builds and publishes the macOS / Windows / Linux installers and
+`latest*.yml` to the GitHub Release for the tag. Packaged apps surface the
+update as a title-bar badge + an Updates settings section (check / download /
+install-and-restart); a check also runs automatically 10s after boot and every
+4h.
+
+Artifacts are currently **unsigned** (alpha): macOS updates need a one-time
+Gatekeeper bypass and Windows shows a SmartScreen warning. Code signing (Apple
+Developer ID + a Windows code-signing cert) is the remaining release gate; the
+pipeline is unchanged once certs are added. The actual publish can only be
+exercised by pushing a real `v*` tag — the first tag is the live smoke test.
+
 License
 -------
 GPL-3.0-or-later. Required for compatibility with `@notesnook/core` (GPL-3.0).

@@ -24,12 +24,11 @@
  * Theme tokens (`bg-glass-*`/`text-text*`/`border-glass-border`) follow the app
  * theme.
  */
-import { ref, watch, onBeforeUnmount } from "vue";
+import { ref, computed, watch, onBeforeUnmount } from "vue";
 import type { Editor } from "@tiptap/vue-3";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useShellStore } from "@/stores/shell";
 import { useNotesStore } from "@/stores/notes";
-import { useStatusStore } from "@/stores/status";
 import { useToolbarStore } from "@/stores/toolbar";
 import { useEditorStore } from "@/stores/editor";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
@@ -37,18 +36,24 @@ import { useReminderDialogStore } from "@/stores/reminder-dialog";
 import { useRemindersStore } from "@/stores/reminders";
 import { usePublishStore } from "@/stores/publish";
 import { usePublishDialogStore } from "@/stores/publish-dialog";
+import { useAuthStore } from "@/stores/auth";
 import { useDialogStore } from "@/stores/dialog";
 import { useContextMenuStore } from "@/stores/context-menu";
 import { type MenuItem } from "@/utils/context-menu";
+import { NoteLinkPicker, insertNoteLink, type NoteLinkLabels, type NoteSuggestionItem, type ContentBlockItem } from "@notesnook-vue/editor-vue";
 import ToolbarGroup from "./ToolbarGroup.vue";
 
 const props = defineProps<{
   editor: Editor | undefined;
+  /** This toolbar's OWN pane autosave state, passed from `Editor.vue` so the
+   *  indicator reflects THIS note's save — not a global slot that would make
+   *  every pane's toolbar react to a single save. `false`/`null` → idle. */
+  saving?: boolean;
+  savedAt?: number | null;
 }>();
 
 const shell = useShellStore();
 const notes = useNotesStore();
-const status = useStatusStore();
 const toolbar = useToolbarStore();
 const editorStore = useEditorStore();
 const layout = useEditorLayoutStore();
@@ -58,9 +63,43 @@ const publish = usePublishStore();
 const publishDialog = usePublishDialogStore();
 const dialog = useDialogStore();
 const contextMenu = useContextMenuStore();
+const auth = useAuthStore();
 
 /** The publish button — template ref for positioning its submenu. */
 const publishBtn = ref<HTMLButtonElement | null>(null);
+
+/** "Link to note" toolbar button + its standalone picker popup. The picker is
+ *  the same `NoteLinkPicker.vue` the inline `@`/`[[` trigger mounts, here in
+ *  `variant: "toolbar"` anchored below the button. It reads the host-injected
+ *  storage hooks (`getNoteSuggestions`/`getContentBlocks`/`noteLinkLabels`)
+ *  wired by `wireNoteLink` in Editor.vue. */
+const linkNoteBtn = ref<HTMLButtonElement | null>(null);
+const linkNoteOpen = ref(false);
+
+function linkNoteStorage(): Record<string, unknown> | undefined {
+  return props.editor?.storage as Record<string, unknown> | undefined;
+}
+const linkNoteLabels = computed<Partial<NoteLinkLabels>>(() => (linkNoteStorage()?.noteLinkLabels as Partial<NoteLinkLabels> | undefined) ?? {});
+
+function searchNotes(query: string): NoteSuggestionItem[] {
+  const fn = linkNoteStorage()?.getNoteSuggestions as ((q: string) => NoteSuggestionItem[]) | undefined;
+  return fn?.(query) ?? [];
+}
+async function fetchBlocks(noteId: string): Promise<ContentBlockItem[]> {
+  const fn = linkNoteStorage()?.getContentBlocks as ((id: string) => Promise<ContentBlockItem[]>) | undefined;
+  return fn?.(noteId) ?? [];
+}
+function linkNoteRect(): DOMRect | null {
+  return linkNoteBtn.value?.getBoundingClientRect() ?? null;
+}
+/** On picker selection: insert the note link at the editor's selection, then
+ *  close. `insertNoteLink` is selection-aware (over a selection → mark it; empty
+ *  → insert the title text + trailing space) and re-focuses the editor. */
+function onLinkNoteCommand(result: { href: string; title: string }): void {
+  const e = props.editor;
+  linkNoteOpen.value = false;
+  if (e) insertNoteLink(e, result);
+}
 
 /** "Remind me" for the active note: open the reminder dialog seeded with the
  *  note's title + `nn://note/<id>` description; on confirm, create the reminder
@@ -223,37 +262,68 @@ onBeforeUnmount(() => {
     >
       <Icon name="bell" :size="16" />
     </button>
-    <!-- Autosave indicator for the focused pane's editor, pushed in by
-         Editor.vue via status.setSaveState. `ml-auto` anchors this (and the
-         publish button after it) to the right edge; the empty-string idle
-         state keeps the layout stable. -->
+    <button
+      ref="linkNoteBtn"
+      type="button"
+      data-note-link-trigger
+      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+      :class="{ 'bg-glass-active text-text': linkNoteOpen }"
+      title="Link to note"
+      :disabled="!props.editor"
+      @click="linkNoteOpen = !linkNoteOpen"
+    >
+      <Icon name="link" :size="16" />
+    </button>
+    <!-- "Link to note" standalone picker (same component the inline `@`/`[[`
+         trigger uses, in toolbar variant anchored below the button). Reads the
+         host-injected storage hooks wired by `wireNoteLink`. -->
+    <NoteLinkPicker
+      v-if="linkNoteOpen && props.editor"
+      variant="toolbar"
+      :search="searchNotes"
+      :get-blocks="fetchBlocks"
+      :command="onLinkNoteCommand"
+      :client-rect="linkNoteRect"
+      :labels="linkNoteLabels"
+      @close="linkNoteOpen = false"
+    />
+    <!-- Autosave indicator for THIS pane's editor. `saving`/`savedAt` are
+         passed in as props from `Editor.vue` (per-instance), so each pane's
+         toolbar reflects its own note's save — not a shared global slot.
+         `ml-auto` anchors this (and the publish button after it) to the right
+         edge; the empty-string idle state keeps the layout stable. -->
     <span class="ml-auto shrink-0 px-1 text-[10px] text-text-muted">
-      {{ status.saving ? "Saving…" : status.savedAt ? "Saved" : "" }}
+      {{ props.saving ? "Saving…" : props.savedAt ? "Saved" : "" }}
     </span>
     <!-- Publish button — a single affordance that reflects publish state:
          - Not published: a "Publish" text button → opens the publish dialog.
          - Published: the globe icon, title "Published" → opens the submenu
-           (Unpublish / Copy monograph URL / Open in browser). -->
-    <button
-      v-if="!publish.published"
-      ref="publishBtn"
-      type="button"
-      class="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
-      title="Publish note"
-      :disabled="!notes.activeNote"
-      @click="openPublishDialog()"
-    >
-      Publish
-    </button>
-    <button
-      v-else
-      ref="publishBtn"
-      type="button"
-      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
-      title="Published"
-      @click="openPublishedMenu()"
-    >
-      <Icon name="globe" :size="16" />
-    </button>
+           (Unpublish / Copy monograph URL / Open in browser).
+         Hidden in local-only mode — publishing is a server call that needs a
+         logged-in account (`auth.isLoggedIn`, NOT `showShell` which is also true
+         when the login was skipped). -->
+    <template v-if="auth.isLoggedIn">
+      <button
+        v-if="!publish.published"
+        ref="publishBtn"
+        type="button"
+        class="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+        title="Publish note"
+        :disabled="!notes.activeNote"
+        @click="openPublishDialog()"
+      >
+        Publish
+      </button>
+      <button
+        v-else
+        ref="publishBtn"
+        type="button"
+        class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
+        title="Published"
+        @click="openPublishedMenu()"
+      >
+        <Icon name="globe" :size="16" />
+      </button>
+    </template>
   </div>
 </template>

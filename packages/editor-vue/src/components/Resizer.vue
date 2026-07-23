@@ -171,15 +171,15 @@ function onPointerUp(e: PointerEvent): void {
   align-items: flex-end;
   justify-content: flex-end;
   cursor: nwse-resize;
-  color: rgba(120, 120, 140, 0.85);
+  color: color-mix(in srgb, var(--paragraph) 85%, transparent);
   z-index: 2;
   user-select: none;
 }
 .resizer__handle:hover {
-  color: rgba(99, 102, 241, 0.95);
+  color: var(--accent);
 }
 .resizer--selected {
-  outline: 2px solid rgba(99, 102, 241, 0.65);
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
   outline-offset: 0;
 }
 </style>

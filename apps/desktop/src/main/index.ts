@@ -30,6 +30,7 @@ import { registerWindow, setMainWindow } from "./window";
 import { registerDialog } from "./dialog";
 import { registerShell } from "./shell";
 import { registerReminders } from "./reminders";
+import { registerAppState } from "./app-state";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -123,6 +124,11 @@ void app.whenReady().then(() => {
   // persisted to `userData/session.json` per account). Registered before the
   // window so `desktop.session.*` procedures are ready on first renderer call.
   registerSession();
+  // App-state owner (`userData/app-state.json`) — origin-independent
+  // persistence for the local-mode `skippedLogin` flag (the login gate that
+  // renderer localStorage can lose on hard quit / origin drift). Registered
+  // before the window so `desktop.appState.*` is ready on the boot reconcile.
+  registerAppState();
 
   // Register the `nn://` custom protocol with the OS.
   enableDeepLinkProtocol();

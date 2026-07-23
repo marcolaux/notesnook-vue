@@ -94,6 +94,12 @@ export function getCommand(id: string): Command | undefined {
   return commands.get(id);
 }
 
+/** Remove a registered command (used by the dynamic template commands to
+ *  re-sync the per-template set as templates are added/removed/renamed). */
+export function unregisterCommand(id: string): void {
+  commands.delete(id);
+}
+
 /**
  * Router accessor for command handlers. Set once from `main.ts` after the
  * router is installed; decouples handlers from `useRouter()` inject so they

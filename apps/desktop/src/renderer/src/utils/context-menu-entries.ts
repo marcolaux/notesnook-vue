@@ -111,6 +111,11 @@ export interface NoteMenuDeps {
    *  note's title; on confirm, call `db.monographs.publish`. The dialog flow +
    *  publish-store call live in NotesList.vue. */
   publishNote: (noteId: string, noteTitle: string) => void | Promise<void>;
+  /** Whether to show the Publish / Unpublish / Copy URL / Open-in-browser
+   *  section at all. Omit (or pass `true`) to show; pass `false` to hide the
+   *  whole section (used in local-only mode — publishing is a server call).
+   *  Defaults to shown so existing fixtures/tests that omit it are unchanged. */
+  canPublish?: boolean;
   /** Unpublish the note (plain `db.monographs.unpublish`) — the builder composes
    *  `confirm` around this (matching the "Move to trash" entry), so the dep does
    *  NOT need to wire the confirm flow itself. */
@@ -335,8 +340,10 @@ export function buildNoteMenu(note: NoteMenuTarget, deps: NoteMenuDeps): MenuIte
       onSelect: () => deps.toggleFavorite(note.id)
     },
     { id: "remind-me", label: "Remind me…", onSelect: () => deps.remindMe(note.id, note.title) },
-    separator("publish-sep"),
-    ...publishItems,
+    // The publish section (separator + items) drops out entirely in local-only
+    // mode (`canPublish === false`); `sep-2` stays as the divider before
+    // Color/Tags/Notebooks either way, so no doubled separator.
+    ...(deps.canPublish === false ? [] : [separator("publish-sep"), ...publishItems]),
     separator("sep-2"),
     { id: "color", label: "Color", submenu: buildColorSubmenu(note, deps) },
     { id: "tags", label: "Tags", submenu: buildTagsSubmenu(note, deps) },

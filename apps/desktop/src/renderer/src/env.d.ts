@@ -1,5 +1,14 @@
 /// <reference types="vite/client" />
 
+/**
+ * App version injected at build time via Vite `define` from `package.json`
+ * (see `electron.vite.config.ts`). Used by the title-bar version label + the
+ * Updates settings section. Replaced textually at build time, so it has no
+ * runtime cost. Declared `const` so it's usable as a bare identifier in
+ * `<script setup>` and templates.
+ */
+declare const __APP_VERSION__: string;
+
 declare module "*.vue" {
   import type { DefineComponent } from "vue";
   const component: DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>;
@@ -17,6 +26,7 @@ interface Window {
     onDataChanged(listener: () => void): () => void;
     onReminderFired(listener: (id: string) => void): () => void;
     onBeforeQuit(listener: () => void): () => void;
+    onUpdaterStatus(listener: (status: import("@contracts/router").UpdateStatus) => void): () => void;
   };
   os: string;
   /**

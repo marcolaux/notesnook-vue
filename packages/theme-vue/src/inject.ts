@@ -23,7 +23,11 @@ export function injectTheme(theme: VueTheme): void {
   const css = [
     themeToCSS(theme), // `.theme-scope-*` blocks (upstream byte format)
     glassmorphismToCSS(theme), // `:root { --nn-backdrop-blur; --nn-surface-opacity; }`
-    tailwindBridgeToCSS() // `:root { --color-*: var(--<upstream>); --backdrop-blur-base: …; }`
+    tailwindBridgeToCSS(), // `:root { --color-*: var(--<upstream>); --backdrop-blur-base: …; }`
+    // The theme's own Prism code-block CSS (each ThemeDefinition carries its
+    // own `codeBlockCSS`, e.g. One Dark / One Light). Injecting it here means
+    // code blocks follow the active theme instead of a hardcoded palette.
+    theme.codeBlockCSS || ""
   ].join("\n\n");
 
   let el = document.getElementById(STYLE_ID) as HTMLStyleElement | null;

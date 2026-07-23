@@ -17,12 +17,19 @@ import { useShellStore } from "@/stores/shell";
 import { useTitleBarStore } from "@/stores/titlebar";
 import { useOmnibarStore } from "@/stores/omnibar";
 import { useUpstreamNotifierStore } from "@/stores/upstream-notifier";
+import { useUpdaterStore } from "@/stores/updater";
+import { desktop } from "@/platform/desktop-bridge";
 import GlobalSearchInput from "./GlobalSearchInput.vue";
 
 const shell = useShellStore();
 const titlebar = useTitleBarStore();
 const omnibar = useOmnibarStore();
 const upstream = useUpstreamNotifierStore();
+const updater = useUpdaterStore();
+
+// Build-time app version (Vite `define` from package.json) for the version
+// label. Exposed as a script const so the template can bind it.
+const appVersion = __APP_VERSION__;
 
 // Upstream-release indicator: shown when a newer `streetwriters/notesnook`
 // desktop release exists than the one we built against. Click opens the
@@ -30,6 +37,18 @@ const upstream = useUpstreamNotifierStore();
 function openUpstreamRelease(): void {
   const url = upstream.status?.latestUrl;
   if (url) window.open(url, "_blank");
+}
+
+// Auto-update indicator: shown when the auto-updater found a newer release of
+// THIS app on the GitHub `latest` channel, or a downloaded update is ready to
+// install. Click opens the Settings window on the Updates section.
+function openUpdates(): void {
+  void desktop.window.openSettings
+    .mutate({ section: "updates" })
+    .catch((e) => {
+      // eslint-disable-next-line no-console
+      console.error("[titlebar] openSettings failed:", e);
+    });
 }
 
 // Measure the real Window Controls Overlay width (Windows/Linux) so the right
@@ -138,7 +157,17 @@ onUnmounted(() => {
           <Icon name="x" :size="12" />
         </button>
       </span>
-      <span class="text-[10px] text-text-muted">v0.0.1</span>
+      <span
+        v-if="updater.updateAvailable || updater.readyToInstall"
+        class="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-px text-[10px] text-accent"
+        :title="updater.readyToInstall ? 'A downloaded update is ready to install — click to review' : 'A new version is available — click to download'"
+      >
+        <button type="button" class="flex cursor-pointer items-center gap-1 hover:underline" @click="openUpdates">
+          <Icon name="arrow-down" :size="10" />
+          {{ updater.readyToInstall ? "ready to install" : "update available" }}
+        </button>
+      </span>
+      <span class="text-[10px] text-text-muted">v{{ appVersion }}</span>
     </div>
   </div>
 </template>

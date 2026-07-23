@@ -83,9 +83,9 @@ function clearCompleted(): void {
         class="grid h-4 w-4 shrink-0 place-items-center rounded border transition-colors"
         :class="
           allChecked
-            ? 'border-indigo-500 bg-indigo-500 text-white'
+            ? 'border-accent bg-accent text-accent-foreground'
             : someChecked
-              ? 'border-indigo-400/60 bg-indigo-400/30 text-indigo-100'
+              ? 'border-accent/60 bg-accent/30 text-accent-foreground'
               : 'border-glass-active hover:border-text-muted'
         "
         :title="allChecked ? 'Uncheck all' : 'Check all'"
@@ -119,7 +119,7 @@ function clearCompleted(): void {
       </button>
     </div>
     <div class="h-0.5 w-full bg-glass-border">
-      <div class="h-full bg-indigo-500 transition-all" :style="{ width: progressPct + '%' }" />
+      <div class="h-full bg-accent transition-all" :style="{ width: progressPct + '%' }" />
     </div>
     <NodeViewContent as="ul" class="block space-y-2 px-3 py-2" />
   </NodeViewWrapper>

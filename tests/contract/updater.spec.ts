@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import {
   classifyUpdatePhase,
@@ -7,7 +7,7 @@ import {
   isUpdateAvailable,
   isReadyToInstall
 } from "@/utils/updater";
-import { useUpdaterStore } from "@/stores/updater";
+import { useUpdaterStore, resetUpdaterInitForTests } from "@/stores/updater";
 import { getCommand, type CommandContext } from "@/commands/registry";
 import type { UpdateStatus } from "@contracts/router";
 // Importing app-commands registers the app commands (incl. app:check-updates).
@@ -201,6 +201,80 @@ describe("useUpdaterStore", () => {
     expect(u.phase).toBe("available");
     await u.checkForUpdates();
     expect(u.phase).toBe("up-to-date");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// init() — live IPC subscription + automatic update check
+// ---------------------------------------------------------------------------
+
+// The store reads `window.appEvents` (a contextBridge global absent in the
+// node test env), so stub it on globalThis for these cases and tear it down.
+type AppEventsStub = { onUpdaterStatus: ReturnType<typeof vi.fn> };
+const g = globalThis as unknown as { window?: AppEventsStub };
+const AUTO_CHECK_DELAY_MS = 10_000;
+const AUTO_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+describe("useUpdaterStore.init (IPC subscription + auto-check)", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    resetBridge();
+    resetUpdaterInitForTests();
+    delete g.window;
+  });
+
+  afterEach(() => {
+    delete g.window;
+  });
+
+  it("subscribes to updater:status and applies incoming snapshots live", () => {
+    const onUpdaterStatus = vi.fn();
+    g.window = { appEvents: { onUpdaterStatus } };
+    const u = useUpdaterStore();
+    u.init();
+    expect(onUpdaterStatus).toHaveBeenCalledTimes(1);
+    const listener = onUpdaterStatus.mock.calls[0]![0] as (s: UpdateStatus) => void;
+    listener({ available: true, version: "9.9.9", downloaded: false, progress: 0 });
+    expect(u.status.version).toBe("9.9.9");
+    expect(u.updateAvailable).toBe(true);
+  });
+
+  it("is idempotent — a second init() does not re-subscribe", () => {
+    const onUpdaterStatus = vi.fn();
+    g.window = { appEvents: { onUpdaterStatus } };
+    const u = useUpdaterStore();
+    u.init();
+    u.init();
+    expect(onUpdaterStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-checks for updates after the startup delay and on the interval", () => {
+    vi.useFakeTimers();
+    try {
+      g.window = { appEvents: { onUpdaterStatus: vi.fn() } };
+      const u = useUpdaterStore();
+      u.init();
+      expect(bridge.check.query).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(AUTO_CHECK_DELAY_MS);
+      expect(bridge.check.query).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(AUTO_CHECK_INTERVAL_MS);
+      expect(bridge.check.query).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not throw when window.appEvents is absent (still schedules checks)", () => {
+    // node env: no `window`. init() must skip the IPC subscription gracefully.
+    vi.useFakeTimers();
+    try {
+      const u = useUpdaterStore();
+      expect(() => u.init()).not.toThrow();
+      vi.advanceTimersByTime(AUTO_CHECK_DELAY_MS);
+      expect(bridge.check.query).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -4,6 +4,7 @@ import type { User } from "@notesnook-vue/contracts";
 import { EV, EVENTS } from "@notesnook-vue/contracts";
 import { getDatabase, switchContext } from "@/platform/bootstrap";
 import { LOCAL_USER_EMAIL } from "@/platform/local-user";
+import { getAppState, setAppState } from "@/platform/app-state";
 import {
   hashEmail,
   readCurrentContext,
@@ -68,13 +69,27 @@ function readSkipped(): boolean {
   }
 }
 
-function writeSkipped(value: boolean): void {
+function writeSkippedLocal(value: boolean): void {
   try {
     if (value) localStorage.setItem(SKIP_KEY, "1");
     else localStorage.removeItem(SKIP_KEY);
   } catch {
     /* ignore — persistence is best-effort */
   }
+}
+
+/**
+ * Persist the skip flag to renderer `localStorage` (fast, synchronous — the
+ * store reads it back at construction) AND mirror it to the main-process
+ * `userData/app-state.json` store (durable — survives renderer localStorage
+ * loss on hard quit / origin drift, which is what re-showed the login screen
+ * on restart in local mode). The main mirror is fire-and-forget; localStorage
+ * is still authoritative-fast for the session, and `init()` reconciles from
+ * main at boot (main wins when present). Never throws.
+ */
+function writeSkipped(value: boolean): void {
+  writeSkippedLocal(value);
+  void setAppState({ skippedLogin: value });
 }
 
 function errorMessage(e: unknown): string {
@@ -113,13 +128,34 @@ export const useAuthStore = defineStore("auth", () => {
   function bindEvents(): void {
     if (eventsBound) return;
     eventsBound = true;
-    const onLoggedOut = (): void => {
+    // `cause` carries the event payload core publishes on some of these
+    // (`userUnauthorized` → the failing url; `userLoggedOut` → a reason). Accepted
+    // but not acted on — kept for a diagnostic trace so the next recurrence of
+    // "local mode re-shows login on restart" can be pinned to the real event.
+    const onLoggedOut = (cause?: unknown): void => {
+      const wasLoggedIn = status.value === "logged-in";
+      // eslint-disable-next-line no-console
+      console.warn("[auth] logout event cleared session:", {
+        cause,
+        wasLoggedIn,
+        skipped: skippedLogin.value
+      });
       user.value = undefined;
       status.value = "logged-out";
       error.value = "";
       pendingMfa.value = null;
-      skippedLogin.value = false;
-      writeSkipped(false);
+      // Only de-arm the local-mode skip flag when a real account session was
+      // active. In local mode `status` is "logged-out" and `skippedLogin` is the
+      // sole login gate — these events are spurious there (no server session to
+      // expire), and clearing the flag persists to localStorage, so the next
+      // restart would re-show the login screen. When a real account session
+      // expires, `skippedLogin` is already `false` (set on `finalize`/
+      // `completeLogin`), so clearing it here is a no-op and `status` flips to
+      // logged-out → the login screen shows, which is correct.
+      if (wasLoggedIn) {
+        skippedLogin.value = false;
+        writeSkipped(false);
+      }
     };
     EV.subscribe(EVENTS.userSessionExpired, onLoggedOut);
     EV.subscribe(EVENTS.userUnauthorized, onLoggedOut);
@@ -152,6 +188,22 @@ export const useAuthStore = defineStore("auth", () => {
       // eslint-disable-next-line no-console
       console.error("[auth] init failed:", e);
       status.value = "logged-out";
+    }
+    // Reconcile the local-mode skip flag with the durable main-side store
+    // (`userData/app-state.json`). In local mode `skippedLogin` is the SOLE
+    // login gate, and it previously lived only in renderer localStorage —
+    // which a hard quit / dev-origin drift could lose, re-showing the login
+    // screen on restart. Main is AUTHORITATIVE when it has a value: a lost
+    // localStorage (reads false at store construction) is restored to the
+    // persisted choice. When main has no value (fresh install, or a pre-
+    // migration install from the localStorage-only era) the localStorage
+    // value read at construction stands. Runs before the boot route settle,
+    // so the shell/login decision uses the reconciled value. Never throws —
+    // `getAppState` already swallows IPC failures.
+    const saved = await getAppState();
+    if (typeof saved.skippedLogin === "boolean") {
+      skippedLogin.value = saved.skippedLogin;
+      writeSkippedLocal(saved.skippedLogin);
     }
   }
 
@@ -266,13 +318,14 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   /**
-   * Log out to local mode. Does NOT call core's `db.user.logout()` (that wipes
-   * the DB via `db.reset()`) — instead it live-swaps the database back to the
-   * local context and signals the change so `App.vue` reloads the local notes.
-   * The account DB + its token stay intact for the account switcher (Phase 2),
-   * and the user returns to local mode with its previous data. `skippedLogin`
-   * is set so local mode shows without the login screen. A true "remove
-   * account" (revoke + delete the account DB) is Phase 2.
+   * Log out of an account and return to the login screen. Does NOT call core's
+   * `db.user.logout()` (that wipes the DB via `db.reset()`) — instead it
+   * live-swaps the database back to the local context so the account DB + its
+   * token stay intact for a future account switcher / re-login, and signals the
+   * change so `App.vue` reloads the local notes behind the login screen.
+   * `skippedLogin` is cleared so `showShell` is false and the login screen
+   * shows (NOT local mode) — the user explicitly signed out, so they must
+   * choose again: sign back in or "Continue without account" (`skipLogin`).
    */
   async function logout(): Promise<void> {
     // If already on local, nothing to switch (e.g. session-expired reset).
@@ -285,8 +338,8 @@ export const useAuthStore = defineStore("auth", () => {
       }
     }
     writeCurrentContext(LOCAL_CONTEXT);
-    skippedLogin.value = true;
-    writeSkipped(true);
+    skippedLogin.value = false;
+    writeSkipped(false);
     user.value = undefined;
     status.value = "logged-out";
     pendingMfa.value = null;

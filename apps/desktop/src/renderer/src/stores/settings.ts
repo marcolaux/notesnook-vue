@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { getDatabase } from "@/platform/bootstrap";
 import type { TimeFormat, TrashCleanupInterval, Profile, DayFormat, WeekFormat } from "@notesnook-vue/contracts";
+import { ThemeDark, ThemeLight, type VueTheme } from "@notesnook-vue/theme-vue";
 
 /**
  * Settings store (Phase 7) — the headless data backend for `SettingsView`.
@@ -87,6 +88,95 @@ function writeUpstreamCheckEnabled(enabled: boolean): void {
   }
 }
 
+/** localStorage key for the `tasksShowCompleted` client-only toggle — when the
+ *  Tasks sidebar view is active, whether notes whose tasks are ALL checked also
+ *  appear (default off: only notes with open tasks show). Read by the notes
+ *  store's `visibleItems` tasks predicate; no change-signal needed (the ref is
+ *  reactive and that's the only consumer). */
+const DEFAULT_TASKS_SHOW_COMPLETED = false;
+export const TASKS_SHOW_COMPLETED_KEY = "notesnook.tasksShowCompleted";
+
+function readTasksShowCompleted(): boolean {
+  try {
+    const v = localStorage.getItem(TASKS_SHOW_COMPLETED_KEY);
+    if (v === "false") return false;
+    if (v === "true") return true;
+    return DEFAULT_TASKS_SHOW_COMPLETED;
+  } catch {
+    return DEFAULT_TASKS_SHOW_COMPLETED;
+  }
+}
+
+function writeTasksShowCompleted(enabled: boolean): void {
+  try {
+    localStorage.setItem(TASKS_SHOW_COMPLETED_KEY, enabled ? "true" : "false");
+  } catch {
+    /* best-effort — persistence is optional */
+  }
+}
+
+/**
+ * Client-only transparency toggle (ours). When off, the renderer paints an
+ * opaque theme background on the root so the translucent `bg-glass-*` surfaces
+ * + `backdrop-filter` composite over an opaque base instead of the OS
+ * acrylic/vibrancy — i.e. the glass/acrylic look is disabled, on any platform.
+ * (`data-transparency="off"` on <html>; see style.css. Linux forces this off
+ * regardless via `data-platform="linux"`, since the OS has no acrylic.) Persisted
+ * to `localStorage` like `themeMode` so a `storage` event cross-window-syncs it.
+ */
+const DEFAULT_TRANSPARENCY_ENABLED = true;
+export const TRANSPARENCY_ENABLED_KEY = "notesnook.transparencyEnabled";
+
+export function readTransparencyEnabled(): boolean {
+  try {
+    const v = localStorage.getItem(TRANSPARENCY_ENABLED_KEY);
+    if (v === "false") return false;
+    if (v === "true") return true;
+    return DEFAULT_TRANSPARENCY_ENABLED;
+  } catch {
+    return DEFAULT_TRANSPARENCY_ENABLED;
+  }
+}
+
+function writeTransparencyEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(TRANSPARENCY_ENABLED_KEY, enabled ? "true" : "false");
+  } catch {
+    /* best-effort — persistence is optional */
+  }
+}
+
+/**
+ * Two-slot theme storage (mirrors upstream's `theme:dark` / `theme:light`
+ * Config keys). The user picks a dark theme AND a light theme; `themeMode`
+ * (light/dark/system) selects which slot is active (system → follow OS). A
+ * freshly-installed upstream theme is stored as the full `VueTheme` JSON for its
+ * `colorScheme`; defaults to `ThemeDark`/`ThemeLight` until a theme is
+ * installed. We do NOT persist the defaults (so a theme-vue upgrade isn't
+ * stuck with a stale built-in) — `readStoredTheme` falls back to the vendored
+ * default when the key is absent or unparseable.
+ */
+export const THEME_DARK_KEY = "notesnook.theme.dark";
+export const THEME_LIGHT_KEY = "notesnook.theme.light";
+
+function readStoredTheme(key: string, fallback: VueTheme): VueTheme {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as VueTheme;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredTheme(key: string, theme: VueTheme): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(theme));
+  } catch {
+    /* best-effort — persistence is optional */
+  }
+}
+
 function writeThemeMode(mode: ThemeMode): void {
   try {
     localStorage.setItem(THEME_MODE_KEY, mode);
@@ -115,6 +205,17 @@ export const useSettingsStore = defineStore("settings", () => {
   const themeChangeSignal = ref(0);
   /** Whether the in-app upstream-release notifier may run its once-a-day check. */
   const upstreamReleaseCheckEnabled = ref<boolean>(readUpstreamCheckEnabled());
+  /** Whether the Tasks view also lists notes whose tasks are all completed. */
+  const tasksShowCompleted = ref<boolean>(readTasksShowCompleted());
+  /** Whether the acrylic/glass look is on. Bumped-signal pattern mirrors
+   *  `themeMode` — `App.vue` watches `transparencyChangeSignal` to apply the
+   *  `data-transparency` attr on <html> on-site (keeps the store DOM-free). */
+  const transparencyEnabled = ref<boolean>(readTransparencyEnabled());
+  const transparencyChangeSignal = ref(0);
+  /** The two theme slots. Default to the vendored built-ins until a theme is
+   *  installed from the catalog or imported from a file. */
+  const darkTheme = ref<VueTheme>(readStoredTheme(THEME_DARK_KEY, ThemeDark));
+  const lightTheme = ref<VueTheme>(readStoredTheme(THEME_LIGHT_KEY, ThemeLight));
 
   /**
    * Read all db.settings-backed values into the store. Called on boot (after
@@ -257,6 +358,20 @@ export const useSettingsStore = defineStore("settings", () => {
     writeUpstreamCheckEnabled(enabled);
   }
 
+  /** Toggle the Tasks view's "show completed" filter (client-only, localStorage). */
+  function setTasksShowCompleted(enabled: boolean): void {
+    tasksShowCompleted.value = enabled;
+    writeTasksShowCompleted(enabled);
+  }
+
+  /** Set the transparency toggle, persist to localStorage, and bump the change
+   *  signal so `App.vue` re-applies `data-transparency` on-site. */
+  function setTransparencyEnabled(enabled: boolean): void {
+    transparencyEnabled.value = enabled;
+    writeTransparencyEnabled(enabled);
+    transparencyChangeSignal.value += 1;
+  }
+
   /**
    * Mirror a `themeMode` change made in ANOTHER window (delivered via the
    * `storage` event). Updates the local ref so this window's system-mode
@@ -268,6 +383,74 @@ export const useSettingsStore = defineStore("settings", () => {
    */
   function syncThemeMode(mode: ThemeMode): void {
     themeMode.value = mode;
+  }
+
+  /**
+   * Mirror a `transparencyEnabled` change made in ANOTHER window (delivered
+   * via the `storage` event). Same contract as `syncThemeMode`: updates the
+   * local ref, does NOT write localStorage (the other window did) and does NOT
+   * bump `transparencyChangeSignal` (the other window's `App.vue` already
+   * re-applied). The caller (`App.vue`) re-applies `data-transparency` itself.
+   */
+  function syncTransparencyEnabled(enabled: boolean): void {
+    transparencyEnabled.value = enabled;
+  }
+
+  /**
+   * Install `theme` into the slot for its `colorScheme` (dark/light) — persists
+   * the full theme JSON + swaps that slot + bumps `themeChangeSignal` so
+   * `App.vue` re-applies it if the slot is the active one. Deliberately does
+   * NOT touch `themeMode` (light/dark/system): installing a theme populates its
+   * slot, but which slot is active stays under the user's mode control (the
+   * Appearance mode toggle). The other slot is left untouched. (Upstream
+   * flips colorScheme on install; we don't — the user keeps their mode.)
+   */
+  function setActiveTheme(theme: VueTheme): void {
+    if (theme.colorScheme === "dark") {
+      darkTheme.value = theme;
+      writeStoredTheme(THEME_DARK_KEY, theme);
+    } else {
+      lightTheme.value = theme;
+      writeStoredTheme(THEME_LIGHT_KEY, theme);
+    }
+    themeChangeSignal.value += 1;
+  }
+
+  /**
+   * Reset installed dark and light themes back to built-in stock themes
+   * (ThemeDark / ThemeLight), remove stored theme entries from localStorage,
+   * and bump `themeChangeSignal` so active theme is re-applied on-site.
+   */
+  function restoreStockThemes(): void {
+    darkTheme.value = ThemeDark;
+    lightTheme.value = ThemeLight;
+    try {
+      localStorage.removeItem(THEME_DARK_KEY);
+      localStorage.removeItem(THEME_LIGHT_KEY);
+    } catch {
+      /* best-effort — persistence is optional */
+    }
+    themeChangeSignal.value += 1;
+  }
+
+  /** Is `id` the currently-installed theme for either slot? */
+  function isThemeApplied(id: string): boolean {
+    return darkTheme.value.id === id || lightTheme.value.id === id;
+  }
+
+  /** Get the theme stored for a colorScheme slot. */
+  function getTheme(colorScheme: "dark" | "light"): VueTheme {
+    return colorScheme === "dark" ? darkTheme.value : lightTheme.value;
+  }
+
+  /**
+   * Mirror a slot change made in ANOTHER window (via the `storage` event). No
+   * localStorage write (the other window did it) and no signal bump (the other
+   * window's `App.vue` already re-applied; the caller re-applies here).
+   */
+  function syncStoredTheme(colorScheme: "dark" | "light", theme: VueTheme): void {
+    if (colorScheme === "dark") darkTheme.value = theme;
+    else lightTheme.value = theme;
   }
 
   return {
@@ -284,6 +467,11 @@ export const useSettingsStore = defineStore("settings", () => {
     themeMode,
     themeChangeSignal,
     upstreamReleaseCheckEnabled,
+    tasksShowCompleted,
+    transparencyEnabled,
+    transparencyChangeSignal,
+    darkTheme,
+    lightTheme,
     load,
     setDateFormat,
     setTimeFormat,
@@ -297,6 +485,14 @@ export const useSettingsStore = defineStore("settings", () => {
     setProfile,
     setThemeMode,
     syncThemeMode,
-    setUpstreamReleaseCheckEnabled
+    setUpstreamReleaseCheckEnabled,
+    setTasksShowCompleted,
+    setTransparencyEnabled,
+    syncTransparencyEnabled,
+    setActiveTheme,
+    restoreStockThemes,
+    isThemeApplied,
+    getTheme,
+    syncStoredTheme
   };
 });

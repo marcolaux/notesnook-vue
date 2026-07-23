@@ -121,7 +121,7 @@ watch(
   border: 1px solid color-mix(in oklab, var(--paragraph) 14%, transparent);
   background: var(--color-surface-solid, rgba(24, 24, 24, 0.92));
   backdrop-filter: blur(var(--backdrop-blur-base, 24px));
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 40px color-mix(in srgb, black 45%, transparent);
   font-size: 12px;
 }
 .omnibar-dropdown__list {
@@ -207,7 +207,7 @@ watch(
   opacity: 0.7;
 }
 :deep(.find-match) {
-  background: rgba(250, 204, 21, 0.35);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
   border-radius: 2px;
   color: inherit;
 }

@@ -76,6 +76,18 @@ const appEvents = {
     const handler = () => listener();
     ipcRenderer.on("app:before-quit", handler);
     return () => ipcRenderer.removeListener("app:before-quit", handler);
+  },
+  // Live auto-updater state push from main (`main/updater.ts` emits on every
+  // `autoUpdater` event + check/download call). The renderer's updater store
+  // subscribes to drive live download progress + "ready to install" state
+  // without polling. Payload is the `UpdateStatus` snapshot.
+  onUpdaterStatus(listener: (status: import("../contracts/router").UpdateStatus) => void): () => void {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      status: import("../contracts/router").UpdateStatus
+    ) => listener(status);
+    ipcRenderer.on("updater:status", handler);
+    return () => ipcRenderer.removeListener("updater:status", handler);
   }
 };
 

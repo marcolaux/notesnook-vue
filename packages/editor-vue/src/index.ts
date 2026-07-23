@@ -64,6 +64,42 @@ export {
 } from "./extensions/tag-mention/reconcile";
 export type { TagMentionRange } from "./extensions/tag-mention/reconcile";
 
+// Note-linking (inline `@`/`[[` note links + a toolbar "Link to note" button).
+// `Link` is a fresh port of upstream's standard TipTap `link` mark so inserted
+// HTML is byte-compatible with upstream Notesnook (`<a href="nn://note/<id>">`).
+// `NoteSuggest` is the `@tiptap/suggestion` extension (its own `PluginKey`)
+// triggered by `@` OR `[[` via a custom finder; `NoteLinkPicker` is the shared
+// popup (note list + block drilldown). The host injects `getNoteSuggestions`/
+// `getContentBlocks`/`openLink` via `wireNoteLink` in the renderer — editor-vue
+// has no Pinia/db access. Pure `nn://` URL helpers live here (not in contracts,
+// which transitively pulls `@notesnook/core`) so editor-vue stays self-contained.
+export { Link } from "./extensions/link/link";
+export type { LinkOptions, LinkAttributes } from "./extensions/link/link";
+export { insertNoteLink, setNoteLink, linkMarkAttrs } from "./extensions/link/insert";
+export type { NoteLinkPayload } from "./extensions/link/insert";
+export {
+  createInternalLink,
+  parseInternalLink,
+  isInternalLink,
+  isNoteLink,
+  noteIdFromLink,
+  blockIdFromLink,
+  NN_PROTOCOL
+} from "./extensions/link/internal-link";
+export type { InternalLinkType, InternalLinkParams, ParsedInternalLink } from "./extensions/link/internal-link";
+export { collectNoteLinkIds, addedNoteLinkIds, removedNoteLinkIds } from "./extensions/link/scan";
+export { NoteSuggest } from "./extensions/note-link/note-suggest";
+export type { NoteSuggestOptions } from "./extensions/note-link/note-suggest";
+export { findNoteSuggestionMatch } from "./extensions/note-link/note-suggest-match";
+export { default as NoteLinkPicker } from "./extensions/note-link/NoteLinkPicker.vue";
+export type {
+  NoteSuggestionItem,
+  ContentBlockItem,
+  NoteLinkResult,
+  NoteLinkLabels
+} from "./extensions/note-link/types";
+export { DEFAULT_NOTE_LINK_LABELS } from "./extensions/note-link/types";
+
 // Find & Replace (per-tab in-content find). A TipTap extension wrapping a
 // ProseMirror highlight plugin + commands (`setFind`/`findNext`/`findPrev`/
 // `replace`/`replaceAll`/`clearFind`); the pure matcher lives in

@@ -139,18 +139,18 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
   z-index: 82;
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--color-backdrop, color-mix(in srgb, black 40%, transparent));
   backdrop-filter: blur(2px);
 }
 .color-dialog__panel {
   width: min(360px, 92vw);
   padding: 18px 18px 14px;
   border-radius: 10px;
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
-  background: var(--color-surface-solid, rgba(24, 24, 24, 0.96));
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-solid);
   backdrop-filter: blur(var(--backdrop-blur-base, 24px));
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  color: var(--color-text, rgba(255, 255, 255, 0.85));
+  box-shadow: 0 12px 40px color-mix(in srgb, black 50%, transparent);
+  color: var(--color-text);
   font-size: 13px;
 }
 .color-dialog__title {
@@ -209,7 +209,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.3);
+  border: 1px solid color-mix(in srgb, var(--paragraph) 30%, transparent);
   border-radius: 50%;
   cursor: pointer;
 }

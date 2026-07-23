@@ -37,6 +37,7 @@ describe("router routes", () => {
   it("top/bottom partition matches the sidebar placement", () => {
     expect(topViews.map((v) => v.name)).toEqual([
       RouteName.all,
+      RouteName.tasks,
       RouteName.notebooks,
       RouteName.tags,
       RouteName.monographs,

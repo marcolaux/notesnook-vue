@@ -13,15 +13,15 @@ Storage hooks injected:
     inserted for an already-assigned tag; `assignTag` is idempotent (core
     relations are unique by pair, so `addTag` on an already-assigned tag no-ops
     at the relation layer).
-  - `assignTag(item)` → for an existing tag, `properties.addTag(id, noteId)`
-    (id-aware); for a `isNew` row, `properties.createTag(title, noteId)` (which
-    mints the id via `db.tags.add` + links it) then `collections.load()` so the
-    new tag appears in the sidebar. Returns `{id, title}` so the editor can
+  - `assignTag(item)` → for an existing tag, `footer.addTag(id)` (id-aware,
+    bound to this pane's note); for a `isNew` row, `footer.createTag(title)`
+    (which mints the id via `db.tags.add` + links it) then refreshes the sidebar
+    so the new tag appears there. Returns `{id, title}` so the editor can
     insert the chip with the correct `tagId` (the create case needs the freshly
     minted id for persistence).
-  - `unassignTag(tagId)` → `properties.removeTag(tagId, noteId)` (id-aware,
-    idempotent). Called by the deletion handler below when the user backspaces/
-    deletes a chip, so removing a chip also unlinks the tag from the note.
+  - `unassignTag(tagId)` → `footer.removeTag(tagId)` (id-aware, idempotent).
+    Called by the deletion handler below when the user backspaces/deletes a
+    chip, so removing a chip also unlinks the tag from the note.
   - `navigateToTag(tagId)` → `goToCollection("tag", tagId)` (select + filter the
     notes list + route to `/all`). Read by the `TagMentionView` node-view's chip
     click handler so clicking an inline `#tag` chip jumps to that tag's list
@@ -29,13 +29,14 @@ Storage hooks injected:
 
 Two-way sync (the chip is a visual; the `tag`→`note` relation is the source of
 truth):
-  - Tag removed → chip stripped: a `watch` on `properties.tags` re-runs the
+  - Tag removed → chip stripped: a `watch` on `footer.tags` (this pane's own
+    assigned tags, bound to its note — NOT the global active note) re-runs the
     `reconcileTagMentions` command (dirty — persists the stripped content so a
-    stale reload doesn't bring the chip back) but only when this editor's note
-    is the focused one (`getNoteId() === properties.activeNoteId`). The
-    Editor.vue load path also runs a `silent` (non-dirty) reconcile on open so a
-    note with orphan chips (e.g. a tag removed while the note was closed, or on
-    another device) is cleaned on open without an eager DB rewrite.
+    stale reload doesn't bring the chip back). Because the ref is per-note, no
+    focus gate is needed — a background split pane reconciles its own chips.
+    The Editor.vue load path also runs a `silent` (non-dirty) reconcile on open
+    so a note with orphan chips (e.g. a tag removed while the note was closed,
+    or on another device) is cleaned on open without an eager DB rewrite.
   - Chip deleted → tag unassigned: a `transaction` listener diffs the set of
     chip `tagId`s before/after each transaction and, for any that disappeared in
     a USER transaction (not programmatic), calls `unassignTag`. Programmatic
@@ -52,8 +53,7 @@ promoted), `assignTag` returns `null` and the editor skips the chip insert
 can re-trigger after the draft promotes.
 
 Returns a disposer that removes the `transaction` listener and stops the
-`properties.tags` watch; Editor.vue calls it on editor destroy / component
-unmount.
+`footer.tags` watch; Editor.vue calls it on editor destroy / component unmount.
 */
 import { watch } from "vue";
 import type { Editor } from "@tiptap/vue-3";
@@ -64,14 +64,15 @@ import {
   diffDeletedTagIds,
   RECONCILE_META
 } from "@notesnook-vue/editor-vue";
-import { usePropertiesStore } from "@/stores/properties";
 import { useCollectionsStore } from "@/stores/collections";
 import { buildTagSuggestions } from "@/utils/tag-mention";
 import { goToCollection } from "@/utils/collection-nav";
+import type { NoteFooter } from "@/composables/use-note-footer";
 
 export function wireTagMention(
   editor: Editor,
-  getNoteId: () => string | null
+  getNoteId: () => string | null,
+  footer: NoteFooter
 ): () => void {
   const storage = editor.storage as Record<string, unknown>;
 
@@ -85,23 +86,21 @@ export function wireTagMention(
   ): Promise<{ id: string; title: string } | null> => {
     const noteId = getNoteId();
     if (!noteId) return null;
-    const properties = usePropertiesStore();
-    const collections = useCollectionsStore();
     if (item.isNew) {
-      const created = await properties.createTag(item.title, noteId);
+      // `footer.createTag` mints the tag, attaches it to THIS pane's note, and
+      // reloads the per-pane footer tags (so the chip appears in the footer).
+      const created = await footer.createTag(item.title);
       if (!created) return null;
-      await collections.load();
       return { id: created.id, title: created.title };
     }
-    await properties.addTag(item.id, noteId);
+    await footer.addTag(item.id);
     return { id: item.id, title: item.title };
   };
 
-  // Chip-deleted → unassign the tag. Id-aware + idempotent.
+  // Chip-deleted → unassign the tag from THIS pane's note. Id-aware + idempotent.
   storage.unassignTag = (tagId: string): void => {
-    const noteId = getNoteId();
-    if (!noteId) return;
-    void usePropertiesStore().removeTag(tagId, noteId);
+    if (!getNoteId()) return;
+    void footer.removeTag(tagId);
   };
 
   // Chip-clicked → navigate to the tag's note list (keep the current note open
@@ -131,24 +130,20 @@ export function wireTagMention(
   };
   editor.on("transaction", onTransaction);
 
-  // --- Tag-removed → strip chip (forward direction, focused pane) -----------
-  // When this editor's note is the focused one and its assigned tags change
-  // (user removed/added a tag via the properties panel or context menu),
-  // re-reconcile. Dirty (no `silent`) so a removal persists the stripped content
-  // and a stale reload doesn't reintroduce the chip. A no-op reconcile (nothing
-  // to strip — e.g. a tag was added) returns false and dispatches nothing, so
-  // adding a tag via `#` doesn't trigger a spurious save.
-  const properties = usePropertiesStore();
+  // --- Tag-removed → strip chip (forward direction, per-pane) ----------------
+  // When THIS pane's assigned tags change (a tag removed/added via the footer,
+  // properties panel, or context menu), re-reconcile this editor's chips. The
+  // `footer.tags` ref is bound to this pane's own note (not the global active
+  // note), so NO focus gate is needed — a background split pane reconciles its
+  // own chips against its own tags. Dirty (no `silent`) so a removal persists
+  // the stripped content and a stale reload doesn't reintroduce the chip. A
+  // no-op reconcile (nothing to strip — e.g. a tag was added) returns false and
+  // dispatches nothing, so adding a tag via `#` doesn't trigger a spurious save.
   const stop = watch(
-    () => properties.tags,
+    () => footer.tags.value,
     () => {
       if (editor.isDestroyed) return;
-      // `properties.activeNoteId` is a computed unwrapped by the Pinia store
-      // proxy to `string | null` (no `.value`); reconcile only when this
-      // editor's note is the focused one, else a background split pane would
-      // act on the focused note's assignment changes.
-      if (getNoteId() !== properties.activeNoteId) return;
-      const ids = properties.tags.map((t) => t.id);
+      const ids = footer.tags.value.map((t) => t.id);
       editor.commands.reconcileTagMentions(ids);
     },
     { deep: true }

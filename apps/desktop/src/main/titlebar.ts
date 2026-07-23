@@ -102,6 +102,13 @@ export function buildBrowserWindowOptions(
         titleBarStyle: "hidden",
         titleBarOverlay: TITLE_BAR_OVERLAY,
         frame: false,
+        // Linux has no OS-level vibrancy/acrylic, and most compositors ignore a
+        // transparent window background — so the shared `#00000000` would either
+        // show the desktop or render as black artifacts. Paint an opaque dark
+        // bg (the default dark theme's `--background`); the renderer paints the
+        // real theme bg on mount, so this only covers the pre-paint window. The
+        // renderer-side counterpart is `data-platform="linux"` in style.css.
+        backgroundColor: "#181818",
         webPreferences: webPrefs
       };
     default:
