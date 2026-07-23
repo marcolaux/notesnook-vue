@@ -86,28 +86,17 @@
   background-color: color-mix(in oklab, var(--background) 31%, transparent);
 }
 
-/* Built-in light theme: `--paragraph` is dark, so a `--background` sheet alone
-   is fine, but the author-tuned look brightens it to a near-white "paper" (a
-   white mix with a small `--paragraph` tint), slightly translucent so a hint
-   of the acrylic still shows through. The active tab shares this surface so it
-   blends seamlessly into the editor below it (toolbar root is transparent, so
-   tab → toolbar → editor form one continuous band). Inactive panes halve the
-   outer opacity (92% → 46%). */
+/* Built-in light theme: `--background` is pure white, so mixing white/`--background`
+   directly without tinting with dark `--paragraph` keeps the active tab and editor
+   surface bright white and aligned with the light theme. Inactive panes use half
+   opacity (48%). */
 [data-theme="default-light"] .editor-pane-surface,
 [data-theme="default-light"] .editor-tab-active {
-  background-color: color-mix(
-    in oklab,
-    color-mix(in oklab, white 88%, var(--paragraph)) 92%,
-    transparent
-  );
+  background-color: color-mix(in oklab, var(--background) 95%, transparent);
 }
 [data-theme="default-light"] .editor-pane-inactive,
 [data-theme="default-light"] .editor-tab-inactive {
-  background-color: color-mix(
-    in oklab,
-    color-mix(in oklab, white 88%, var(--paragraph)) 46%,
-    transparent
-  );
+  background-color: color-mix(in oklab, var(--background) 48%, transparent);
 }
 
 /* Built-in dark theme: the shell sits at `--glass-surface` — a faint LIGHT
@@ -155,6 +144,25 @@ html[data-transparency="off"],
 html[data-transparency="off"] body,
 html[data-transparency="off"] #app {
   background: var(--background, #181818);
+}
+
+/* When transparency is OFF (or on Linux), active tab and editor surface use
+   solid `--background` so the active tab in light theme is bright white (matching
+   the theme background) and connects seamlessly into the editor surface. Inactive
+   panes (inactive editor + inactive active-tab) use `bg-glass-surface` (the same
+   background color as inactive tabs: a 5% `--paragraph` tint over `--background`). */
+html[data-platform="linux"] .editor-pane-surface,
+html[data-platform="linux"] .editor-tab-active,
+html[data-transparency="off"] .editor-pane-surface,
+html[data-transparency="off"] .editor-tab-active {
+  background-color: var(--background);
+}
+
+html[data-platform="linux"] .editor-pane-inactive,
+html[data-platform="linux"] .editor-tab-inactive,
+html[data-transparency="off"] .editor-pane-inactive,
+html[data-transparency="off"] .editor-tab-inactive {
+  background-color: color-mix(in oklab, var(--paragraph) 5%, var(--background));
 }
 
 /* ─────────────────────────────────────────────────────────────────────────

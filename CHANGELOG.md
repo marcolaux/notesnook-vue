@@ -5,6 +5,13 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-07-23
+
+### 🎨 Themes & Active Tab Contrast
+- **Active Tab & Transparency-Off Light Theme Contrast**:
+  - Fixed active tab background when transparency is disabled in light theme to use solid `--background` (pure `#ffffff`), eliminating dark grey background artifacts and aligning with the active theme.
+  - Refined `default-light` active tab paper surface to use a clean `var(--background)` 95% opacity mix without dark paragraph tinting.
+
 ## [0.1.0] - 2026-07-23
 
 ### 🎨 Themes Engine & Stock Themes Catalog

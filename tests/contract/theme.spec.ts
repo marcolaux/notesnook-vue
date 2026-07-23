@@ -15,6 +15,8 @@
  * property resolution is incomplete; that is verified manually via `npm run dev`.
  */
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import {
   injectTheme,
   setTheme,
@@ -129,5 +131,30 @@ describe("Tailwind bridge", () => {
       expect(token.startsWith("--color-")).toBe(true);
       expect(upstream.startsWith("var(--")).toBe(true);
     }
+  });
+});
+
+describe("style.css — active tab & transparency-off rules", () => {
+  it("defines solid var(--background) for active tab when transparency is off", () => {
+    const stylePath = path.resolve(__dirname, "../../apps/desktop/src/renderer/src/style.css");
+    const styleCss = fs.readFileSync(stylePath, "utf-8");
+
+    expect(styleCss).toContain('html[data-transparency="off"] .editor-tab-active');
+    expect(styleCss).toMatch(/html\[data-transparency="off"\] \.editor-tab-active[^{]*\{[^}]*background-color:\s*var\(--background\);/);
+  });
+
+  it("uses bright white background-color mix for default-light active tab", () => {
+    const stylePath = path.resolve(__dirname, "../../apps/desktop/src/renderer/src/style.css");
+    const styleCss = fs.readFileSync(stylePath, "utf-8");
+
+    expect(styleCss).toMatch(/\[data-theme="default-light"\] \.editor-tab-active[^{]*\{[^}]*background-color:\s*color-mix\(in oklab, var\(--background\) 95%, transparent\);/);
+  });
+
+  it("defines inactive tab background tint for inactive editors when transparency is off", () => {
+    const stylePath = path.resolve(__dirname, "../../apps/desktop/src/renderer/src/style.css");
+    const styleCss = fs.readFileSync(stylePath, "utf-8");
+
+    expect(styleCss).toContain('html[data-transparency="off"] .editor-pane-inactive');
+    expect(styleCss).toMatch(/html\[data-transparency="off"\] \.editor-pane-inactive[^{]*\{[^}]*background-color:\s*color-mix\(in oklab, var\(--paragraph\) 5%, var\(--background\)\);/);
   });
 });
