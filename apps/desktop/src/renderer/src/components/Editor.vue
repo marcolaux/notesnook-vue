@@ -24,7 +24,7 @@
  * here would grab the nested 2.6.6 copy and split the schema.
  */
 import { ref, watch, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated } from "vue";
-import { useEditor, EditorContent } from "@tiptap/vue-3";
+import { useEditor, EditorContent, type Editor } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import {
   AttachmentNode,
@@ -62,7 +62,7 @@ import {
   NoteSuggest
 } from "@notesnook-vue/editor-vue";
 import { useNotesStore } from "@/stores/notes";
-import { useEditorStore } from "@/stores/editor";
+import { useEditorStore, type EditorSurface } from "@/stores/editor";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useStatusStore } from "@/stores/status";
 import { usePropertiesStore } from "@/stores/properties";
@@ -79,6 +79,8 @@ import { wireEditorColorPicker } from "@/editor/color-bridge";
 import { wireTagMention } from "@/editor/tag-mention-bridge";
 import { wireNoteLink } from "@/editor/note-link-bridge";
 import { goToCollection } from "@/utils/collection-nav";
+import { scrollTopFromFraction } from "@/utils/minimap";
+import { findHeading } from "@/utils/toc";
 import EditorToolbar from "./EditorToolbar.vue";
 import FindBar from "./FindBar.vue";
 
@@ -101,9 +103,11 @@ const myTab = computed(() =>
 const myNoteId = computed<string | null>(() => myTab.value?.noteId ?? null);
 const myGroupId = computed<string>(() => myTab.value?.groupId ?? props.groupId ?? "");
 /** Whether this editor's pane is the focused pane (`layout.activeGroupId`).
- *  The focused pane's editor gets the full-intensity "paper" surface
- *  (`.editor-pane-surface`); inactive panes get the same paper at half
- *  intensity (`.editor-pane-inactive`) — still an editor, just de-emphasised. */
+ *  The focus-gated "paper" surface (`.editor-pane-surface`/`.editor-pane-inactive`)
+ *  is applied by `EditorPane` on the editor-body wrapper (so it also covers the
+ *  area behind the right sidebars); this editor root is transparent so that
+ *  surface shows through uniformly. `isPaneFocused` here drives only the
+ *  footer Ln/Col (focused-pane-only). */
 const isPaneFocused = computed(() => layout.activeGroupId === myGroupId.value);
 const myNote = computed(() =>
   myNoteId.value ? notes.items.find((n) => n.id === myNoteId.value) ?? null : null
@@ -189,6 +193,11 @@ const titleModel = computed<string>({
 // letter) and cleared here once consumed, so switching to an existing note
 // never grabs the title.
 const titleInputEl = ref<HTMLInputElement | null>(null);
+
+/** The editor's overflow scroll container — published to the editor surface
+ *  registry so the per-tab ToC/Minimap right sidebar (a sibling of this
+ *  editor) can drive scroll for THIS pane. */
+const scrollEl = ref<HTMLElement | null>(null);
 
 watch(
   titleInputEl,
@@ -728,6 +737,47 @@ function refreshStatus(): void {
 let disposeTagMention: (() => void) | null = null;
 let disposeNoteLink: (() => void) | null = null;
 
+/** The editor surface currently registered for this pane (rebuilt on editor
+ *  swap, unregistered on unmount — kept so `unregisterSurface` can pass the
+ *  exact instance and avoid clobbering a re-registered one). */
+let currentSurface: EditorSurface | null = null;
+
+/** Build the {@link EditorSurface} this pane publishes to the ToC/Minimap
+ *  sidebar. `scrollEl` is read at call time (the template ref is stable); the
+ *  `.ProseMirror` content element is the editor's view DOM. */
+function buildSurface(inst: Editor): EditorSurface {
+  return {
+    get scrollEl(): HTMLElement {
+      // The template ref is non-null once mounted; fall back to the view's
+      // closest scrollable ancestor defensively (shouldn't happen in practice).
+      return scrollEl.value ?? (inst.view.dom.closest(".overflow-y-auto") as HTMLElement) ?? inst.view.dom;
+    },
+    contentEl: inst.view.dom,
+    scrollToFraction: (fraction: number) => {
+      const el = scrollEl.value;
+      if (!el) return;
+      el.scrollTop = scrollTopFromFraction(fraction, el.scrollHeight, el.clientHeight);
+    },
+    scrollToHeading: (id: string, text: string) => {
+      const el = scrollEl.value;
+      if (!el || inst.isDestroyed) return;
+      const heading = findHeading(inst.view.dom, id, text);
+      if (!heading) return;
+      // Place the caret at the heading WITHOUT scrolling first. TipTap's
+      // `focus()` command triggers its own (minimal) scroll-into-view which
+      // would cancel a prior `scrollIntoView`/`scrollTop` call — so set the
+      // selection + raw DOM focus (no PM scroll) and then smooth-scroll the
+      // real container LAST so the heading lands at the top of the viewport.
+      const pos = inst.view.posAtDOM(heading, 0);
+      inst.chain().setTextSelection(pos).run();
+      inst.view.focus();
+      const rel = heading.getBoundingClientRect().top - el.getBoundingClientRect().top;
+      const next = Math.max(0, el.scrollTop + rel - 12);
+      el.scrollTo({ top: next, behavior: "smooth" });
+    }
+  };
+}
+
 watch(
   editor,
   (e) => {
@@ -738,6 +788,13 @@ watch(
       // reads `db.content.get` (see `editorStore.flushFocusedSave`). Registered
       // alongside the editor; unregistered on unmount.
       editorStore.registerFlusher(myKey.value, flushSave);
+      // Publish this pane's scrollable surface so the per-tab ToC/Minimap right
+      // sidebar (a sibling of this editor) can drive scroll for THIS pane —
+      // scroll-to-heading (ToC click) + scroll-to-fraction (minimap drag) +
+      // the content/scroll elements the minimap clones/tracks. Rebuilt per
+      // editor swap; unregistered on unmount.
+      currentSurface = buildSurface(e);
+      editorStore.registerSurface(myKey.value, currentSurface);
       e.on("update", refreshStatus);
       e.on("selectionUpdate", refreshStatus);
       // Wire the attachments storage hooks the image node-view + toolbar image
@@ -855,6 +912,10 @@ onBeforeUnmount(() => {
     editorStore.unregister(myKey.value, inst);
   }
   editorStore.unregisterFlusher(myKey.value);
+  if (currentSurface) {
+    editorStore.unregisterSurface(myKey.value, currentSurface);
+    currentSurface = null;
+  }
   // Tear down the tag-mention bridge (transaction listener + properties.tags
   // watch) so a per-tab editor doesn't leak its store subscription on unmount.
   disposeTagMention?.();
@@ -932,8 +993,7 @@ function onEditorAreaClick(e: MouseEvent): void {
 
 <template>
   <div
-    class="relative flex h-full flex-col bg-glass-surface"
-    :class="isPaneFocused ? 'editor-pane-surface' : 'editor-pane-inactive'"
+    class="relative flex h-full flex-col bg-transparent"
   >
     <EditorToolbar
       v-if="!isDraft"
@@ -947,7 +1007,12 @@ function onEditorAreaClick(e: MouseEvent): void {
       class="titlebar-no-drag"
       @close="findOpen = false"
     />
-    <div class="min-h-0 flex-1 overflow-y-auto p-6" @mousedown="onAreaMouseDown" @click="onEditorAreaClick">
+    <div
+      ref="scrollEl"
+      class="min-h-0 flex-1 overflow-y-auto p-6"
+      @mousedown="onAreaMouseDown"
+      @click="onEditorAreaClick"
+    >
       <div v-if="myContentState === 'locked'" class="text-sm text-amber-300/80">
         This note is vault-locked. Unlock arrives in Phase 6.
       </div>

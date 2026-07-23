@@ -29,6 +29,12 @@ export default {
     showMore: "Show more",
     showLess: "Show less"
   },
+  toc: {
+    title: "Table of contents",
+    headings: "Headings",
+    minimap: "Minimap",
+    empty: "No headings in this note"
+  },
   sidebar: {
     notebooks: "Notebooks",
     noNotebooks: "No notebooks",

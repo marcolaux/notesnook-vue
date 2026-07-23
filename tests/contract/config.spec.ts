@@ -87,6 +87,18 @@ describe("config store", () => {
     expect(useConfigStore().homepage).toEqual({ type: "notebook", id: "abc" });
   });
 
+  it("defaults tocMode to 'toc' + persists the last-used mode", () => {
+    const c = useConfigStore();
+    expect(c.tocMode).toBe("toc");
+    c.setTocMode("minimap");
+    expect(c.tocMode).toBe("minimap");
+    expect(storage.getItem(CONFIG_PREFIX + "tocMode")).toBe(JSON.stringify("minimap"));
+
+    // A freshly-constructed store (e.g. a new window) re-reads the last-used mode.
+    setActivePinia(createPinia());
+    expect(useConfigStore().tocMode).toBe("minimap");
+  });
+
   it("load() re-reads every value from localStorage", () => {
     const c = useConfigStore();
     // Construction read defaults (localStorage empty).

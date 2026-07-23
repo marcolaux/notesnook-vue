@@ -40,7 +40,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
-const SUBMODULE = path.join(ROOT, "vendor", "notesnook");
+const _SUBMODULE = path.join(ROOT, "vendor", "notesnook");
 const OUT = path.join(ROOT, "apps", "desktop", "src", "contracts", "upstream-baseline.generated.ts");
 const REPO = "streetwriters/notesnook";
 const API = `https://api.github.com/repos/${REPO}`;

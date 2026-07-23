@@ -271,7 +271,10 @@ const appCommands: Command[] = [
     keywords: ["toc", "outline", "headings", "minimap"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
-    run: (ctx) => ctx.shell.toggleToc()
+    run: (ctx) => {
+      const id = ctx.layout.activeTab?.id;
+      if (id) ctx.layout.toggleToc(id);
+    }
   },
   {
     id: "app:toggle-properties",

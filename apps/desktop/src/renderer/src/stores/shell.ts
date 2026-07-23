@@ -51,9 +51,9 @@ function writeWidth(key: string, value: number): void {
 export const useShellStore = defineStore("shell", () => {
   const sidebarCollapsed = ref(false);
   const listCollapsed = ref(false);
-  /** Right-side panel visibility (Phase 5.1/5.2): the ToC miniMap + the
-   * properties panel. Off by default; toggled via palette/toolbar commands. */
-  const tocVisible = ref(false);
+  /** Right-side properties panel visibility (Phase 5.1). Off by default;
+   * toggled via palette/toolbar commands. (The ToC/Minimap panel is per-tab —
+   * `editor-layout.toggleToc(tabId)` — not a global shell flag.) */
   const propertiesVisible = ref(false);
   /** Focus mode (multi-window): hides BOTH the sidebar and the notes list,
    * leaving just the titlebar + editor + status bar — a distraction-free
@@ -72,10 +72,6 @@ export const useShellStore = defineStore("shell", () => {
 
   function toggleList(): void {
     listCollapsed.value = !listCollapsed.value;
-  }
-
-  function toggleToc(): void {
-    tocVisible.value = !tocVisible.value;
   }
 
   function toggleProperties(): void {
@@ -107,14 +103,12 @@ export const useShellStore = defineStore("shell", () => {
   return {
     sidebarCollapsed,
     listCollapsed,
-    tocVisible,
     propertiesVisible,
     focusMode,
     sidebarWidth,
     listWidth,
     toggleSidebar,
     toggleList,
-    toggleToc,
     toggleProperties,
     toggleFocusMode,
     setFocusMode,

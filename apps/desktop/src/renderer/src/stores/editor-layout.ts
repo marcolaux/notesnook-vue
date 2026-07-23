@@ -15,6 +15,7 @@ import {
   type EditorGroup
 } from "@/utils/editor-layout";
 import type { LayoutSnapshot } from "@contracts/session-state";
+import { useConfigStore, type TocMode } from "@/stores/config";
 
 /**
  * Editor-layout store (Phase 4.1) — the recursive split/group layout tree,
@@ -94,6 +95,12 @@ export interface EditorTab {
   pinned?: boolean;
   /** Per-tab note-history timeline sidebar visibility (note tabs only). */
   historyVisible?: boolean;
+  /** Per-tab ToC/Minimap right-sidebar visibility (note tabs only). */
+  tocVisible?: boolean;
+  /** Per-tab ToC/Minimap mode: `"toc"` (heading outline) or `"minimap"`
+   *  (VS-Code-style scaled content). Defaults to `"toc"` when first toggled
+   *  on. Note tabs only. */
+  tocMode?: "toc" | "minimap";
 }
 
 function genId(): string {
@@ -106,6 +113,8 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
   const tabs = ref<Record<string, EditorTab>>({});
   const sessions = ref<Record<string, EditorSession>>({});
   const activeGroupId = ref<string>("");
+  // Client-only persisted preferences (the ToC/Minimap last-used mode).
+  const config = useConfigStore();
 
   // --- initialisation -------------------------------------------------------
 
@@ -606,6 +615,29 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     tabs.value = { ...tabs.value, [tabId]: { ...tab, historyVisible: !tab.historyVisible } };
   }
 
+  /** Toggle the per-tab ToC/Minimap right sidebar on a note tab. Seeds the
+   *  mode to the last-used one (persisted in the client-only config store) on
+   *  first open, and leaves it set when hidden so the choice persists across
+   *  hide/show within a tab. No-op for attachment/search tabs or unknown ids. */
+  function toggleToc(tabId: string): void {
+    const tab = tabs.value[tabId];
+    if (!tab || tab.kind !== "note") return;
+    const next = !tab.tocVisible;
+    const patch: { tocVisible: boolean; tocMode?: TocMode } = { tocVisible: next };
+    if (next && !tab.tocMode) patch.tocMode = config.tocMode;
+    tabs.value = { ...tabs.value, [tabId]: { ...tab, ...patch } };
+  }
+
+  /** Switch the per-tab ToC/Minimap mode + persist it as the last-used default
+   *  (so the next tab to open its sidebar starts in this mode). No-op for
+   *  non-note tabs / unknown ids. */
+  function setTocMode(tabId: string, mode: TocMode): void {
+    const tab = tabs.value[tabId];
+    if (!tab || tab.kind !== "note") return;
+    tabs.value = { ...tabs.value, [tabId]: { ...tab, tocMode: mode } };
+    config.setTocMode(mode);
+  }
+
   /** Focus the next group in tree (pre-order) order, wrapping. No-op with <2
    *  groups. Used by the "Focus next pane" command. */
   function focusNextGroup(): void {
@@ -795,6 +827,8 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     activateTab,
     setActiveGroup,
     toggleHistory,
+    toggleToc,
+    setTocMode,
     focusNextGroup,
     moveTab,
     reorderTab,

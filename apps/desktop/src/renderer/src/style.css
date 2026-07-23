@@ -263,6 +263,71 @@ html[data-transparency="off"] .editor-tab-inactive {
   background: color-mix(in oklab, var(--color-accent) 30%, transparent);
 }
 
+/* Minimap block glyphs (`NoteMinimap.vue`) — placeholder "text line" bars,
+   one glyph per top-level editor block, sized to the block's real height ×
+   scale so the minimap is an accurate vertical map of the editor. Colors derive
+   from the runtime theme vars so they track light/dark. */
+.minimap-glyph {
+  left: 4px;
+  right: 4px;
+}
+.minimap-glyph--indent {
+  left: 10px;
+}
+.minimap-glyph--quote {
+  border-left: 2px solid color-mix(in oklab, var(--accent) 60%, transparent);
+  padding-left: 4px;
+}
+.minimap-bar {
+  background: color-mix(in oklab, var(--paragraph) 32%, transparent);
+  border-radius: 1px;
+  min-height: 1px;
+}
+.minimap-bar--heading {
+  background: color-mix(in oklab, var(--accent) 70%, transparent);
+  border-radius: 1px;
+}
+.minimap-bar--code {
+  background: color-mix(in oklab, var(--paragraph) 22%, transparent);
+}
+.minimap-bar--task {
+  background: color-mix(in oklab, var(--paragraph) 28%, transparent);
+}
+.minimap-bar--media {
+  background: color-mix(in oklab, var(--paragraph) 18%, transparent);
+  border-radius: 2px;
+}
+.minimap-bar--hr {
+  background: var(--color-glass-border);
+  height: 1px !important;
+  flex: 0 0 1px !important;
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+/* Per-tab right sidebar (ToC/Minimap + note-history) open/close animation.
+   The sidebar is a `v-if`-toggled flex sibling of the editor, wrapped in a
+   `<Transition name="right-sidebar">`. It animates width + vertical margin +
+   opacity so the editor expands/collapses smoothly and the panel fades —
+   mirroring the left-panel sleeve transition in `CollapsiblePanel.vue`. The
+   panel's own `overflow: hidden` clips its content while narrow. Unlayered so
+   the `width: 0` enter-from/leave-to overrides the Tailwind `w-80` utility. */
+.right-sidebar-enter-active,
+.right-sidebar-leave-active {
+  transition:
+    width 220ms cubic-bezier(0.4, 0, 0.2, 1),
+    margin-top 220ms cubic-bezier(0.4, 0, 0.2, 1),
+    margin-bottom 220ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 180ms ease;
+}
+.right-sidebar-enter-from,
+.right-sidebar-leave-to {
+  width: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  opacity: 0;
+}
+
 /* Collapse the top/bottom margin of the first/last block so content sits flush
    inside the p-6 scroll container. */
 .ProseMirror > *:first-child {

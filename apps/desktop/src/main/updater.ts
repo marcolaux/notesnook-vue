@@ -80,20 +80,39 @@ function emitState(): void {
 export const updaterServer: UpdaterServer = {
   async check(): Promise<UpdateStatus> {
     const au = await getAutoUpdater();
-    if (!au) return { ...IDLE };
+    if (!au) {
+      // Dev / unpackaged: no provider to query. Populate `version` with the
+      // running app version so the snapshot classifies as "up-to-date" rather
+      // than "unknown" — otherwise the UI lingers on "Checking for updates…"
+      // forever (`version: null` means "no check has resolved yet").
+      status = { available: false, version: app.getVersion(), downloaded: status.downloaded, progress: 0 };
+      emitState();
+      return status;
+    }
     try {
       const result = await au.checkForUpdates();
       const info = result?.updateInfo ?? null;
       const version = info?.version ?? null;
       // `checkForUpdates` resolves with an update when a newer version exists;
-      // absence means up-to-date.
+      // `null` means up-to-date. In the up-to-date case we record the running
+      // version (not `null`) so the UI can distinguish "checked, no update"
+      // from "haven't checked yet".
       const available = !!result && version !== null;
-      status = { available, version, downloaded: status.downloaded, progress: 0 };
+      status = {
+        available,
+        version: available ? version : app.getVersion(),
+        downloaded: status.downloaded,
+        progress: 0
+      };
       emitState();
       return status;
     } catch {
-      // Network/provider error → treat as "no update known".
-      status = { ...IDLE };
+      // Network/provider error → keep the last known status (don't wipe to
+      // IDLE, which would regress a known "up-to-date" back to "Checking…").
+      // Only progress is reset. The renderer surfaces failures via `lastError`
+      // when the bridge call itself rejects; a swallowed provider error here
+      // leaves the prior snapshot intact.
+      status = { ...status, progress: 0 };
       emitState();
       return status;
     }

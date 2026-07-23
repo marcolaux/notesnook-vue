@@ -93,7 +93,10 @@ import {
   Globe,
   Link,
   Copy,
-  Eye
+  Eye,
+  // ToC/Minimap right-sidebar header toggle — chrome, must render at first paint.
+  Map,
+  Rows3
 } from "@lucide/vue";
 
 /**
@@ -168,7 +171,10 @@ export const ICONS: Record<string, Component> = {
   globe: Globe,
   link: Link,
   copy: Copy,
-  eye: Eye
+  eye: Eye,
+  // ToC/Minimap right-sidebar header toggle.
+  map: Map,
+  "rows-3": Rows3
 };
 
 /**

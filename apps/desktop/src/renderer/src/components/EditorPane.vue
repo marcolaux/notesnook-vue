@@ -54,6 +54,7 @@ import Editor from "./Editor.vue";
 import AttachmentPreview from "./AttachmentPreview.vue";
 import SearchResultsPane from "./SearchResultsPane.vue";
 import HistorySidebar from "./HistorySidebar.vue";
+import TocSidebar from "./TocSidebar.vue";
 
 const props = defineProps<{ groupId: string }>();
 const layout = useEditorLayoutStore();
@@ -63,6 +64,10 @@ const activeTabId = computed<string | null>(
 );
 /** The active tab object (read for `kind` to dispatch Editor vs AttachmentPreview). */
 const activeTab = computed(() => (activeTabId.value ? layout.tabs[activeTabId.value] ?? null : null));
+/** Whether this pane is the focused one — drives the editor-body surface so
+ *  the area behind the right sidebar matches the active editor/tab surface
+ *  (`.editor-pane-surface`/`.editor-pane-inactive`), not the raw shell. */
+const isPaneFocused = computed(() => layout.activeGroupId === props.groupId);
 
 // --- Drag-to-split drop zones -----------------------------------------------
 const editorEl = ref<HTMLElement | null>(null);
@@ -169,6 +174,7 @@ function moveOrCreateTab(noteId: string, targetGroupId: string): void {
       ref="editorEl"
       data-editor-body=""
       class="relative flex min-h-0 min-w-0 flex-1"
+      :class="isPaneFocused ? 'editor-pane-surface' : 'editor-pane-inactive'"
       @dragover.capture="onEditorDragOver($event)"
       @dragleave="onEditorDragLeave($event)"
       @drop.capture="onEditorDrop($event)"
@@ -194,12 +200,26 @@ function moveOrCreateTab(noteId: string, targetGroupId: string): void {
       </div>
 
       <!-- Per-tab note-history timeline sidebar (note tabs only). The
-           `activeTabId` term narrows it to a non-null string for the prop. -->
-      <HistorySidebar
-        v-if="activeTab?.kind === 'note' && activeTab.historyVisible && activeTabId"
-        :tab-id="activeTabId"
-        class="w-80 shrink-0 border-l border-glass-border"
-      />
+           `activeTabId` term narrows it to a non-null string for the prop.
+           Wrapped in a slide+fade `<Transition>` so opening/closing animates. -->
+      <Transition name="right-sidebar">
+        <HistorySidebar
+          v-if="activeTab?.kind === 'note' && activeTab.historyVisible && activeTabId"
+          :tab-id="activeTabId"
+          class="my-2 mr-2 w-80 shrink-0"
+        />
+      </Transition>
+
+      <!-- Per-tab ToC/Minimap right sidebar (note tabs only). Floating rounded
+           glass panel (the shell handles its own edges/blur), so it gets a
+           small margin + no flat border-l. Slide+fade transition on open/close. -->
+      <Transition name="right-sidebar">
+        <TocSidebar
+          v-if="activeTab?.kind === 'note' && activeTab.tocVisible && activeTabId"
+          :tab-id="activeTabId"
+          class="my-2 mr-2 w-80 shrink-0"
+        />
+      </Transition>
 
       <!-- Drag-to-split zone overlay: only while a tab drag hovers this pane.
            `pointer-events-none` so it never intercepts clicks/editor input. -->

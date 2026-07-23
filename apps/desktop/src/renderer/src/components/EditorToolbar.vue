@@ -120,6 +120,13 @@ function toggleHistory(): void {
   if (id) layout.toggleHistory(id);
 }
 
+/** Toggle the per-tab ToC/Minimap right sidebar on the focused pane's active
+ *  note tab. No-op when no note is active (e.g. the ephemeral draft). */
+function toggleToc(): void {
+  const id = layout.activeTab?.id;
+  if (id) layout.toggleToc(id);
+}
+
 /** Open the publish dialog for the active note (the "Publish" button click
  *  when the note is not yet published). On confirm, publish via the publish
  *  store's explicit-id action. No-op when no note is active. */
@@ -237,9 +244,10 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
-      :class="{ 'bg-glass-active text-text': shell.tocVisible }"
+      :class="{ 'bg-glass-active text-text': !!layout.activeTab?.tocVisible }"
       title="Table of contents"
-      @click="shell.toggleToc()"
+      :disabled="!notes.activeNote"
+      @click="toggleToc()"
     >
       <Icon name="list" :size="16" />
     </button>

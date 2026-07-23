@@ -24,6 +24,7 @@ import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useNoteHistoryTimeline } from "@/composables/use-note-history-timeline";
 import type { HistoryEntry } from "@/utils/note-history";
 import type { DiffLine } from "@/utils/note-history-diff";
+import RightSidebar from "./RightSidebar.vue";
 
 const props = defineProps<{ tabId: string }>();
 const { t } = useI18n();
@@ -118,34 +119,18 @@ function plainText(html: string): string {
 </script>
 
 <template>
-  <div
-    class="flex min-h-0 min-w-0 h-full flex-col bg-glass-surface"
-    :data-history-sidebar="props.tabId"
-  >
+  <RightSidebar :data-history-sidebar="props.tabId" @close="layout.toggleHistory(props.tabId)">
+    <template #title>{{ t("history.title") }}</template>
+
+    <div v-if="loading" class="p-4 text-xs text-text-muted">{{ t("history.loading") }}</div>
     <div
-      class="flex shrink-0 items-center justify-between gap-2 border-b border-glass-border px-3 py-2"
+      v-else-if="sessions.length === 0"
+      class="p-4 text-xs text-text-muted"
     >
-      <span class="truncate text-xs font-medium text-text">{{ t("history.title") }}</span>
-      <button
-        type="button"
-        class="grid h-6 w-6 shrink-0 place-items-center rounded text-text-muted hover:bg-glass-hover hover:text-text"
-        :title="t('common.close')"
-        @click="layout.toggleHistory(props.tabId)"
-      >
-        <Icon name="x" :size="16" />
-      </button>
+      {{ t("history.empty") }}
     </div>
 
-    <div class="relative min-h-0 flex-1 overflow-auto px-3 py-2">
-      <div v-if="loading" class="p-4 text-xs text-text-muted">{{ t("history.loading") }}</div>
-      <div
-        v-else-if="sessions.length === 0"
-        class="p-4 text-xs text-text-muted"
-      >
-        {{ t("history.empty") }}
-      </div>
-
-      <ol v-else class="relative m-0 list-none p-0">
+    <ol v-else class="relative m-0 list-none p-0">
         <!-- vertical connector line -->
         <span class="absolute left-[5px] top-2 bottom-2 w-px bg-glass-border" />
         <li
@@ -249,6 +234,5 @@ function plainText(html: string): string {
       </ol>
 
       <div v-if="lastError" class="mt-2 text-[11px] text-[var(--paragraph-error)]">{{ lastError }}</div>
-    </div>
-  </div>
+  </RightSidebar>
 </template>

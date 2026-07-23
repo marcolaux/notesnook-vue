@@ -574,6 +574,78 @@ describe("useEditorLayoutStore — tabs", () => {
   });
 });
 
+describe("useEditorLayoutStore — toggleToc / setTocMode", () => {
+  beforeEach(() => setActivePinia(createPinia()));
+
+  it("toggleToc flips tocVisible on a note tab and seeds mode to toc", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const id = s.openTab(s.activeGroupId, "note-a");
+    expect(s.tabs[id].tocVisible).toBeFalsy();
+    s.toggleToc(id);
+    expect(s.tabs[id].tocVisible).toBe(true);
+    expect(s.tabs[id].tocMode).toBe("toc");
+    s.toggleToc(id);
+    expect(s.tabs[id].tocVisible).toBe(false);
+    // mode persists across hide/show (not reset to undefined)
+    expect(s.tabs[id].tocMode).toBe("toc");
+  });
+
+  it("setTocMode switches the mode without affecting visibility", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const id = s.openTab(s.activeGroupId, "note-a");
+    s.toggleToc(id); // toc, visible
+    s.setTocMode(id, "minimap");
+    expect(s.tabs[id].tocMode).toBe("minimap");
+    expect(s.tabs[id].tocVisible).toBe(true);
+    s.setTocMode(id, "toc");
+    expect(s.tabs[id].tocMode).toBe("toc");
+  });
+
+  it("toggleToc/setTocMode are no-ops on search tabs + unknown ids", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const id = s.openSearchTab("q");
+    s.toggleToc(id); // no-op (search tab)
+    expect(s.tabs[id].tocVisible).toBeFalsy();
+    s.setTocMode(id, "minimap"); // no-op
+    expect(s.tabs[id].tocMode).toBeFalsy();
+    s.toggleToc("does-not-exist"); // no-op (unknown)
+    expect(Object.keys(s.tabs)).toHaveLength(1);
+  });
+
+  it("toggleToc seeds from the persisted last-used mode + setTocMode persists it", () => {
+    // Map-backed localStorage (node has none) pre-seeded with a last-used
+    // minimap preference — `toggleToc` should seed the tab from it.
+    const storage = new (class {
+      private m = new Map<string, string>();
+      getItem(k: string) { return this.m.has(k) ? (this.m.get(k) as string) : null; }
+      setItem(k: string, v: string) { this.m.set(k, v); }
+      removeItem(k: string) { this.m.delete(k); }
+      clear() { this.m.clear(); }
+    })();
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+    storage.setItem("notesnook.config.tocMode", JSON.stringify("minimap"));
+
+    setActivePinia(createPinia());
+    const s = useEditorLayoutStore();
+    s.init();
+    const id = s.openTab(s.activeGroupId, "note-a");
+    s.toggleToc(id); // first open → seeds from persisted "minimap"
+    expect(s.tabs[id].tocMode).toBe("minimap");
+    // switching writes the new last-used mode back to localStorage
+    s.setTocMode(id, "toc");
+    expect(s.tabs[id].tocMode).toBe("toc");
+    expect(storage.getItem("notesnook.config.tocMode")).toBe(JSON.stringify("toc"));
+
+    // A new tab opening its sidebar seeds from the just-persisted "toc".
+    const id2 = s.openTab(s.activeGroupId, "note-b");
+    s.toggleToc(id2);
+    expect(s.tabs[id2].tocMode).toBe("toc");
+  });
+});
+
 describe("useEditorLayoutStore — drag-to-split + empty-pane collapse", () => {
   beforeEach(() => setActivePinia(createPinia()));
 

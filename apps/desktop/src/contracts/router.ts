@@ -168,7 +168,8 @@ function requireFileStorage(): FileStorageServer {
 export interface UpdateStatus {
   /** An update newer than the running app was found. */
   available: boolean;
-  /** Version string of the available update, or `null` when none/up-to-date. */
+  /** Version string of the available update, the running app version when a
+   *  check completed and found none, or `null` before any check has resolved. */
   version: string | null;
   /** The update has been downloaded and is ready to install. */
   downloaded: boolean;

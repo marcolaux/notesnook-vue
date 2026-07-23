@@ -15,7 +15,7 @@
  * any network. A real update only appears in a packaged build once a newer
  * release is published to the GitHub `latest` channel.
  */
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 import { Surface, Flex, Text, Button } from "@notesnook-vue/ui-vue";
 import { useUpdaterStore } from "@/stores/updater";
 
@@ -23,6 +23,15 @@ const updater = useUpdaterStore();
 
 const currentVersion = `v${__APP_VERSION__}`;
 const downloading = computed(() => updater.phase === "downloading");
+
+// Kick a check the moment the section is opened so the user sees a fresh
+// "Up to date" / "Update available" verdict rather than the stale pre-check
+// "Checking for updates…" snapshot. The section remounts on each navigation
+// (no KeepAlive), so this fires every time the user opens Updates. Guarded
+// against an in-flight check (e.g. the boot auto-check) to avoid a double call.
+onMounted(() => {
+  if (!updater.busy) void updater.checkForUpdates();
+});
 </script>
 
 <template>

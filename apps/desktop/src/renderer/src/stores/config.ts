@@ -75,7 +75,12 @@ export type ConfigKey =
   | "homepage"
   | "imageCompression"
   | "defaultNoteTemplate"
-  | "defaultTaskTemplate";
+  | "defaultTaskTemplate"
+  | "tocMode";
+
+/** ToC/Minimap right-sidebar mode (local-only preference — the last-used mode
+ *  is seeded when a tab opens its ToC sidebar). */
+export type TocMode = "toc" | "minimap";
 
 /** Default value for each config key (matches upstream's stores). */
 export const CONFIG_DEFAULTS: {
@@ -98,6 +103,9 @@ export const CONFIG_DEFAULTS: {
   /** Template note id applied to every "New task", or `null` for the task seed.
    *  Local-only preference. */
   defaultTaskTemplate: string | null;
+  /** Last-used ToC/Minimap sidebar mode (seeded when a tab opens its sidebar).
+   *  Local-only preference. */
+  tocMode: TocMode;
 } = {
   syncEnabled: true,
   autoSyncEnabled: true,
@@ -113,7 +121,8 @@ export const CONFIG_DEFAULTS: {
   homepage: { type: "route", id: "notes" },
   imageCompression: ImageCompressionOptions.ASK_EVERY_TIME,
   defaultNoteTemplate: null,
-  defaultTaskTemplate: null
+  defaultTaskTemplate: null,
+  tocMode: "toc"
 };
 
 /** Build the full localStorage key for a config suffix. */
@@ -182,6 +191,9 @@ export const useConfigStore = defineStore("config", () => {
     readConfig("defaultTaskTemplate", CONFIG_DEFAULTS.defaultTaskTemplate)
   );
 
+  // --- ToC/Minimap sidebar mode (last-used; seeded when a tab opens its sidebar)
+  const tocMode = ref<TocMode>(readConfig("tocMode", CONFIG_DEFAULTS.tocMode));
+
   /** Re-read every config value from localStorage (e.g. after another window
    *  changed one via the `storage` event, or after a logout/clear). */
   function load(): void {
@@ -224,6 +236,7 @@ export const useConfigStore = defineStore("config", () => {
       "defaultTaskTemplate",
       CONFIG_DEFAULTS.defaultTaskTemplate
     );
+    tocMode.value = readConfig("tocMode", CONFIG_DEFAULTS.tocMode);
   }
 
   // --- setters (write-through: persist + update the reactive ref) ------------
@@ -287,6 +300,10 @@ export const useConfigStore = defineStore("config", () => {
     defaultTaskTemplate.value = v;
     writeConfig("defaultTaskTemplate", v);
   }
+  function setTocMode(v: TocMode): void {
+    tocMode.value = v;
+    writeConfig("tocMode", v);
+  }
 
   return {
     // sync
@@ -307,6 +324,7 @@ export const useConfigStore = defineStore("config", () => {
     imageCompression,
     defaultNoteTemplate,
     defaultTaskTemplate,
+    tocMode,
     // actions
     load,
     setSyncEnabled,
@@ -323,6 +341,7 @@ export const useConfigStore = defineStore("config", () => {
     setHomepage,
     setImageCompression,
     setDefaultNoteTemplate,
-    setDefaultTaskTemplate
+    setDefaultTaskTemplate,
+    setTocMode
   };
 });

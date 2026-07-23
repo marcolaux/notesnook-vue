@@ -58,6 +58,39 @@ function slugify(text: string, seen: Set<string>): string {
   return slug;
 }
 
+/** Slug from visible text WITHOUT dedup (used to match a heading element in
+ *  the live DOM against a ToC id — same transform as {@link slugify} minus the
+ *  counter, so a ToC id `hello-world` matches a heading "Hello World"). */
+export function slugifyText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Find a heading element in the editor DOM for a ToC item. The ToC id comes
+ * from the SAVED html — upstream Notesnook's heading extension assigns
+ * positional ids like `h425`, but our editor (StarterKit `Heading`) strips the
+ * `id` attribute on parse, so the id is usually NOT in the live DOM. The
+ * reliable match is by heading TEXT: pass the ToC item's `text` and we match
+ * the heading whose visible text slugifies the same way. An explicit `[id=…]`
+ * is tried first (cheap + precise when present, e.g. if a id-preserving
+ * heading extension is later wired). DOM-bearing — call in the renderer.
+ */
+export function findHeading(root: HTMLElement, id: string, text?: string): HTMLElement | null {
+  const byId = root.querySelector(`[id="${CSS.escape(id)}"]`);
+  if (byId instanceof HTMLElement) return byId;
+  if (!text) return null;
+  const slug = slugifyText(text);
+  const heads = root.querySelectorAll("h1,h2,h3,h4,h5,h6");
+  for (const h of Array.from(heads)) {
+    if (!(h instanceof HTMLElement)) continue;
+    if (slugifyText((h.textContent ?? "").trim()) === slug) return h;
+  }
+  return null;
+}
+
 /**
  * Extract the ordered list of headings from a note's HTML body. Empty/blank
  * headings are skipped. Explicit ids are reused; otherwise a slug is derived

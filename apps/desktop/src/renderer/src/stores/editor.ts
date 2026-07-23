@@ -20,6 +20,28 @@ export interface PendingScrollTarget {
 }
 
 /**
+ * A live editor's scrollable surface, published by each `Editor.vue` so the
+ * per-tab ToC/Minimap right sidebar (a SIBLING of the editor inside
+ * `EditorPane`, not a child — so `provide/inject` can't cross) can reach THIS
+ * pane's DOM: the heading outline scrolls to a heading, the minimap mirrors
+ * the content + syncs the viewport slider to scroll. Keyed by the same
+ * per-instance key as the editor `registry` (`tabId`, or `"draft:" + groupId`).
+ */
+export interface EditorSurface {
+  /** The editor's overflow scroll container (the `overflow-y-auto` div). */
+  scrollEl: HTMLElement;
+  /** The `.ProseMirror` content element (the sized, styled document). */
+  contentEl: HTMLElement;
+  /** Scroll so a fraction `0..1` of the document is above the viewport. */
+  scrollToFraction(fraction: number): void;
+  /** Scroll a heading into view at the top of the editor and place the caret
+   *  at its start. `id` is the ToC id (tried as `[id=…]` first); `text` is the
+   *  heading's visible text (the reliable match — our editor strips heading
+   *  ids on parse). No-op if not found. */
+  scrollToHeading(id: string, text: string): void;
+}
+
+/**
  * Cross-component channel for the *focused* pane's TipTap `Editor` instance
  * (Phase 4.2 — split-pane aware).
  *
@@ -61,6 +83,12 @@ export const useEditorStore = defineStore("editor", () => {
   // `shallowRef` + immutable replace so registration triggers reactivity
   // without deep-proxying the function map.
   const flushers = shallowRef<Record<string, () => Promise<void>>>({});
+  // Per-tab editor surfaces (Phase 5.2 — ToC/Minimap right sidebar). Each
+  // `Editor.vue` publishes its scroll/content elements so the ToC + Minimap
+  // (siblings of the editor) can drive scroll for THIS pane. `shallowRef` +
+  // immutable replace (same pattern as `registry`/`flushers`) — the surface
+  // objects are plain DOM handles, not deeply reactive.
+  const surfaces = shallowRef<Record<string, EditorSurface>>({});
   /** Bumped by the "Find in note" palette command; each `Editor.vue` watches it
    *  and opens its find bar when it is the focused pane (mirrors
    *  `notes.focusSearchSignal` — a palette entry point that needs no global
@@ -95,6 +123,28 @@ export const useEditorStore = defineStore("editor", () => {
     const next = { ...flushers.value };
     delete next[key];
     flushers.value = next;
+  }
+
+  /** Register a live editor's scrollable surface under `key` (overwrites on
+   *  re-register — same key under KeepAlive). */
+  function registerSurface(key: string, surface: EditorSurface): void {
+    surfaces.value = { ...surfaces.value, [key]: surface };
+  }
+
+  /** Drop the surface registered under `key` (no-op if it's no longer the one
+   *  stored — avoids clobbering a re-registered surface of the same key). */
+  function unregisterSurface(key: string, surface: EditorSurface): void {
+    if (surfaces.value[key] !== surface) return;
+    const next = { ...surfaces.value };
+    delete next[key];
+    surfaces.value = next;
+  }
+
+  /** The live surface registered under `key`, or `undefined` (no editor mounted
+   *  for that pane/tab). Used by the ToC/Minimap sidebar to drive THIS pane's
+   *  editor scroll. */
+  function getSurface(key: string): EditorSurface | undefined {
+    return surfaces.value[key];
   }
 
   /** Force the focused pane's pending autosave to disk and await it. No-op (a
@@ -202,6 +252,10 @@ export const useEditorStore = defineStore("editor", () => {
     getEditor,
     registerFlusher,
     unregisterFlusher,
-    flushFocusedSave
+    flushFocusedSave,
+    surfaces,
+    registerSurface,
+    unregisterSurface,
+    getSurface
   };
 });
