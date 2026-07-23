@@ -14,7 +14,8 @@ concurrency:
 
 jobs:
   # Fast gate: typecheck + contract tests on Linux across the supported Node
-  # range. Catches ABI regressions (better-sqlite3-multiple-ciphers compiles
+  # range (Node 22 LTS + Node 24 current; Node 20 is EOL as of April 2026 and
+  # dropped). Catches ABI regressions (better-sqlite3-multiple-ciphers compiles
   # from source per Node ABI) without spending macOS/Windows minutes.
   test:
     name: Test (Node ${{ matrix.node }})
@@ -22,18 +23,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 22]
+        node: [22, 24]
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         # vendor-dist/@notesnook/* are committed build artifacts, so the
         # vendor/notesnook source submodule is NOT needed for install/test/build.
         with:
           submodules: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -100,12 +101,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           # Node 24 ships npm 11, matching the npm that generated the committed
           # (npm-11-style) lockfile. Verified on CI to fully extract the large
@@ -202,7 +203,7 @@ jobs:
           done
 
       - name: Upload installers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: notesnook-vue-${{ matrix.os-name }}
           path: apps/desktop/release/*
