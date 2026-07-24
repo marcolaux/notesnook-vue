@@ -40,17 +40,27 @@ const message = (e: unknown): string => (e instanceof Error ? e.message : String
  * pass `filters` for full-text `term` search and/or `colorScheme` equality.
  */
 export async function listThemes(args: {
-  cursor?: number;
-  limit?: number;
-  filters?: ThemeFilter[];
+  cursor?: number | undefined;
+  limit?: number | undefined;
+  filters?: ThemeFilter[] | undefined;
 }): Promise<CatalogResult<ThemesPage>> {
   try {
-    const data = await client.themes.query({
+    const payload: {
+      limit: number;
+      cursor?: number;
+      compatibilityVersion?: number;
+      filters?: ThemeFilter[];
+    } = {
       limit: args.limit ?? 10,
-      cursor: args.cursor ?? 0,
-      compatibilityVersion: THEME_COMPATIBILITY_VERSION,
-      filters: args.filters
-    });
+      compatibilityVersion: THEME_COMPATIBILITY_VERSION
+    };
+    if (typeof args.cursor === "number" && args.cursor > 0) {
+      payload.cursor = args.cursor;
+    }
+    if (args.filters && args.filters.length > 0) {
+      payload.filters = args.filters;
+    }
+    const data = await client.themes.query(payload);
     return ok(data);
   } catch (e) {
     return fail(`Failed to load themes: ${message(e)}`);

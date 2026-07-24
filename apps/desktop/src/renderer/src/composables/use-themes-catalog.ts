@@ -93,13 +93,13 @@ export function useThemesCatalog() {
     ];
   }
 
-  function buildFilters(): ThemeFilter[] {
+  function buildFilters(): ThemeFilter[] | undefined {
     const f: ThemeFilter[] = [];
     const q = searchQuery.value.trim();
     if (q) f.push({ type: "term", value: q });
     if (colorSchemeFilter.value !== "all")
       f.push({ type: "colorScheme", value: colorSchemeFilter.value });
-    return f;
+    return f.length > 0 ? f : undefined;
   }
 
   async function fetchPage(first: boolean): Promise<void> {
