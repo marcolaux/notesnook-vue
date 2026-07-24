@@ -230,6 +230,29 @@ export const useAuthStore = defineStore("auth", () => {
     contextChangeSignal.value += 1;
   }
 
+  const resendStatus = ref<string>("");
+
+  /**
+   * Request the server to dispatch a 2FA verification code (via email or SMS).
+   */
+  async function sendMfaCode(method: string): Promise<boolean> {
+    try {
+      const db = getDatabase();
+      const mfaManager =
+        (db as unknown as { mfa?: { sendCode(m: string): Promise<unknown> } }).mfa ??
+        (db.user as unknown as { mfa?: { sendCode(m: string): Promise<unknown> } }).mfa;
+      if (mfaManager?.sendCode) {
+        await mfaManager.sendCode(method);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[auth] failed to send MFA code:", e);
+      throw e;
+    }
+  }
+
   /**
    * Sign-in step 1: switch to the account's own DB, then verify the email. The
    * context switch happens *before* any auth call so the MFA-scope token (and
@@ -242,6 +265,7 @@ export const useAuthStore = defineStore("auth", () => {
   async function login(email: string, password: string): Promise<void> {
     status.value = "logging-in";
     error.value = "";
+    resendStatus.value = "";
     pendingMfa.value = null;
     try {
       const accountCtx = await hashEmail(email);
@@ -253,16 +277,27 @@ export const useAuthStore = defineStore("auth", () => {
         | { primaryMethod?: string; secondaryMethod?: string; phoneNumber?: string }
         | undefined;
       if (additional && additional.primaryMethod) {
+        const method = additional.primaryMethod;
         pendingMfa.value = {
           email,
           password,
-          method: additional.primaryMethod,
+          method,
           ctx: accountCtx,
           ...(additional.secondaryMethod
             ? { secondaryMethod: additional.secondaryMethod }
             : {})
         };
         status.value = "mfa";
+
+        // Trigger 2FA email/SMS dispatch when required
+        if (method === "email" || method === "sms") {
+          try {
+            await sendMfaCode(method);
+            resendStatus.value = `Verification code sent to your ${method === "email" ? "email address" : "phone"}.`;
+          } catch (sendErr) {
+            error.value = `Failed to send 2FA code: ${errorMessage(sendErr)}`;
+          }
+        }
         return;
       }
       await db.user.authenticatePassword(email, password);
@@ -271,6 +306,46 @@ export const useAuthStore = defineStore("auth", () => {
     } catch (e) {
       status.value = "error";
       error.value = errorMessage(e);
+    }
+  }
+
+  /** Resend the 2FA code via email/SMS for the current pending MFA session. */
+  async function resendMfaCode(methodOverride?: string): Promise<void> {
+    const pending = pendingMfa.value;
+    if (!pending) {
+      error.value = "MFA session expired — please start again.";
+      return;
+    }
+    const method = methodOverride ?? pending.method;
+    error.value = "";
+    resendStatus.value = "";
+    try {
+      await sendMfaCode(method);
+      resendStatus.value = `New verification code sent to your ${method === "email" ? "email address" : "phone"}.`;
+    } catch (e) {
+      error.value = `Failed to resend 2FA code: ${errorMessage(e)}`;
+    }
+  }
+
+  /** Switch between primary and secondary MFA methods. */
+  async function switchMfaMethod(newMethod: string): Promise<void> {
+    const pending = pendingMfa.value;
+    if (!pending) return;
+    const oldMethod = pending.method;
+    if (newMethod === oldMethod) return;
+
+    pending.method = newMethod;
+    pending.secondaryMethod = oldMethod;
+    error.value = "";
+    resendStatus.value = "";
+
+    if (newMethod === "email" || newMethod === "sms") {
+      try {
+        await sendMfaCode(newMethod);
+        resendStatus.value = `Verification code sent to your ${newMethod === "email" ? "email address" : "phone"}.`;
+      } catch (e) {
+        error.value = `Failed to send 2FA code: ${errorMessage(e)}`;
+      }
     }
   }
 
@@ -368,6 +443,7 @@ export const useAuthStore = defineStore("auth", () => {
     status,
     error,
     pendingMfa,
+    resendStatus,
     skippedLogin,
     contextChangeSignal,
     isLoggedIn,
@@ -375,6 +451,8 @@ export const useAuthStore = defineStore("auth", () => {
     init,
     login,
     submitMfa,
+    resendMfaCode,
+    switchMfaMethod,
     signup,
     logout,
     skipLogin,

@@ -80,14 +80,21 @@ import { useAuthStore } from "@/stores/auth";
 function makeMockDb(opts: { user?: any; mfaAdditional?: any } = {}) {
   const storedUser = opts.user ?? undefined;
   const mfaAdditional = opts.mfaAdditional;
+  const sendCodeSpy = vi.fn(async () => undefined);
   return {
+    mfa: {
+      sendCode: sendCodeSpy
+    },
     user: {
       getUser: vi.fn(async () => storedUser),
       authenticateEmail: vi.fn(async () => mfaAdditional),
       authenticatePassword: vi.fn(async () => undefined),
       authenticateMultiFactorCode: vi.fn(async () => true),
       signup: vi.fn(async () => undefined),
-      logout: vi.fn(async () => undefined)
+      logout: vi.fn(async () => undefined),
+      mfa: {
+        sendCode: sendCodeSpy
+      }
     }
   };
 }
@@ -255,6 +262,48 @@ describe("auth store", () => {
     expect(auth.status).toBe("logged-in");
     expect(auth.pendingMfa).toBeNull();
     expect(auth.contextChangeSignal).toBe(before + 1);
+  });
+
+  it("login (MFA email) → automatically triggers db.user.mfa.sendCode('email')", async () => {
+    mockDbRef.db = makeMockDb({
+      mfaAdditional: { primaryMethod: "email" }
+    });
+    const auth = useAuthStore();
+    await auth.init();
+    await auth.login("a@b.com", "password1");
+    expect(auth.status).toBe("mfa");
+    expect(mockDbRef.db.user.mfa.sendCode).toHaveBeenCalledWith("email");
+    expect(auth.resendStatus).toMatch(/Verification code sent to your email address/i);
+  });
+
+  it("resendMfaCode → dispatches code via active MFA method", async () => {
+    mockDbRef.db = makeMockDb({
+      mfaAdditional: { primaryMethod: "email" }
+    });
+    const auth = useAuthStore();
+    await auth.init();
+    await auth.login("a@b.com", "password1");
+    mockDbRef.db.user.mfa.sendCode.mockClear();
+
+    await auth.resendMfaCode();
+    expect(mockDbRef.db.user.mfa.sendCode).toHaveBeenCalledWith("email");
+    expect(auth.resendStatus).toMatch(/New verification code sent/i);
+  });
+
+  it("switchMfaMethod → switches pending method and triggers code dispatch if email", async () => {
+    mockDbRef.db = makeMockDb({
+      mfaAdditional: { primaryMethod: "app", secondaryMethod: "email" }
+    });
+    const auth = useAuthStore();
+    await auth.init();
+    await auth.login("a@b.com", "password1");
+    expect(mockDbRef.db.user.mfa.sendCode).not.toHaveBeenCalled();
+
+    await auth.switchMfaMethod("email");
+    expect(auth.pendingMfa?.method).toBe("email");
+    expect(auth.pendingMfa?.secondaryMethod).toBe("app");
+    expect(mockDbRef.db.user.mfa.sendCode).toHaveBeenCalledWith("email");
+    expect(auth.resendStatus).toMatch(/Verification code sent to your email address/i);
   });
 
   it("submitMfa without a pending session surfaces an error and stays reachable", async () => {

@@ -57,18 +57,35 @@ const busy = computed(
   () => auth.status === "logging-in" || auth.status === "unknown"
 );
 const showMfa = computed(() => auth.status === "mfa");
-const mfaMethodLabel = computed(() => {
+const mfaPrompt = computed(() => {
   const m = auth.pendingMfa?.method;
-  if (m === "app") return "authenticator app";
-  return m ?? "MFA";
+  if (m === "email") return "Enter the verification code sent to your email address.";
+  if (m === "sms") return "Enter the verification code sent to your phone.";
+  if (m === "app") return "Enter the code from your authenticator app.";
+  return "Enter your verification code.";
+});
+const canResendCode = computed(() => {
+  const m = auth.pendingMfa?.method;
+  return m === "email" || m === "sms";
+});
+const secondaryMethodLabel = computed(() => {
+  const s = auth.pendingMfa?.secondaryMethod;
+  if (s === "email") return "Use email verification instead";
+  if (s === "sms") return "Use SMS verification instead";
+  if (s === "app") return "Use authenticator app instead";
+  return "Use secondary method";
 });
 
 const localError = ref("");
 const formError = computed(() => localError.value || auth.error);
+const resending = ref(false);
 
 // Clear the MFA code when leaving the MFA step.
 watch(showMfa, (v) => {
-  if (!v) mfaCode.value = "";
+  if (!v) {
+    mfaCode.value = "";
+    resending.value = false;
+  }
 });
 
 function submit(): void {
@@ -99,6 +116,28 @@ function submitMfa(): void {
     return;
   }
   void auth.submitMfa(mfaCode.value.trim());
+}
+
+async function resendCode(): Promise<void> {
+  resending.value = true;
+  localError.value = "";
+  try {
+    await auth.resendMfaCode();
+  } finally {
+    resending.value = false;
+  }
+}
+
+async function switchMethod(): Promise<void> {
+  const secondary = auth.pendingMfa?.secondaryMethod;
+  if (!secondary) return;
+  localError.value = "";
+  resending.value = true;
+  try {
+    await auth.switchMfaMethod(secondary);
+  } finally {
+    resending.value = false;
+  }
 }
 
 function applyServer(): void {
@@ -144,7 +183,7 @@ function skip(): void {
         <!-- MFA step -->
         <form v-if="showMfa" class="flex flex-col gap-3" @submit.prevent="submitMfa">
           <Text variant="body" size="sm">
-            Enter the code from your {{ mfaMethodLabel }}.
+            {{ mfaPrompt }}
           </Text>
           <Input
             v-model="mfaCode"
@@ -153,12 +192,36 @@ function skip(): void {
             autocomplete="one-time-code"
             placeholder="123456"
             :variant="formError ? 'error' : 'default'"
-            :disabled="busy"
+            :disabled="busy || resending"
           />
+          <Text v-if="auth.resendStatus" variant="body" size="xs" class="text-emerald-500 font-medium font-sans">
+            {{ auth.resendStatus }}
+          </Text>
           <Text v-if="formError" variant="body" size="xs" class="text-[var(--red-static)]">{{ formError }}</Text>
-          <Button variant="primary" block :disabled="busy" type="submit">
+          <Button variant="primary" block :disabled="busy || resending" type="submit">
             {{ busy ? "Verifying…" : "Verify" }}
           </Button>
+
+          <div class="flex items-center justify-between text-xs pt-1">
+            <button
+              v-if="canResendCode"
+              type="button"
+              class="text-accent hover:underline disabled:opacity-50 font-medium"
+              :disabled="busy || resending"
+              @click="resendCode"
+            >
+              {{ resending ? "Sending code…" : "Resend code" }}
+            </button>
+            <button
+              v-if="auth.pendingMfa?.secondaryMethod"
+              type="button"
+              class="text-text-muted hover:text-text hover:underline ml-auto"
+              :disabled="busy || resending"
+              @click="switchMethod"
+            >
+              {{ secondaryMethodLabel }}
+            </button>
+          </div>
         </form>
 
         <!-- Sign in / Sign up -->

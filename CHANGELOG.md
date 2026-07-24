@@ -5,6 +5,19 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-07-24
+
+### 🔐 Self-Hosted 2FA Email Trigger & Login UX Enhancements
+- **Automatic 2FA Code Dispatch**:
+  - Fixed an issue where logging into a self-hosted (or official) Notesnook instance with email or SMS 2FA enabled did not trigger sending the 2FA verification code email/SMS.
+  - Updated `useAuthStore.login` to automatically invoke `db.mfa.sendCode(primaryMethod)` when `primaryMethod` is `"email"` or `"sms"`.
+- **Resend Code & Method Switching**:
+  - Added `resendMfaCode` and `switchMfaMethod` actions to `useAuthStore`.
+  - Added a **Resend code** button and secondary MFA method switcher (e.g. switching between Authenticator App and Email verification) in `LoginScreen.vue`.
+  - Improved MFA step guidance and status feedback in `LoginScreen.vue`.
+- **Auth Contract Verification**:
+  - Extended `auth.spec.ts` contract tests to cover email 2FA code dispatch, code resending, and method switching.
+
 ## [0.4.2] - 2026-07-24
 
 ### 🌐 System Default Browser External URL Navigation
