@@ -105,3 +105,13 @@ export function parseMarkdownToHtml(markdownText: string): string {
 
   return htmlLines.join("\n");
 }
+
+/**
+ * Format raw root CHANGELOG.md content for rendering in the Changelog modal.
+ * Strips the top header (`# Changelog...`) so content begins cleanly at the first release section `## [X.Y.Z]`.
+ */
+export function formatBundledChangelog(rawText: string): string {
+  if (!rawText) return "";
+  const matchIdx = rawText.search(/^##\s+\[/m);
+  return matchIdx !== -1 ? rawText.slice(matchIdx).trim() : rawText.trim();
+}

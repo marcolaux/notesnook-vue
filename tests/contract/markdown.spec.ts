@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseMarkdownToHtml } from "@/utils/markdown";
+import { parseMarkdownToHtml, formatBundledChangelog } from "@/utils/markdown";
 
 describe("parseMarkdownToHtml", () => {
   it("returns empty string for empty input", () => {
@@ -42,5 +42,18 @@ describe("parseMarkdownToHtml", () => {
   it("converts Markdown links [text](url)", () => {
     const html = parseMarkdownToHtml("Visit [Notesnook](https://notesnook.com)");
     expect(html).toContain('<a href="https://notesnook.com" target="_blank" rel="noopener noreferrer" class="text-accent underline hover:opacity-80 transition-opacity">Notesnook</a>');
+  });
+});
+
+describe("formatBundledChangelog", () => {
+  it("returns empty string for empty input", () => {
+    expect(formatBundledChangelog("")).toBe("");
+  });
+
+  it("strips root # Changelog header and starts at the first ## [version] section", () => {
+    const rawContent = `# Changelog\n\nAll notable changes...\n\n## [0.4.3] - 2026-07-24\n\n### Feature\n- Notes`;
+    const formatted = formatBundledChangelog(rawContent);
+    expect(formatted).toBe("## [0.4.3] - 2026-07-24\n\n### Feature\n- Notes");
+    expect(formatted).not.toContain("# Changelog");
   });
 });

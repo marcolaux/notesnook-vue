@@ -5,6 +5,17 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-07-24
+
+### 📄 Dynamic In-App Changelog Embedding & Status Badge Fix
+- **Live Bundled Release Notes**:
+  - Dynamically embedded root `CHANGELOG.md` via Vite `?raw` import in `ChangelogDialog.vue`, replacing outdated hardcoded release notes.
+  - Added `formatBundledChangelog` in `markdown.ts` to strip root headers so in-app "View Changelog" modal displays live release notes starting with the running version (`v0.4.4`).
+- **Accurate Version Status Badge**:
+  - Fixed `openChangelog()` in `updater.ts` so opening the dialog when up-to-date displays an accurate **Up to Date** status badge instead of incorrectly marking **Update Available**.
+- **Contract Verification**:
+  - Added unit test coverage in `markdown.spec.ts` for raw changelog header formatting.
+
 ## [0.4.3] - 2026-07-24
 
 ### 🔐 Self-Hosted 2FA Email Trigger & Login UX Enhancements

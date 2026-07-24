@@ -59,7 +59,7 @@ export const useUpdaterStore = defineStore("updater", () => {
   function openChangelog(): void {
     if (!status.value.version) {
       status.value = {
-        available: true,
+        available: false,
         version: __APP_VERSION__,
         downloaded: false,
         progress: 0

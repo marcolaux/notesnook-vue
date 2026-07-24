@@ -5,34 +5,20 @@
  */
 import { computed } from "vue";
 import { useUpdaterStore } from "@/stores/updater";
-import { parseMarkdownToHtml } from "@/utils/markdown";
+import { parseMarkdownToHtml, formatBundledChangelog } from "@/utils/markdown";
 import { Icon } from "@notesnook-vue/ui-vue";
+import rawChangelog from "../../../../../CHANGELOG.md?raw";
 
 const updater = useUpdaterStore();
 
 const versionTag = computed(() => {
-  const v = updater.status.version;
-  return v ? (v.startsWith("v") ? v : `v${v}`) : "Latest Release";
+  const v = updater.status.version || __APP_VERSION__;
+  return v ? (v.startsWith("v") ? v : `v${v}`) : `v${__APP_VERSION__}`;
 });
 
 const downloading = computed(() => updater.phase === "downloading");
 
-const fallbackNotes = `### Highlights & Improvements
-
-#### 🚀 On-Device Hybrid Vector Search
-- Introduced 100% local, offline-first vector search powered by **sqlite-vec** and **snowflake-arctic-embed-s**.
-- Blends traditional FTS5 keyword matching with AI semantic similarity using **Reciprocal Rank Fusion (RRF)**.
-- Full E2EE & privacy: zero cloud dependencies, embeddings are stored encrypted in your local database.
-
-#### ⚡ Performance & Idle Queue
-- Non-blocking embedding generation powered by background idle frames (\`requestIdleCallback\`).
-- Note opening and preview loads remain instantaneous.
-- Added live indexing status indicator to the TitleBar.
-
-#### ⚙️ Settings & Privacy Controls
-- Dedicated **Search & Retrieval** section under Settings -> Customization.
-- Toggle Semantic Search on/off anytime (opt-out falls back 100% to FTS5 lexical search).
-- Reclaim disk space anytime via the **Purge Vector Storage** button.`;
+const fallbackNotes = formatBundledChangelog(rawChangelog);
 
 const changelogContent = computed(() => {
   return updater.status.releaseNotes?.trim() || fallbackNotes;
@@ -40,6 +26,19 @@ const changelogContent = computed(() => {
 
 const renderedHtml = computed(() => {
   return parseMarkdownToHtml(changelogContent.value);
+});
+
+const statusBadgeLabel = computed(() => {
+  if (updater.readyToInstall) return "Ready to Install";
+  if (updater.updateAvailable) return "Update Available";
+  return "Up to Date";
+});
+
+const statusBadgeClass = computed(() => {
+  if (updater.readyToInstall || (!updater.updateAvailable && !updater.readyToInstall)) {
+    return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20";
+  }
+  return "bg-accent/10 text-accent border border-accent/20";
 });
 
 function handleAction(): void {
@@ -73,9 +72,9 @@ function handleAction(): void {
               <div class="mt-0.5 flex items-center gap-2 text-xs text-text-muted">
                 <span
                   class="px-2 py-0.5 rounded-full font-mono text-[10px]"
-                  :class="updater.readyToInstall ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-accent/10 text-accent border border-accent/20'"
+                  :class="statusBadgeClass"
                 >
-                  {{ updater.readyToInstall ? "Ready to Install" : "Update Available" }}
+                  {{ statusBadgeLabel }}
                 </span>
                 <span>• Notesnook Desktop Release</span>
               </div>
