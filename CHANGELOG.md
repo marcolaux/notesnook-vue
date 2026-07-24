@@ -5,6 +5,15 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-07-24
+
+### 🔄 Auto-Updater & UI Error Reporting
+- **Updater Dev Mode & Error Reporting**:
+  - Added simulated download flow in dev mode and improved error rethrowing for UI update progress and failure notifications in `updaterServer`.
+- **Changelog HTML Rendering & Version Gates**:
+  - Preserved HTML structure and applied deep element styles for rendered release notes.
+  - Strict version check in auto-updater to ensure remote updates are strictly newer than the running app version.
+
 ## [0.4.0] - 2026-07-24
 
 ### 🖼️ Note List Image & Attachment Thumbnails
