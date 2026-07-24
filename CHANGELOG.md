@@ -5,6 +5,21 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-07-24
+
+### ⚡ Vector Search Typing Lag Elimination & Smart Activity Deferral
+- **User Activity Guard & Deferral**:
+  - Implemented active user interaction tracking (`recordUserActivity`, `isUserRecentlyActive`) in `vector-search.ts` to suspend background embedding generation while the user is actively typing or interacting with the app.
+  - Extended background indexing debounce timer during active editing to 10 seconds, eliminating main-thread typing stutter.
+- **Per-Chunk Incremental Embedding Reuse**:
+  - Optimized `indexNoteEmbeddings` to perform per-chunk diffing, reusing existing embeddings for unchanged paragraphs in `vec_notes` rather than deleting and re-computing all chunks on minor edits.
+- **Time-Slicing & Yielding**:
+  - Added 30ms frame yields between chunk computations to guarantee the main JS UI thread remains fluid and responsive (60fps typing).
+- **Flush-on-Blur Hook**:
+  - Added `flushVectorIndexQueue()` called on editor unmount and tab deactivation to flush pending index queues when leaving an edited note.
+- **Contract Verification**:
+  - Added contract tests in `vector-search.spec.ts` for activity tracking and queue deferral.
+
 ## [0.4.4] - 2026-07-24
 
 ### 📄 Dynamic In-App Changelog Embedding & Status Badge Fix

@@ -59,8 +59,10 @@ import {
   // upstream `<a href="nn://note/<id>">`) + `NoteSuggest` (the `@`/`[[`-triggered
   // picker; its own PluginKey so it doesn't collide with `SlashCommands`/`tagSuggest`).
   Link,
-  NoteSuggest
+  NoteSuggest,
+  filterByKey
 } from "@notesnook-vue/editor-vue";
+import { recordUserActivity, flushVectorIndexQueue } from "@/utils/vector-search";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorStore, type EditorSurface } from "@/stores/editor";
@@ -974,6 +976,11 @@ onBeforeUnmount(() => {
   disposeNoteLink = null;
   void flushSave();
   void notes.flushTitle(myNoteId.value ?? undefined);
+  flushVectorIndexQueue();
+});
+
+onDeactivated(() => {
+  flushVectorIndexQueue();
 });
 
 // --- Click empty area below a short note → focus + caret on a new blank line -

@@ -28,4 +28,14 @@ describe("Vector Search Utilities", () => {
     expect(chunks[0].hash).toBeDefined();
     expect(chunks[0].text.split(/\s+/).length).toBeLessThanOrEqual(200);
   });
+
+  it("recordUserActivity & isUserRecentlyActive track active user interactions", async () => {
+    const { recordUserActivity, isUserRecentlyActive } = await import(
+      "../../apps/desktop/src/renderer/src/utils/vector-search"
+    );
+
+    recordUserActivity();
+    expect(isUserRecentlyActive(5000)).toBe(true);
+    expect(isUserRecentlyActive(0)).toBe(false);
+  });
 });

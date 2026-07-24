@@ -113,8 +113,33 @@ export async function searchVectorEmbeddings(
   }
 }
 
+let lastUserActivity = 0;
+let userActivityBound = false;
+
+/** Record active user interaction (keypress, click, pointer) to defer background indexing. */
+export function recordUserActivity(): void {
+  lastUserActivity = Date.now();
+}
+
+/** Check if user performed interaction within `thresholdMs` (default 5s). */
+export function isUserRecentlyActive(thresholdMs = 5000): boolean {
+  return Date.now() - lastUserActivity < thresholdMs;
+}
+
+/** Bind global keydown and pointerdown listeners to detect user activity. */
+export function bindUserActivityListeners(): void {
+  if (userActivityBound || typeof window === "undefined") return;
+  userActivityBound = true;
+  const handler = (): void => {
+    lastUserActivity = Date.now();
+  };
+  window.addEventListener("keydown", handler, { passive: true });
+  window.addEventListener("pointerdown", handler, { passive: true });
+}
+
 /**
  * Incrementally index a note's text content.
+ * Reuses existing chunk embeddings for unchanged paragraphs to eliminate unnecessary computations.
  */
 export async function indexNoteEmbeddings(noteId: string, rawContent: string): Promise<void> {
   if (!readSemanticSearchEnabled() || !noteId) return;
@@ -131,28 +156,56 @@ export async function indexNoteEmbeddings(noteId: string, rawContent: string): P
       existing.map((r) => [Number(r.chunk_index), r.chunk_hash])
     );
 
-    // 2. If content changed significantly or chunk count differs, refresh chunks
-    const requiresUpdate = chunks.some((c) => existingMap.get(c.index) !== c.hash);
+    // If total chunk count and all hashes match, note is 100% up-to-date
+    const allMatch =
+      existingMap.size === chunks.length &&
+      chunks.every((c) => existingMap.get(c.index) === c.hash);
 
-    if (!requiresUpdate && existingMap.size === chunks.length) {
+    if (allMatch) {
       return; // Already up-to-date
     }
 
-    // 3. Delete obsolete embeddings for this note
-    await runSql("DELETE FROM vec_notes WHERE note_id = ?", [noteId]);
+    // Delete obsolete chunks if note length shortened
+    if (existingMap.size > chunks.length) {
+      await runSql("DELETE FROM vec_notes WHERE note_id = ? AND chunk_index >= ?", [
+        noteId,
+        BigInt(chunks.length)
+      ]);
+    }
 
     if (chunks.length === 0) return;
 
-    // 4. Compute embeddings & insert new chunks
+    // 2. Incremental chunk processing with interruptibility & frame yielding
     for (const chunk of chunks) {
+      // Check if user is actively typing/interacting. If so, suspend indexing
+      if (isUserRecentlyActive(5000)) {
+        indexQueue.set(noteId, rawContent);
+        return;
+      }
+
+      const existingHash = existingMap.get(chunk.index);
+      if (existingHash === chunk.hash) {
+        continue; // Skip unchanged chunk!
+      }
+
       const vec = await computeEmbedding(chunk.text);
       if (!vec) continue;
 
-      await runSql(
-        `INSERT INTO vec_notes(note_id, chunk_index, chunk_hash, embedding)
-         VALUES (?, ?, ?, ?)`,
-        [noteId, BigInt(chunk.index), chunk.hash, vec]
-      );
+      if (existingHash !== undefined) {
+        await runSql(
+          `UPDATE vec_notes SET chunk_hash = ?, embedding = ? WHERE note_id = ? AND chunk_index = ?`,
+          [chunk.hash, vec, noteId, BigInt(chunk.index)]
+        );
+      } else {
+        await runSql(
+          `INSERT INTO vec_notes(note_id, chunk_index, chunk_hash, embedding)
+           VALUES (?, ?, ?, ?)`,
+          [noteId, BigInt(chunk.index), chunk.hash, vec]
+        );
+      }
+
+      // Yield frame briefly to ensure main UI thread remains 100% smooth
+      await new Promise((res) => setTimeout(res, 30));
     }
   } catch (err) {
     console.error(`[vector-search] indexNoteEmbeddings failed for note ${noteId}:`, err);
@@ -161,14 +214,16 @@ export async function indexNoteEmbeddings(noteId: string, rawContent: string): P
 
 const indexQueue = new Map<string, string>();
 let queueTimer: ReturnType<typeof setTimeout> | null = null;
+const DEBOUNCE_DELAY_MS = 10_000; // 10s delay while actively editing
 
 /**
- * Non-blocking, debounced, idle-gated embedding queue for note edits & preview loads.
- * Guarantees note opening and UI rendering remain fast and responsive.
+ * Non-blocking, debounced, activity-gated embedding queue for note edits & preview loads.
+ * Guarantees active typing and UI rendering remain 100% fast, fluid, and lag-free.
  */
 export function queueIndexNoteEmbeddings(noteId: string, rawContent: string): void {
   if (!readSemanticSearchEnabled() || !noteId || !rawContent) return;
 
+  bindUserActivityListeners();
   indexQueue.set(noteId, rawContent);
 
   if (queueTimer) clearTimeout(queueTimer);
@@ -180,6 +235,12 @@ export function queueIndexNoteEmbeddings(noteId: string, rawContent: string): vo
         : (cb: () => void) => setTimeout(cb, 500);
 
     scheduleIdle(async () => {
+      // Defer if user typed recently
+      if (isUserRecentlyActive(8000)) {
+        queueIndexNoteEmbeddings(noteId, rawContent);
+        return;
+      }
+
       if (indexQueue.size === 0) return;
       isIndexing.value = true;
 
@@ -187,14 +248,46 @@ export function queueIndexNoteEmbeddings(noteId: string, rawContent: string): vo
       indexQueue.clear();
 
       for (const [id, content] of pending) {
+        if (isUserRecentlyActive(5000)) {
+          indexQueue.set(id, content);
+          break;
+        }
         await indexNoteEmbeddings(id, content);
       }
 
       setTimeout(() => {
         isIndexing.value = false;
-      }, 800);
+      }, 500);
     });
-  }, 1200);
+  }, DEBOUNCE_DELAY_MS);
+}
+
+/**
+ * Flush any pending queued vector indexing immediately (e.g. on editor blur, tab switch, unmount).
+ */
+export function flushVectorIndexQueue(): void {
+  if (indexQueue.size === 0) return;
+  if (queueTimer) {
+    clearTimeout(queueTimer);
+    queueTimer = null;
+  }
+  const pending = Array.from(indexQueue.entries());
+  indexQueue.clear();
+
+  const scheduleIdle =
+    typeof requestIdleCallback !== "undefined"
+      ? requestIdleCallback
+      : (cb: () => void) => setTimeout(cb, 200);
+
+  scheduleIdle(async () => {
+    isIndexing.value = true;
+    for (const [id, content] of pending) {
+      await indexNoteEmbeddings(id, content);
+    }
+    setTimeout(() => {
+      isIndexing.value = false;
+    }, 500);
+  });
 }
 
 /**
