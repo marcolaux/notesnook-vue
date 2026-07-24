@@ -24,6 +24,7 @@ import { BrowserWindow } from "electron";
 import { resolve } from "node:path";
 import { buildBrowserWindowOptionsForOS } from "./titlebar";
 import { attachTRPC } from "./ipc";
+import { setupExternalNavigation } from "./navigation";
 import { sanitizeBounds, type WindowBounds } from "../contracts/session-state";
 import { addNoteWindow, trackNoteWindow } from "./session-state";
 
@@ -72,6 +73,7 @@ export function openNoteWindow(
   // Same bridge as the main window so the note renderer can call desktop.*
   // procedures (sqlite, window, …) just like the main window.
   attachTRPC(win);
+  setupExternalNavigation(win.webContents);
 
   noteWindows.set(noteId, win);
   win.on("closed", () => {

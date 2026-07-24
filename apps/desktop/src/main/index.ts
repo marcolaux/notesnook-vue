@@ -31,13 +31,14 @@ import { registerDialog } from "./dialog";
 import { registerShell } from "./shell";
 import { registerReminders } from "./reminders";
 import { registerAppState } from "./app-state";
+import { registerNavigationSecurity, setupExternalNavigation } from "./navigation";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const isDev = !app.isPackaged;
 
-// Register deep-link listeners BEFORE `app.whenReady()` so a cold-start
-// `open-url` (macOS) is caught and queued rather than dropped.
+// Register navigation security & deep-link listeners BEFORE `app.whenReady()`
+registerNavigationSecurity();
 registerDeepLinkListeners();
 
 function createMainWindow(bounds?: WindowBounds | undefined): BrowserWindow {
@@ -60,10 +61,7 @@ function createMainWindow(bounds?: WindowBounds | undefined): BrowserWindow {
   // exists so `createIPCHandler` can attach its `ipcMain.handle` listener.
   attachTRPC(window);
 
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: "deny" };
-  });
+  setupExternalNavigation(window.webContents);
 
   // Surface renderer console messages in the terminal during dev — the
   // renderer is a separate page whose console otherwise only lives in

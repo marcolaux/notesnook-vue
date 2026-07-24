@@ -25,6 +25,7 @@ import { BrowserWindow } from "electron";
 import { resolve } from "node:path";
 import { buildBrowserWindowOptionsForOS } from "./titlebar";
 import { attachTRPC } from "./ipc";
+import { setupExternalNavigation } from "./navigation";
 
 let settingsWindow: BrowserWindow | null = null;
 
@@ -75,6 +76,7 @@ export function openSettingsWindow(preloadPath: string, section?: string): void 
   // Same bridge as the main window so the settings renderer can call
   // desktop.* procedures (sqlite for db.settings, spell-checker, window…).
   attachTRPC(settingsWindow);
+  setupExternalNavigation(settingsWindow.webContents);
 
   settingsWindow.on("closed", () => {
     settingsWindow = null;

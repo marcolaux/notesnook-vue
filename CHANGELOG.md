@@ -5,6 +5,16 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-07-24
+
+### 🌐 System Default Browser External URL Navigation
+- **External Link Handling Across Windows**:
+  - Added navigation security module (`apps/desktop/src/main/navigation.ts`) that intercepts `setWindowOpenHandler`, `will-navigate`, and `will-frame-navigate` events across all Electron windows (main window, Settings window, note windows, popups, and webviews).
+  - Ensured external links (such as release notes links in the Changelog dialog, documentation links in Settings, or external URLs in note content) always open safely in the user's default system web browser (`shell.openExternal`).
+  - Preserved internal app navigations (`file:`, `devtools:`, `about:`, dev server) and deep links (`nn://`, `notesnook://`).
+- **Navigation Contract Verification**:
+  - Added `navigation.spec.ts` contract tests for external URL categorization and deep-link protocol routing.
+
 ## [0.4.1] - 2026-07-24
 
 ### 🔄 Auto-Updater & UI Error Reporting
