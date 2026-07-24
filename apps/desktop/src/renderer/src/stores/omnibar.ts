@@ -41,7 +41,6 @@ import { useShellStore } from "@/stores/shell";
 import { useSyncStore } from "@/stores/sync";
 import { useUpdaterStore } from "@/stores/updater";
 import { useSpellCheckerStore } from "@/stores/spell-checker";
-import { scrollEditorToMatch } from "@/utils/search-scroll";
 import { goToCollection } from "@/utils/collection-nav";
 import { matchesToHtml, snippetHtml, type HighlightedResult } from "@contracts/search";
 import {
@@ -511,11 +510,6 @@ export const useOmnibarStore = defineStore("omnibar", () => {
     }
     const options = { caseSensitive: false, regexp: false };
     editorStore.setPendingScrollTarget(tabId, { query: q, matchIndex, options });
-    const live = editorStore.getEditor(tabId);
-    if (live && !live.isDestroyed && live.view.dom.isConnected) {
-      editorStore.clearPendingScrollTarget(tabId);
-      scrollEditorToMatch(live, q, matchIndex, options);
-    }
     notes.setSelection([noteId]);
     close();
   }

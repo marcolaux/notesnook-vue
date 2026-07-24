@@ -677,6 +677,7 @@ async function loadCurrentNote(): Promise<void> {
     const scrollKey = myKey.value;
     const target = editorStore.pendingScrollTargetFor(scrollKey);
     if (target) {
+      cancelRestoreScroll();
       editorStore.clearPendingScrollTarget(scrollKey);
       // eslint-disable-next-line no-console
       console.log("[search-scroll] consume target", scrollKey, target.query, target.matchIndex);
@@ -690,6 +691,12 @@ async function loadCurrentNote(): Promise<void> {
 let isRestoringScroll = false;
 let lastKnownScrollTop = 0;
 let scrollSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let restoreScrollToken = 0;
+
+function cancelRestoreScroll(): void {
+  restoreScrollToken++;
+  isRestoringScroll = false;
+}
 
 function onScroll(): void {
   if (isRestoringScroll) return;
@@ -710,12 +717,15 @@ function onScroll(): void {
 }
 
 function restoreScrollPosition(): void {
+  if (editorStore.pendingScrollTargetFor(myKey.value) !== undefined) return;
   const targetScroll = layout.getScrollPosition(myKey.value, myNoteId.value ?? undefined);
   if (targetScroll <= 0) return;
 
+  const token = ++restoreScrollToken;
   isRestoringScroll = true;
 
   const apply = (): void => {
+    if (token !== restoreScrollToken) return;
     const el = scrollEl.value;
     if (el) {
       el.scrollTop = targetScroll;
@@ -727,14 +737,19 @@ function restoreScrollPosition(): void {
 
   apply();
   void nextTick(() => {
+    if (token !== restoreScrollToken) return;
     apply();
     requestAnimationFrame(() => {
+      if (token !== restoreScrollToken) return;
       apply();
       setTimeout(() => {
+        if (token !== restoreScrollToken) return;
         apply();
         setTimeout(() => {
+          if (token !== restoreScrollToken) return;
           apply();
           setTimeout(() => {
+            if (token !== restoreScrollToken) return;
             apply();
             isRestoringScroll = false;
           }, 150);
@@ -996,6 +1011,7 @@ onActivated(async () => {
   const key = myKey.value;
   const target = editorStore.pendingScrollTargetFor(key);
   if (target && inst && !inst.isDestroyed) {
+    cancelRestoreScroll();
     editorStore.clearPendingScrollTarget(key);
     // eslint-disable-next-line no-console
     console.log("[search-scroll] consume target (reactivated)", key, target.query, target.matchIndex);
@@ -1005,12 +1021,34 @@ onActivated(async () => {
   }
 });
 
+// Global-search scroll target update for an ALREADY active tab:
+// If a search result is clicked for a tab that is already active (same note/tab),
+// `onActivated` won't fire and `loadCurrentNote` won't run. This watcher consumes
+// the pending scroll target and scrolls to the match immediately.
+watch(
+  () => editorStore.pendingScrollTargetFor(myKey.value),
+  (target) => {
+    if (!target) return;
+    const inst = editor.value;
+    if (inst && !inst.isDestroyed) {
+      cancelRestoreScroll();
+      editorStore.clearPendingScrollTarget(myKey.value);
+      // eslint-disable-next-line no-console
+      console.log("[search-scroll] consume target (active tab watch)", myKey.value, target.query, target.matchIndex);
+      scrollEditorToMatch(inst, target.query, target.matchIndex, target.options);
+    }
+  },
+  { immediate: true }
+);
+
 // Register the Cmd/Ctrl+F listener for this pane (see `onFindHotkey`). Added on
 // mount; the focused-guard inside the handler ensures only the focused pane
 // responds, so split panes don't fight over it.
 onMounted(() => {
   window.addEventListener("keydown", onFindHotkey);
-  restoreScrollPosition();
+  if (editorStore.pendingScrollTargetFor(myKey.value) === undefined) {
+    restoreScrollPosition();
+  }
 });
 
 onBeforeUnmount(() => {
@@ -1136,7 +1174,13 @@ function onEditorAreaClick(e: MouseEvent): void {
 </script>
 
 <template>
-  <div class="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-surface">
+  <div class="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
+    <EditorToolbar
+      v-if="!isDraft"
+      :editor="editor"
+      :saving="saving"
+      :saved-at="savedAt"
+    />
     <FindBar
       v-if="findOpen && editor"
       :editor="editor"

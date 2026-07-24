@@ -5,6 +5,17 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-07-24
+
+### ✏️ Editor Toolbar, Active Pane Surfaces & Search Scroll Restoration
+- **Editor Toolbar Restoration**:
+  - Restored missing `<EditorToolbar>` component in `Editor.vue` template, reinstating full text formatting, list, heading, color, link, attachment, ToC, Minimap, and publish controls.
+- **Split Pane Active vs Inactive Contrast**:
+  - Replaced solid opaque `bg-surface` on `Editor.vue` root container with `bg-transparent`, allowing `EditorPane.vue`'s `.editor-pane-surface` (active focused pane) and `.editor-pane-inactive` (50% dimmed inactive pane) background styling to properly render.
+- **Search Result Scroll Target Guard**:
+  - Added cancellation token `cancelRestoreScroll()` and pending-target checks in `Editor.vue` and `omnibar.ts` so `restoreScrollPosition()` timers do not overwrite global search match scroll positions.
+  - Omitted `userId` from `installTheme` tRPC query payload when unauthenticated to prevent theme server catalog errors.
+
 ## [0.4.7] - 2026-07-24
 
 ### 📜 Editor Scroll Position Persistence Across Tabs & Notes
