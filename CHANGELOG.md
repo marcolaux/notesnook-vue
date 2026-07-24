@@ -5,6 +5,12 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-07-24
+
+### 🛠️ Vite Build Resolution Fix for Bundled Changelog
+- Injected `__CHANGELOG_CONTENT__` global constant via Vite `define` in `electron.vite.config.ts` using Node `readFileSync(resolve(__dirname, "../../CHANGELOG.md"))`.
+- Fixed Vite renderer build resolution error when referencing files outside `src/renderer` root.
+
 ## [0.4.5] - 2026-07-24
 
 ### ⚡ Vector Search Typing Lag Elimination & Smart Activity Deferral

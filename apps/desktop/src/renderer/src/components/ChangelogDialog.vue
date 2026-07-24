@@ -7,7 +7,6 @@ import { computed } from "vue";
 import { useUpdaterStore } from "@/stores/updater";
 import { parseMarkdownToHtml, formatBundledChangelog } from "@/utils/markdown";
 import { Icon } from "@notesnook-vue/ui-vue";
-import rawChangelog from "../../../../../CHANGELOG.md?raw";
 
 const updater = useUpdaterStore();
 
@@ -18,7 +17,8 @@ const versionTag = computed(() => {
 
 const downloading = computed(() => updater.phase === "downloading");
 
-const fallbackNotes = formatBundledChangelog(rawChangelog);
+const rawChangelogText = typeof __CHANGELOG_CONTENT__ !== "undefined" ? __CHANGELOG_CONTENT__ : "";
+const fallbackNotes = formatBundledChangelog(rawChangelogText);
 
 const changelogContent = computed(() => {
   return updater.status.releaseNotes?.trim() || fallbackNotes;

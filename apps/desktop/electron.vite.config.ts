@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 // this `version` field to the tag version before `npm run build`, so it matches
 // the version electron-builder bakes into `app-update.yml`.
 const pkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8")) as { version: string };
+const rawChangelog = readFileSync(resolve(__dirname, "../../CHANGELOG.md"), "utf-8");
 
 export default defineConfig({
   main: {
@@ -48,7 +49,8 @@ export default defineConfig({
     },
     plugins: [vue(), tailwindcss()],
     define: {
-      __APP_VERSION__: JSON.stringify(pkg.version)
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      __CHANGELOG_CONTENT__: JSON.stringify(rawChangelog)
     },
     build: {
       rollupOptions: {
