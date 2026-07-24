@@ -5,6 +5,16 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-07-24
+
+### 🔄 Auto-Updater Fixes
+- **ESM module interop fix for electron-updater**: Fixed a runtime error (`Cannot set properties of undefined (setting 'autoDownload')`) when checking for updates in packaged builds by safely extracting `autoUpdater` from both module namespace and default exports (`mod.autoUpdater ?? mod.default?.autoUpdater`).
+
+## [0.3.0] - 2026-07-24
+
+### 🤖 On-Device AI Vector Search & Hybrid RRF
+- **100% On-Device AI Vector Search**: Added hybrid Reciprocal Rank Fusion (RRF) combining vector similarity and lexical FTS5 search with onboarding prompt & changelog modal.
+
 ## [0.2.0] - 2026-07-24
 
 ### 🗂️ ToC + Minimap Right Sidebar (per-tab)

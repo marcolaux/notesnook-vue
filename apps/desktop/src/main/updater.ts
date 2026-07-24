@@ -37,7 +37,11 @@ let autoUpdaterHandle: import("electron-updater").AppUpdater | undefined;
 async function getAutoUpdater(): Promise<import("electron-updater").AppUpdater | undefined> {
   if (!app.isPackaged) return undefined;
   if (autoUpdaterHandle) return autoUpdaterHandle;
-  const { autoUpdater } = await import("electron-updater");
+  const mod = await import("electron-updater");
+  const autoUpdater = mod.autoUpdater ?? mod.default?.autoUpdater;
+  if (!autoUpdater) {
+    throw new Error("Failed to load autoUpdater from electron-updater");
+  }
   // `autoUpdater` is a singleton; configure once.
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
