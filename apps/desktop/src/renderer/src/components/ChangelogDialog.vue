@@ -107,7 +107,7 @@ function handleAction(): void {
 
         <!-- Scrollable Rendered Markdown Body -->
         <div
-          class="my-4 flex-1 overflow-y-auto pr-1 text-xs text-text-muted leading-relaxed font-sans"
+          class="my-4 flex-1 overflow-y-auto pr-1 text-xs text-text-muted leading-relaxed font-sans changelog-body"
           v-html="renderedHtml"
         />
 
@@ -135,3 +135,66 @@ function handleAction(): void {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.changelog-body :deep(h1),
+.changelog-body :deep(h2) {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-text, currentColor);
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+}
+
+.changelog-body :deep(h3),
+.changelog-body :deep(h4) {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-text, currentColor);
+  margin-top: 0.875rem;
+  margin-bottom: 0.375rem;
+}
+
+.changelog-body :deep(p) {
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
+}
+
+.changelog-body :deep(ul),
+.changelog-body :deep(ol) {
+  margin-top: 0.375rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.25rem;
+  list-style-type: disc;
+}
+
+.changelog-body :deep(li) {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+  line-height: 1.5;
+}
+
+.changelog-body :deep(code) {
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
+  background-color: var(--color-surface-muted, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+  color: var(--color-accent, #3b82f6);
+}
+
+.changelog-body :deep(a) {
+  color: var(--color-accent, #3b82f6);
+  text-decoration: underline;
+}
+
+.changelog-body :deep(hr) {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  border-color: var(--color-border, rgba(255, 255, 255, 0.1));
+}
+</style>
