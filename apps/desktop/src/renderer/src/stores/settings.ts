@@ -146,6 +146,74 @@ function writeTransparencyEnabled(enabled: boolean): void {
   }
 }
 
+export const SEMANTIC_SEARCH_ENABLED_KEY = "notesnook.semanticSearchEnabled";
+export const SEMANTIC_SEARCH_PROMPTED_KEY = "notesnook.semanticSearchPrompted";
+
+/** Check if this is a brand new install (no pre-existing notesnook settings in localStorage) */
+function isBrandNewInstall(): boolean {
+  try {
+    return (
+      localStorage.getItem(SEMANTIC_SEARCH_PROMPTED_KEY) === null &&
+      localStorage.getItem(SEMANTIC_SEARCH_ENABLED_KEY) === null &&
+      localStorage.getItem(TRANSPARENCY_ENABLED_KEY) === null &&
+      localStorage.getItem(THEME_MODE_KEY) === null
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function readSemanticSearchPrompted(): boolean {
+  try {
+    const p = localStorage.getItem(SEMANTIC_SEARCH_PROMPTED_KEY);
+    if (p === "true") return true;
+    if (p === "false") return false;
+
+    // Brand new installs are auto-marked as prompted (enabled by default without dialog)
+    if (isBrandNewInstall()) {
+      writeSemanticSearchPrompted(true);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export function readSemanticSearchEnabled(): boolean {
+  try {
+    const v = localStorage.getItem(SEMANTIC_SEARCH_ENABLED_KEY);
+    if (v === "false") return false;
+    if (v === "true") return true;
+
+    // Brand new installs default to true; existing upgrading users default to false until prompted
+    const isNew = isBrandNewInstall();
+    if (isNew) {
+      writeSemanticSearchEnabled(true);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function writeSemanticSearchEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(SEMANTIC_SEARCH_ENABLED_KEY, enabled ? "true" : "false");
+  } catch {
+    /* best-effort — persistence is optional */
+  }
+}
+
+export function writeSemanticSearchPrompted(prompted: boolean): void {
+  try {
+    localStorage.setItem(SEMANTIC_SEARCH_PROMPTED_KEY, prompted ? "true" : "false");
+  } catch {
+    /* best-effort — persistence is optional */
+  }
+}
+
 /**
  * Two-slot theme storage (mirrors upstream's `theme:dark` / `theme:light`
  * Config keys). The user picks a dark theme AND a light theme; `themeMode`
@@ -212,6 +280,10 @@ export const useSettingsStore = defineStore("settings", () => {
    *  `data-transparency` attr on <html> on-site (keeps the store DOM-free). */
   const transparencyEnabled = ref<boolean>(readTransparencyEnabled());
   const transparencyChangeSignal = ref(0);
+  /** Whether on-device Semantic Vector Search is enabled. */
+  const semanticSearchEnabled = ref<boolean>(readSemanticSearchEnabled());
+  /** Whether the user has been prompted via dialog about vector search onboarding. */
+  const semanticSearchPrompted = ref<boolean>(readSemanticSearchPrompted());
   /** The two theme slots. Default to the vendored built-ins until a theme is
    *  installed from the catalog or imported from a file. */
   const darkTheme = ref<VueTheme>(readStoredTheme(THEME_DARK_KEY, ThemeDark));
@@ -453,6 +525,16 @@ export const useSettingsStore = defineStore("settings", () => {
     else lightTheme.value = theme;
   }
 
+  function setSemanticSearchEnabled(enabled: boolean): void {
+    semanticSearchEnabled.value = enabled;
+    writeSemanticSearchEnabled(enabled);
+  }
+
+  function setSemanticSearchPrompted(prompted: boolean): void {
+    semanticSearchPrompted.value = prompted;
+    writeSemanticSearchPrompted(prompted);
+  }
+
   return {
     dateFormat,
     timeFormat,
@@ -470,6 +552,8 @@ export const useSettingsStore = defineStore("settings", () => {
     tasksShowCompleted,
     transparencyEnabled,
     transparencyChangeSignal,
+    semanticSearchEnabled,
+    semanticSearchPrompted,
     darkTheme,
     lightTheme,
     load,
@@ -489,6 +573,8 @@ export const useSettingsStore = defineStore("settings", () => {
     setTasksShowCompleted,
     setTransparencyEnabled,
     syncTransparencyEnabled,
+    setSemanticSearchEnabled,
+    setSemanticSearchPrompted,
     setActiveTheme,
     restoreStockThemes,
     isThemeApplied,

@@ -34,6 +34,7 @@ import path from "node:path";
 import { statSync } from "node:fs";
 import { createRequire } from "node:module";
 import Database from "better-sqlite3-multiple-ciphers";
+import * as sqliteVec from "sqlite-vec";
 import {
   registerSQLiteServer
 } from "../contracts/router";
@@ -201,6 +202,21 @@ class SQLite {
   private loadExtensions(): void {
     this.sqlite?.loadExtension(getExtensionPath("sqlite-better-trigram", "better-trigram"));
     this.sqlite?.loadExtension(getExtensionPath("sqlite3-fts5-html", "fts5-html"));
+    try {
+      if (this.sqlite) {
+        sqliteVec.load(this.sqlite);
+        this.sqlite.exec(`
+          CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(
+            +note_id text,
+            +chunk_index integer,
+            +chunk_hash text,
+            embedding float[384] distance_metric=cosine
+          );
+        `);
+      }
+    } catch (e) {
+      console.error("[sqlite-vec] Failed to load extension or initialize vec_notes table:", e);
+    }
     this.extensionsLoaded = true;
   }
 

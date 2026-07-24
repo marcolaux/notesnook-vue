@@ -77,6 +77,8 @@ asarUnpack:
   - node_modules/sqlite-better-trigram-*/**
   - node_modules/sqlite3-fts5-html/**
   - node_modules/sqlite3-fts5-html-*/**
+  - node_modules/sqlite-vec/**
+  - node_modules/sqlite-vec-*/**
 
 directories:
   # `build/` holds icons + entitlements (deferred — created on-site).

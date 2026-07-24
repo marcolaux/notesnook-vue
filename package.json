@@ -102,5 +102,9 @@
     "esbuild@0.21.5": true,
     "vue-demi@0.14.10": true,
     "fsevents@2.3.3": true
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "sqlite-vec": "^0.1.9"
   }
 }

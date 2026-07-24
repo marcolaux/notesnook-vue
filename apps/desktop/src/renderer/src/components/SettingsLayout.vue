@@ -25,6 +25,7 @@ import { useTitleBarStore } from "@/stores/titlebar";
 import AppearanceSection from "./settings-sections/AppearanceSection.vue";
 import LanguageSection from "./settings-sections/LanguageSection.vue";
 import NotesSection from "./settings-sections/NotesSection.vue";
+import SearchSection from "./settings-sections/SearchSection.vue";
 import VaultSection from "./settings-sections/VaultSection.vue";
 import SyncSection from "./settings-sections/SyncSection.vue";
 import BackupSection from "./settings-sections/BackupSection.vue";
@@ -51,7 +52,8 @@ const groups: SectionGroup[] = [
     items: [
       { id: "appearance", label: "Appearance", component: AppearanceSection },
       { id: "language", label: "Language", component: LanguageSection },
-      { id: "notes", label: "Notes", component: NotesSection }
+      { id: "notes", label: "Notes", component: NotesSection },
+      { id: "search", label: "Search", component: SearchSection }
     ]
   },
   {

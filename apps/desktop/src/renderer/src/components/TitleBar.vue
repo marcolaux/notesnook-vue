@@ -19,6 +19,7 @@ import { useOmnibarStore } from "@/stores/omnibar";
 import { useUpstreamNotifierStore } from "@/stores/upstream-notifier";
 import { useUpdaterStore } from "@/stores/updater";
 import { desktop } from "@/platform/desktop-bridge";
+import { isIndexing } from "@/utils/vector-search";
 import GlobalSearchInput from "./GlobalSearchInput.vue";
 
 const shell = useShellStore();
@@ -43,12 +44,7 @@ function openUpstreamRelease(): void {
 // THIS app on the GitHub `latest` channel, or a downloaded update is ready to
 // install. Click opens the Settings window on the Updates section.
 function openUpdates(): void {
-  void desktop.window.openSettings
-    .mutate({ section: "updates" })
-    .catch((e) => {
-      // eslint-disable-next-line no-console
-      console.error("[titlebar] openSettings failed:", e);
-    });
+  updater.openChangelog();
 }
 
 // Measure the real Window Controls Overlay width (Windows/Linux) so the right
@@ -166,6 +162,14 @@ onUnmounted(() => {
           <Icon name="arrow-down" :size="10" />
           {{ updater.readyToInstall ? "ready to install" : "update available" }}
         </button>
+      </span>
+      <span
+        v-if="isIndexing"
+        class="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-px text-[10px] text-accent animate-pulse"
+        title="Generating vector search embeddings in background idle frames (non-blocking)"
+      >
+        <Icon name="loader" :size="10" class="animate-spin" />
+        indexing...
       </span>
       <span class="text-[10px] text-text-muted">v{{ appVersion }}</span>
     </div>

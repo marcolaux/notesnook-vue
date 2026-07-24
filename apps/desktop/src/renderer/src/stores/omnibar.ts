@@ -51,6 +51,8 @@ import {
   type CommandContext
 } from "@/commands/registry";
 import { filterCommands } from "@/commands/menu";
+import { searchVectorEmbeddings } from "@/utils/vector-search";
+import { readSemanticSearchEnabled } from "@/stores/settings";
 
 export type OmnibarMode = "notes" | "commands" | "tags" | "notebooks" | "tabs";
 
@@ -293,17 +295,71 @@ export const useOmnibarStore = defineStore("omnibar", () => {
   async function fetchResults(q: string): Promise<HighlightedResult[]> {
     if (!q) return [];
     const db = getDatabase();
+    
+    // 1. Lexical FTS5 search
     const vg = await db.lookup.notesWithHighlighting(q, db.notes.all, {
       sortBy: "relevance",
       sortDirection: "desc"
     });
     const count = Math.min(vg.length, MAX_RESULTS);
-    const out: HighlightedResult[] = [];
+    const ftsResults: HighlightedResult[] = [];
     for (let i = 0; i < count; i++) {
       const got = await vg.item(i);
-      if (got.item) out.push(got.item);
+      if (got.item) ftsResults.push(got.item);
     }
-    return out;
+
+    // 2. Fall back to pure Lexical FTS5 if Semantic Search is disabled or query fails
+    if (!readSemanticSearchEnabled()) {
+      return ftsResults;
+    }
+
+    try {
+      // 3. Vector KNN search
+      const vecResults = await searchVectorEmbeddings(q, MAX_RESULTS);
+      if (vecResults.length === 0) return ftsResults;
+
+      // 4. Reciprocal Rank Fusion (RRF) scoring
+      const rrfScores = new Map<string, number>();
+
+      ftsResults.forEach((item, index) => {
+        const rank = index + 1;
+        const current = rrfScores.get(item.id) ?? 0;
+        rrfScores.set(item.id, current + 1 / (60 + rank));
+      });
+
+      vecResults.forEach((item, index) => {
+        const rank = index + 1;
+        const current = rrfScores.get(item.noteId) ?? 0;
+        rrfScores.set(item.noteId, current + 1 / (60 + rank));
+      });
+
+      const ftsMap = new Map(ftsResults.map((r) => [r.id, r]));
+      const sortedIds = Array.from(rrfScores.keys()).sort(
+        (a, b) => (rrfScores.get(b) ?? 0) - (rrfScores.get(a) ?? 0)
+      );
+
+      const blended: HighlightedResult[] = [];
+      for (const id of sortedIds) {
+        if (ftsMap.has(id)) {
+          blended.push(ftsMap.get(id)!);
+        } else {
+          const note = notes.visibleItems.find((n) => n.id === id);
+          if (note) {
+            blended.push({
+              id: note.id,
+              title: [[note.title || "Untitled"]],
+              body: [[(note.headline || note.title || "Untitled").slice(0, 150)]],
+              note
+            } as unknown as HighlightedResult);
+          }
+        }
+      }
+
+      return blended.slice(0, MAX_RESULTS);
+    } catch (e) {
+      console.error("[omnibar] Vector RRF blend failed, falling back to FTS5:", e);
+      return ftsResults;
+    }
   }
 
   async function runSearch(): Promise<void> {

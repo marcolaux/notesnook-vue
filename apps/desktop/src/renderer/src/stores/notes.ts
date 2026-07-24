@@ -25,6 +25,7 @@ import { useShellStore } from "@/stores/shell";
 import { useSettingsStore } from "@/stores/settings";
 import { useConfigStore } from "@/stores/config";
 import { desktop } from "@/platform/desktop-bridge";
+import { queueIndexNoteEmbeddings, deleteNoteEmbeddings } from "@/utils/vector-search";
 
 /** A collection filter applied to the notes list (sidebar selection). The
  * `noteIds` set is resolved up-front from `@notesnook/core` (notebooks via
@@ -655,6 +656,7 @@ export const useNotesStore = defineStore("notes", () => {
       }
       const data = item && typeof item.data === "string" ? item.data : "";
       previews.value = { ...previews.value, [noteId]: extractNotePreview(data) };
+      if (data) queueIndexNoteEmbeddings(noteId, data);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[notes] loadPreview failed:", e);
@@ -1070,6 +1072,7 @@ export const useNotesStore = defineStore("notes", () => {
       // Re-derive the list preview from the just-saved HTML so the thumbnail
       // / progress bar update live without a content round-trip.
       previews.value = { ...previews.value, [note.id]: extractNotePreview(html) };
+      queueIndexNoteEmbeddings(note.id, html);
       // Tell the other windows so an editor showing this note reloads.
       broadcastNoteChanged(note.id);
       // TEMP DIAG: confirm the note↔attachment relation was created by core's

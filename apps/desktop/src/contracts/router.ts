@@ -37,7 +37,7 @@ const t = initTRPC.create();
  * `bigint` is included because Kysely returns `numAffectedRows`/`insertId` as
  * bigint; Electron IPC uses structured clone, which serialises bigint natively.
  */
-export type SQLiteParameter = number | string | Uint8Array | number[] | bigint | null;
+export type SQLiteParameter = number | string | Uint8Array | Float32Array | number[] | bigint | null;
 
 /**
  * Structural subset of `@streetwriters/kysely`'s `QueryResult` that crosses the
@@ -175,6 +175,8 @@ export interface UpdateStatus {
   downloaded: boolean;
   /** Download progress 0–100 (0 when not downloading). */
   progress: number;
+  /** Release notes / changelog text from the update provider. */
+  releaseNotes?: string | null;
 }
 
 export interface UpdaterServer {

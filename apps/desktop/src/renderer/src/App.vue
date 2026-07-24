@@ -48,6 +48,8 @@ import ColorEditorDialog from "@/components/ColorEditorDialog.vue";
 import IconEditorDialog from "@/components/IconEditorDialog.vue";
 import ReminderEditorDialog from "@/components/ReminderEditorDialog.vue";
 import PublishDialog from "@/components/PublishDialog.vue";
+import SemanticSearchPromptDialog from "@/components/SemanticSearchPromptDialog.vue";
+import ChangelogDialog from "@/components/ChangelogDialog.vue";
 
 const router = useRouter();
 
@@ -823,6 +825,13 @@ if (!isSettingsWindow) {
            `app:publish-note` command). Teleports to <body>; driven by
            usePublishDialogStore. -->
       <PublishDialog />
+
+      <!-- Semantic Search Onboarding Dialog (existing users updating for the first time).
+           Prompted only when logged in. -->
+      <SemanticSearchPromptDialog />
+
+      <!-- Version Update Changelog Dialog (auto-triggered on new version & accessible in Settings) -->
+      <ChangelogDialog />
     </div>
   </div>
 </template>

@@ -23,6 +23,7 @@ const updater = useUpdaterStore();
 
 const currentVersion = `v${__APP_VERSION__}`;
 const downloading = computed(() => updater.phase === "downloading");
+const isDev = import.meta.env.DEV;
 
 // Kick a check the moment the section is opened so the user sees a fresh
 // "Up to date" / "Update available" verdict rather than the stale pre-check
@@ -76,6 +77,19 @@ onMounted(() => {
           @click="updater.checkForUpdates"
         >
           Check for updates
+        </Button>
+        <Button
+          variant="ghost"
+          @click="updater.openChangelog"
+        >
+          View Changelog
+        </Button>
+        <Button
+          v-if="isDev"
+          variant="secondary"
+          @click="updater.triggerTestChangelog"
+        >
+          Test Changelog Dialog
         </Button>
         <Button
           v-if="updater.updateAvailable && !updater.readyToInstall"

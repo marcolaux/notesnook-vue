@@ -98,11 +98,25 @@ export const updaterServer: UpdaterServer = {
       // version (not `null`) so the UI can distinguish "checked, no update"
       // from "haven't checked yet".
       const available = !!result && version !== null;
+      const rawNotes = info?.releaseNotes;
+      const releaseNotes = typeof rawNotes === "string"
+        ? rawNotes
+        : Array.isArray(rawNotes)
+          ? rawNotes
+              .map((n) => {
+                if (typeof n === "string") return n;
+                const v = n.version ? `v${n.version}` : "";
+                const note = n.note ?? "";
+                return v ? `### Version ${v}\n${note}` : note;
+              })
+              .join("\n\n---\n\n")
+          : null;
       status = {
         available,
         version: available ? version : app.getVersion(),
         downloaded: status.downloaded,
-        progress: 0
+        progress: 0,
+        releaseNotes
       };
       emitState();
       return status;
