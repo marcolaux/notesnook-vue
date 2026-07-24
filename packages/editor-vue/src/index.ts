@@ -163,3 +163,4 @@ export type { TextAlignOptions } from "./extensions/text-align/text-align";
 
 export { getSandboxFeatures } from "./utils/sandbox";
 export { filterByKey, subsequenceMatch, cycleIndex } from "./utils/filter";
+export { toBlobURL, revokeBloburl } from "./utils/downloader";

@@ -5,6 +5,31 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-24
+
+### 🖼️ Note List Image & Attachment Thumbnails
+- **Image & Attachment Thumbnail Extraction**:
+  - Enhanced note list items in `NotesList.vue` to display thumbnail previews for notes containing images or encrypted file attachments.
+  - Updated `note-preview.ts` (`extractThumbnail`) to detect `data-hash` and `hash` attributes on attachment-backed `<img>` elements in note content, returning `hash:<hash>` markers.
+  - Extended `useNotesStore.loadPreview` to resolve `hash:<hash>` thumbnails asynchronously via `db.attachments.read(hash, "base64")` or blob lookup.
+
+### 📎 Attachment File Embed Footers & Utilities
+- **Configurable File Embed Footers**:
+  - Implemented rich file embed footers in `Editor.vue` supporting inspect, open, and direct download operations for embedded attachments.
+  - Added `use-note-footer.ts` composable and `attachments.ts` helpers to manage attachment downloading and blob lifecycle (`toBlobURL`, `revokeBloburl`).
+  - Exported `toBlobURL` and `revokeBloburl` helpers from `@notesnook-vue/editor-vue`.
+
+### ✨ Context Menu Wording & Action Consistency
+- **Standardized Context Menu Actions**:
+  - Unified context menu labels across notes, notebooks, tags, colors, and multi-note selections.
+  - Replaced legacy mixed wording ("Favorite", "Pin to sidebar") with uniform, intuitive labels: **Add to shortcuts** / **Remove from shortcuts** and **Pin to top** / **Unpin from top**.
+
+### 🧪 Contract Test Suite
+- **Expanded Contract Verification**:
+  - Added `note-footer.spec.ts` contract suite for file embed footer interactions.
+  - Extended `note-preview.spec.ts` to verify encrypted attachment thumbnail resolution.
+  - Updated `context-menu-entries.spec.ts` for standardized shortcut and pin labels.
+
 ## [0.3.1] - 2026-07-24
 
 ### 🔄 Auto-Updater Fixes

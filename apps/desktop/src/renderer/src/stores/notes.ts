@@ -17,6 +17,7 @@ import {
   EMPTY_PREVIEW,
   type NotePreview
 } from "@/utils/note-preview";
+import { toBlobURL } from "@notesnook-vue/editor-vue";
 import { toColorListItem, type ColorListItem } from "@/utils/colors";
 import type { CollectionType } from "@/stores/collections";
 import { useCollectionsStore } from "@/stores/collections";
@@ -636,6 +637,29 @@ export const useNotesStore = defineStore("notes", () => {
   }
 
   /**
+   * Helper to resolve an attachment hash (`hash:<hash>`) thumbnail to a
+   * displayable blob or data URL via `db.attachments.read`.
+   */
+  async function resolveThumbnail(preview: NotePreview): Promise<NotePreview> {
+    if (!preview.thumbnail || !preview.thumbnail.startsWith("hash:")) {
+      return preview;
+    }
+    const hash = preview.thumbnail.slice(5);
+    try {
+      const db = getDatabase();
+      const data = await db.attachments.read(hash, "base64");
+      if (typeof data === "string" && data) {
+        const blobUrl = toBlobURL(data, "image", undefined, hash) ?? data;
+        return { ...preview, thumbnail: blobUrl };
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[notes] resolveThumbnail failed for hash:", hash, e);
+    }
+    return { ...preview, thumbnail: null };
+  }
+
+  /**
    * Fetch + parse a note's HTML body into a list preview (thumbnail +
    * checklist progress), caching it in {@link previews}. Idempotent: a
    * second call for an already-cached or in-flight note is a no-op unless
@@ -655,7 +679,9 @@ export const useNotesStore = defineStore("notes", () => {
         return;
       }
       const data = item && typeof item.data === "string" ? item.data : "";
-      previews.value = { ...previews.value, [noteId]: extractNotePreview(data) };
+      const rawPreview = extractNotePreview(data);
+      const preview = await resolveThumbnail(rawPreview);
+      previews.value = { ...previews.value, [noteId]: preview };
       if (data) queueIndexNoteEmbeddings(noteId, data);
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -1071,7 +1097,9 @@ export const useNotesStore = defineStore("notes", () => {
       note.headline = firstLine;
       // Re-derive the list preview from the just-saved HTML so the thumbnail
       // / progress bar update live without a content round-trip.
-      previews.value = { ...previews.value, [note.id]: extractNotePreview(html) };
+      const rawPreview = extractNotePreview(html);
+      const preview = await resolveThumbnail(rawPreview);
+      previews.value = { ...previews.value, [note.id]: preview };
       queueIndexNoteEmbeddings(note.id, html);
       // Tell the other windows so an editor showing this note reloads.
       broadcastNoteChanged(note.id);

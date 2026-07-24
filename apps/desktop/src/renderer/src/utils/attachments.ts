@@ -86,3 +86,33 @@ export function formatBytes(n: number | undefined | null): string {
   const formatted = i === 0 || value >= 10 ? Math.round(value) : value.toFixed(1);
   return `${formatted} ${units[i]}`;
 }
+
+export function mimeCategoryIcon(cat: MimeCategory): string {
+  switch (cat) {
+    case "image":
+      return "image";
+    case "video":
+      return "video";
+    case "audio":
+      return "audio-lines";
+    case "document":
+      return "file-text";
+    default:
+      return "file";
+  }
+}
+
+export function mimeCategoryLabel(cat: MimeCategory): string {
+  switch (cat) {
+    case "image":
+      return "Images";
+    case "video":
+      return "Videos";
+    case "audio":
+      return "Audio";
+    case "document":
+      return "Documents";
+    default:
+      return "Files";
+  }
+}

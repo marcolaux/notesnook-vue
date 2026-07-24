@@ -20,7 +20,7 @@
  * composable stays headless-testable.
  */
 import { ref, watch, type Ref } from "vue";
-import type { Note, Tag } from "@notesnook-vue/contracts";
+import type { Attachment, Note, Tag } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
 import { usePropertiesStore } from "@/stores/properties";
 import { useLinksStore, toLinkRef, type NoteLinkRef } from "@/stores/links";
@@ -38,6 +38,8 @@ export interface NoteFooter {
   outgoing: Ref<NoteLinkRef[]>;
   /** Notes that link to this pane's note (incoming / backlinks). */
   incoming: Ref<NoteLinkRef[]>;
+  /** Attachments / file embeds linked to this pane's note. */
+  attachments: Ref<Attachment[]>;
   /** Live word count for this pane's note, pushed by the Editor. */
   wordCount: Ref<number>;
   /** True while assignments/links are (re)loading. */
@@ -65,6 +67,7 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
   const tags = ref<AssignedTag[]>([]);
   const outgoing = ref<NoteLinkRef[]>([]);
   const incoming = ref<NoteLinkRef[]>([]);
+  const attachments = ref<Attachment[]>([]);
   const wordCount = ref(0);
   const loading = ref(false);
 
@@ -74,26 +77,30 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
       tags.value = [];
       outgoing.value = [];
       incoming.value = [];
+      attachments.value = [];
       return;
     }
     loading.value = true;
     try {
       const db = getDatabase();
       const ref = { id, type: "note" as const };
-      const [tagItems, out, inc] = await Promise.all([
+      const [tagItems, out, inc, attItems] = await Promise.all([
         db.relations.to(ref, "tag").resolve().catch(() => [] as Tag[]),
         db.relations.from(ref, "note").resolve().catch(() => [] as Note[]),
-        db.relations.to(ref, "note").resolve().catch(() => [] as Note[])
+        db.relations.to(ref, "note").resolve().catch(() => [] as Note[]),
+        db.relations.from(ref, "attachment").resolve().catch(() => [] as Attachment[])
       ]);
       tags.value = uniqueById((tagItems as Tag[]).map(toAssignedTag));
       outgoing.value = (out as Note[]).map(toLinkRef);
       incoming.value = (inc as Note[]).map(toLinkRef);
+      attachments.value = attItems as Attachment[];
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[note-footer] reload failed:", e);
       tags.value = [];
       outgoing.value = [];
       incoming.value = [];
+      attachments.value = [];
     } finally {
       loading.value = false;
     }
@@ -141,5 +148,5 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
   // note seeds the footer on first mount.
   watch(noteId, () => void reload(), { immediate: true });
 
-  return { tags, outgoing, incoming, wordCount, loading, reload, addTag, removeTag, createTag, link, unlink };
+  return { tags, outgoing, incoming, attachments, wordCount, loading, reload, addTag, removeTag, createTag, link, unlink };
 }

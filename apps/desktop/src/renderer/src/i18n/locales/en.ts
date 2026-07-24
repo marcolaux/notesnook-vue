@@ -46,7 +46,7 @@ export default {
     noShortcuts: "No shortcuts",
     addToShortcuts: "Add to shortcuts",
     removeFromShortcuts: "Remove from shortcuts",
-    removeFromFavourites: "Remove from favourites",
+    removeFromFavourites: "Remove from shortcuts",
     createSubNotebook: "Create sub-notebook",
     createSubTag: "Create sub-tag",
     newNotebook: "New notebook",

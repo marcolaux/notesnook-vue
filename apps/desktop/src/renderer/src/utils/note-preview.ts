@@ -41,11 +41,13 @@ function parse(html: string): Document {
   return new DOMParser().parseFromString(html, "text/html");
 }
 
-/** Extract the first renderable image `src` from the note body, if any. */
+/** Extract the first renderable image `src` or `hash:<hash>` from the note body, if any. */
 function extractThumbnail(doc: Document): string | null {
   for (const img of Array.from(doc.querySelectorAll("img"))) {
     const src = img.getAttribute("src");
     if (src) return src;
+    const hash = img.getAttribute("data-hash") || img.getAttribute("hash");
+    if (hash) return `hash:${hash}`;
   }
   return null;
 }

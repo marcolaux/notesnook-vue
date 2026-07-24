@@ -100,7 +100,7 @@ describe("buildNoteMenu", () => {
       "Open in split down",
       "─",
       "Pin to top",
-      "Favorite",
+      "Add to shortcuts",
       "Remind me…",
       "─",
       "Publish note",
@@ -363,8 +363,8 @@ describe("buildNotebookMenu", () => {
     expect(labels(entries)).toEqual([
       "New sub-notebook",
       "─",
-      "Pin to sidebar",
-      "Pinned to top",
+      "Add to shortcuts",
+      "Pin to top",
       "─",
       "Rename…",
       "Set icon…",
@@ -400,7 +400,7 @@ describe("buildNotebookMenu", () => {
     deps.isShortcut = vi.fn(() => true);
     const entries = buildNotebookMenu({ id: "b1", title: "Work", pinned: false }, deps);
     const sc = entries.find((e) => e.id === "toggle-shortcut")!;
-    expect(sc.label).toBe("Unpin from sidebar");
+    expect(sc.label).toBe("Remove from shortcuts");
     expect(sc.checked).toBe(true);
   });
 
@@ -456,7 +456,7 @@ describe("buildTagMenu", () => {
 
   it("emits shortcut / sep / rename / delete", () => {
     const entries = buildTagMenu({ id: "t1", title: "work" }, baseDeps(confirmSpy(true)));
-    expect(labels(entries)).toEqual(["Pin to sidebar", "─", "Rename…", "Delete tag"]);
+    expect(labels(entries)).toEqual(["Add to shortcuts", "─", "Rename…", "Delete tag"]);
     expect(entries.find((e) => e.id === "delete")!.danger).toBe(true);
   });
 
@@ -490,7 +490,7 @@ describe("buildColorRowMenu", () => {
   it("emits pin / sep / rename / sep / delete", () => {
     const entries = buildColorRowMenu(target, baseDeps(confirmSpy(true)));
     expect(labels(entries)).toEqual([
-      "Pin to sidebar",
+      "Add to shortcuts",
       "─",
       "Rename…",
       "─",
@@ -504,7 +504,7 @@ describe("buildColorRowMenu", () => {
     deps.isShortcut = vi.fn(() => true);
     const entries = buildColorRowMenu(target, deps);
     const pin = entries.find((e) => e.id === "toggle-shortcut")!;
-    expect(pin.label).toBe("Unpin from sidebar");
+    expect(pin.label).toBe("Remove from shortcuts");
     expect(pin.checked).toBe(true);
   });
 
@@ -560,11 +560,11 @@ describe("buildShortcutMenu", () => {
     expect(deps.removeShortcut).toHaveBeenCalledWith("s1");
   });
 
-  it("a favourite-note target relabels remove to 'Remove from favourites'", () => {
+  it("a note target carries 'Remove from shortcuts'", () => {
     const deps = { open: vi.fn(), removeShortcut: vi.fn() };
     const target = { id: "n1", type: "note" as const, title: "My note" };
     const entries = buildShortcutMenu(target, deps);
-    expect(labels(entries)).toEqual(["Open", "─", "Remove from favourites"]);
+    expect(labels(entries)).toEqual(["Open", "─", "Remove from shortcuts"]);
   });
 
   it("note-target open passes the note target through", async () => {
@@ -659,9 +659,9 @@ describe("buildMultiNoteMenu", () => {
     const entries = buildMultiNoteMenu(multiSel(), multiDeps());
     expect(labels(entries)).toEqual([
       "Pin to top",
-      "Unpin",
-      "Favorite",
-      "Unfavorite",
+      "Unpin from top",
+      "Add to shortcuts",
+      "Remove from shortcuts",
       "─",
       "Color",
       "Tags",

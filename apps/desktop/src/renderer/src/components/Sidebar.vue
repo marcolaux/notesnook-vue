@@ -567,7 +567,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           >
             <span
               v-if="sc.type === 'color'"
-              class="inline-block h-2.5 w-2.5 shrink-0 rounded-full thin-outline"
+              class="inline-block h-2 w-2 shrink-0 rounded-full opacity-75 transition-opacity group-hover:opacity-100 thin-outline"
               :style="{ background: sc.colorCode }"
             />
             <Icon v-else :name="shortcutGlyph(sc.type)" :size="12" class="text-text-muted" />
@@ -575,7 +575,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           </button>
           <button
             class="titlebar-no-drag shrink-0 text-[10px] text-text-muted opacity-0 transition-opacity hover:text-text group-hover:opacity-100"
-            :title="sc.type === 'note' ? t('sidebar.removeFromFavourites') : t('sidebar.removeFromShortcuts')"
+            :title="t('sidebar.removeFromShortcuts')"
             @click="removeShortcut(sc)"
           >
             <Icon name="x" :size="10" />
@@ -719,7 +719,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
             :class="colorDropTarget.position === 'before' ? '-top-px' : '-bottom-px'"
           />
           <span
-            class="inline-block h-2.5 w-2.5 shrink-0 rounded-full thin-outline"
+            class="inline-block h-2 w-2 shrink-0 rounded-full opacity-75 transition-opacity group-hover:opacity-100 thin-outline"
             :style="{ background: color.colorCode }"
           />
           <input

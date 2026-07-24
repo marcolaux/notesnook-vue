@@ -10,7 +10,10 @@ import { useNotesStore } from "@/stores/notes";
 // `notes.ts` imports `getDatabase` from the platform bootstrap; stub it so the
 // sodium/crypto/bridge graph isn't pulled into a pure store-logic test. The
 // fake db is per-test controllable via `mockDb`.
-let mockDb: { content: { findByNoteId: (id: string) => Promise<unknown> } };
+let mockDb: {
+  content: { findByNoteId: (id: string) => Promise<unknown> };
+  attachments?: { read: (hash: string, format: string) => Promise<unknown> };
+};
 vi.mock("@/platform/bootstrap", () => ({
   getDatabase: () => mockDb,
   bootstrap: vi.fn()
@@ -19,7 +22,8 @@ vi.mock("@/platform/bootstrap", () => ({
 beforeEach(() => {
   setActivePinia(createPinia());
   mockDb = {
-    content: { findByNoteId: async () => undefined }
+    content: { findByNoteId: async () => undefined },
+    attachments: { read: async () => undefined }
   };
 });
 
@@ -42,14 +46,14 @@ describe("extractNotePreview — thumbnail", () => {
     expect(extractNotePreview(html).thumbnail).toBe("first.png");
   });
 
-  it("skips an attachment-backed img with no src (Phase-6-gated)", () => {
+  it("extracts hash:hash for an attachment-backed img with data-hash", () => {
     const html = '<img data-hash="abc" data-filename="x.png" width="10">';
-    expect(extractNotePreview(html).thumbnail).toBeNull();
+    expect(extractNotePreview(html).thumbnail).toBe("hash:abc");
   });
 
-  it("falls back to a later img when the first has no src", () => {
+  it("extracts the first img whether inline src or attachment hash", () => {
     const html = '<img data-hash="abc"><img src="real.png">';
-    expect(extractNotePreview(html).thumbnail).toBe("real.png");
+    expect(extractNotePreview(html).thumbnail).toBe("hash:abc");
   });
 });
 
@@ -174,5 +178,21 @@ describe("notes store — loadPreview", () => {
     const notes = useNotesStore();
     await expect(notes.loadPreview("n6")).resolves.toBeUndefined();
     expect(notes.previews["n6"]).toEqual(EMPTY_PREVIEW);
+  });
+
+  it("resolves an attachment hash thumbnail via db.attachments.read", async () => {
+    mockDb.content.findByNoteId = async () => ({
+      data: '<img data-hash="att1" data-filename="test.png">'
+    });
+    mockDb.attachments = {
+      read: async (hash: string) => {
+        if (hash === "att1") return "data:image/png;base64,iVBORw0KGgo=";
+        return undefined;
+      }
+    };
+    const notes = useNotesStore();
+    await notes.loadPreview("n-att");
+    expect(notes.previews["n-att"]?.thumbnail).toBeTruthy();
+    expect(notes.previews["n-att"]?.thumbnail).not.toContain("hash:");
   });
 });

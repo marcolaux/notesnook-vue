@@ -329,13 +329,13 @@ export function buildNoteMenu(note: NoteMenuTarget, deps: NoteMenuDeps): MenuIte
     separator("sep-1"),
     {
       id: "toggle-pinned",
-      label: "Pin to top",
+      label: note.pinned ? "Unpin from top" : "Pin to top",
       checked: note.pinned,
       onSelect: () => deps.togglePinned(note.id)
     },
     {
       id: "toggle-favorite",
-      label: "Favorite",
+      label: note.favorite ? "Remove from shortcuts" : "Add to shortcuts",
       checked: note.favorite,
       onSelect: () => deps.toggleFavorite(note.id)
     },
@@ -562,9 +562,9 @@ export function buildMultiNotebooksSubmenu(sel: MultiMenuSelection, deps: MultiN
 export function buildMultiNoteMenu(sel: MultiMenuSelection, deps: MultiNoteMenuDeps): MenuItem[] {
   return [
     { id: "pin", label: "Pin to top", onSelect: () => deps.setPinned(sel.ids, true) },
-    { id: "unpin", label: "Unpin", onSelect: () => deps.setPinned(sel.ids, false) },
-    { id: "favorite", label: "Favorite", onSelect: () => deps.setFavorite(sel.ids, true) },
-    { id: "unfavorite", label: "Unfavorite", onSelect: () => deps.setFavorite(sel.ids, false) },
+    { id: "unpin", label: "Unpin from top", onSelect: () => deps.setPinned(sel.ids, false) },
+    { id: "favorite", label: "Add to shortcuts", onSelect: () => deps.setFavorite(sel.ids, true) },
+    { id: "unfavorite", label: "Remove from shortcuts", onSelect: () => deps.setFavorite(sel.ids, false) },
     separator("sep-1"),
     { id: "color", label: "Color", submenu: buildMultiColorSubmenu(sel, deps) },
     { id: "tags", label: "Tags", submenu: buildMultiTagsSubmenu(sel, deps) },
@@ -619,7 +619,7 @@ export interface NotebookMenuDeps {
  * Build the notebook context menu:
  *   New sub-notebook
  *   ──
- *   Pin to sidebar / Unpin from sidebar   (✓ isShortcut)
+ *   Add to shortcuts / Remove from shortcuts   (✓ isShortcut)
  *   Pinned to top / Unpin from top        (✓ notebook.pinned)
  *   ──
  *   Rename…
@@ -635,13 +635,13 @@ export function buildNotebookMenu(
     separator("sep-1"),
     {
       id: "toggle-shortcut",
-      label: isPinned ? "Unpin from sidebar" : "Pin to sidebar",
+      label: isPinned ? "Remove from shortcuts" : "Add to shortcuts",
       checked: isPinned,
       onSelect: () => deps.toggleShortcut(notebook.id)
     },
     {
       id: "toggle-pinned-top",
-      label: notebook.pinned ? "Unpin from top" : "Pinned to top",
+      label: notebook.pinned ? "Unpin from top" : "Pin to top",
       checked: notebook.pinned,
       onSelect: () => deps.togglePinnedToTop(notebook.id)
     },
@@ -689,7 +689,7 @@ export interface TagMenuDeps {
 
 /**
  * Build the tag context menu:
- *   Pin to sidebar / Unpin from sidebar   (✓ isShortcut)
+ *   Add to shortcuts / Remove from shortcuts   (✓ isShortcut)
  *   ──
  *   Rename…
  *   Delete tag                            (danger; confirm)
@@ -699,7 +699,7 @@ export function buildTagMenu(tag: TagMenuTarget, deps: TagMenuDeps): MenuItem[] 
   return [
     {
       id: "toggle-shortcut",
-      label: isPinned ? "Unpin from sidebar" : "Pin to sidebar",
+      label: isPinned ? "Remove from shortcuts" : "Add to shortcuts",
       checked: isPinned,
       onSelect: () => deps.toggleShortcut(tag.id)
     },
@@ -750,7 +750,7 @@ export interface ColorRowMenuDeps {
 
 /**
  * Build the sidebar color-row context menu:
- *   Pin to sidebar / Unpin from sidebar   (✓ favorited — local-only favorite)
+ *   Add to shortcuts / Remove from shortcuts   (✓ favorited — local-only favorite)
  *   ──
  *   Rename…                              (enters inline-rename mode for the row
  *                                         — the title `<input>` replaces the
@@ -772,7 +772,7 @@ export function buildColorRowMenu(
   return [
     {
       id: "toggle-shortcut",
-      label: isPinned ? "Unpin from sidebar" : "Pin to sidebar",
+      label: isPinned ? "Remove from shortcuts" : "Add to shortcuts",
       checked: isPinned,
       onSelect: () => deps.toggleShortcut(color.id)
     },
@@ -835,7 +835,7 @@ export function buildShortcutMenu(
     separator("sep-1"),
     {
       id: "remove",
-      label: sc.type === "note" ? "Remove from favourites" : "Remove from shortcuts",
+      label: "Remove from shortcuts",
       onSelect: () => deps.removeShortcut(sc.id)
     }
   ];

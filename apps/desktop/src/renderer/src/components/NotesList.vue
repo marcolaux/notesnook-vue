@@ -680,7 +680,7 @@ function formatDate(ts: number): string {
               title="Selected"
             />
             <Icon v-if="note.pinned" name="pin" :size="10" class="text-amber-500 thin-outline" fill="currentColor" title="Pinned" />
-            <Icon v-if="note.favorite" name="star" :size="10" class="text-amber-500 thin-outline" fill="currentColor" title="Favorite" />
+            <Icon v-if="note.favorite" name="star" :size="10" class="text-amber-500 thin-outline" fill="currentColor" title="Shortcut" />
             <Icon v-if="notes.publishedIds.has(note.id)" name="globe" :size="10" class="text-text-muted" title="Published" />
             <span class="truncate text-xs font-medium text-text">
               <template v-for="(seg, i) in segmentsOf(note.title)" :key="i">
@@ -690,7 +690,7 @@ function formatDate(ts: number): string {
             </span>
           </div>
           <div class="mt-1 flex items-start gap-2">
-            <!-- First-image thumbnail (attachment-backed images resolve in Phase 6). -->
+            <!-- First-image thumbnail (supports inline src + attachment-backed data-hash images). -->
             <img
               v-if="previewOf(note.id)?.thumbnail"
               :src="previewOf(note.id)!.thumbnail ?? undefined"

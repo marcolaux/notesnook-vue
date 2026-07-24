@@ -61,13 +61,22 @@ import {
   Link,
   NoteSuggest
 } from "@notesnook-vue/editor-vue";
+import { Icon } from "@notesnook-vue/ui-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorStore, type EditorSurface } from "@/stores/editor";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useStatusStore } from "@/stores/status";
 import { usePropertiesStore } from "@/stores/properties";
 import { useCollectionsStore } from "@/stores/collections";
+import type { Attachment } from "@notesnook-vue/contracts";
 import { textStats } from "@/utils/properties";
+import {
+  formatBytes,
+  mimeCategory,
+  mimeCategoryIcon,
+  mimeCategoryLabel,
+  type MimeCategory
+} from "@/utils/attachments";
 import { useNoteFooter } from "@/composables/use-note-footer";
 import { readEditorStats } from "@/utils/status";
 import { scrollEditorToMatch } from "@/utils/search-scroll";
@@ -131,7 +140,30 @@ const myKey = computed(() => props.tabId ?? "draft:" + (props.groupId ?? ""));
 // unwraps them (the `footer` object itself is passed to the tag-mention
 // bridge, which needs the refs).
 const footer = useNoteFooter(myNoteId);
-const { tags, outgoing, incoming, wordCount } = footer;
+const { tags, outgoing, incoming, attachments, wordCount } = footer;
+
+const ATTACHMENT_CATEGORY_ORDER: MimeCategory[] = [
+  "image",
+  "document",
+  "video",
+  "audio",
+  "file"
+];
+
+const categorizedAttachments = computed(() => {
+  const groups: Record<MimeCategory, Attachment[]> = {
+    image: [],
+    document: [],
+    video: [],
+    audio: [],
+    file: []
+  };
+  for (const att of attachments.value) {
+    const cat = mimeCategory(att.mimeType);
+    groups[cat].push(att);
+  }
+  return groups;
+});
 
 // --- Per-tab find & replace bar --------------------------------------------
 // `findOpen` is local + per-instance, so under `<KeepAlive>` each tab keeps its
@@ -339,6 +371,20 @@ function openLinkedNote(noteId: string): void {
   layout.openTab(myGroupId.value, noteId);
 }
 
+/** Open an attachment preview split to the right of this pane. */
+function openAttachmentPreview(att: Attachment): void {
+  layout.openAttachmentSplit(
+    myGroupId.value,
+    {
+      hash: att.hash,
+      filename: att.filename || att.hash,
+      mime: att.mimeType || "application/octet-stream",
+      size: Number(att.size) || 0
+    },
+    "right"
+  );
+}
+
 function onLinkInputBlur(): void {
   setTimeout(() => {
     linkMenuOpen.value = false;
@@ -408,10 +454,11 @@ const editor = useEditor({
   content: "",
   autofocus: false,
   editable: true,
-  // Capture OS file drops + clipboard pastes: ingest each file via
-  // `db.attachments.save` and insert an image node (image/*) or attachment chip
-  // at the drop/caret position. `getEditor` returns the current instance.
-  editorProps: createImageDropPasteProps(() => editor.value ?? undefined),
+  editorProps: {
+    ...createImageDropPasteProps(() => editor.value ?? undefined),
+    scrollThreshold: { top: 0, bottom: 120, left: 0, right: 0 },
+    scrollMargin: { top: 20, bottom: 120, left: 0, right: 0 }
+  },
   onUpdate: ({ editor: inst }) => {
     const html = inst.getHTML();
     if (!myNote.value) {
@@ -459,6 +506,7 @@ async function flushSave(): Promise<void> {
   if (!id || !html) return;
   saving.value = true;
   await notes.saveContent(id, html);
+  await footer.reload();
   saving.value = false;
   savedAt.value = Date.now();
 }
@@ -1009,7 +1057,7 @@ function onEditorAreaClick(e: MouseEvent): void {
     />
     <div
       ref="scrollEl"
-      class="min-h-0 flex-1 overflow-y-auto p-6"
+      class="min-h-0 flex-1 overflow-y-auto p-6 scroll-pb-[20vh]"
       @mousedown="onAreaMouseDown"
       @click="onEditorAreaClick"
     >
@@ -1143,6 +1191,31 @@ function onEditorAreaClick(e: MouseEvent): void {
             </button>
             <span v-if="incoming.length === 0" class="text-text-muted">None</span>
           </div>
+        </div>
+        <div v-if="!isDraft" class="editor-attachments mt-4 border-t border-glass-border pt-3 text-xs text-text-muted">
+          <div class="mb-1 font-medium text-text">Files</div>
+          <div v-if="attachments.length === 0" class="text-text-muted">None</div>
+          <template v-else>
+            <template v-for="cat in ATTACHMENT_CATEGORY_ORDER" :key="cat">
+              <div v-if="categorizedAttachments[cat].length" class="mb-2 flex flex-wrap items-center gap-2">
+                <span class="inline-flex items-center gap-1 text-text-muted">
+                  <Icon :name="mimeCategoryIcon(cat)" :size="13" class="shrink-0" />
+                  {{ mimeCategoryLabel(cat) }}:
+                </span>
+                <button
+                  v-for="att in categorizedAttachments[cat]"
+                  :key="'att-' + att.id"
+                  class="group inline-flex items-center gap-1.5 rounded-full bg-glass-surface px-2.5 py-1 text-xs text-text hover:bg-glass-hover"
+                  :title="'Preview ' + (att.filename || att.hash)"
+                  @click="openAttachmentPreview(att)"
+                >
+                  <Icon :name="mimeCategoryIcon(cat)" :size="12" class="shrink-0 text-text-muted group-hover:text-text" />
+                  <span class="max-w-40 truncate">{{ att.filename || att.hash }}</span>
+                  <span class="text-[10px] text-text-muted">({{ formatBytes(att.size) }})</span>
+                </button>
+              </div>
+            </template>
+          </template>
         </div>
       </template>
     </div>
