@@ -142,28 +142,51 @@ export const updaterServer: UpdaterServer = {
 
   async download(): Promise<boolean> {
     const au = await getAutoUpdater();
-    if (!au) return false;
+    if (!au) {
+      // Dev mode: simulate download progress so the UI flow can be verified in dev
+      status = { ...status, progress: 10, downloaded: false, available: true };
+      emitState();
+
+      let p = 10;
+      const interval = setInterval(() => {
+        p += 30;
+        if (p >= 100) {
+          clearInterval(interval);
+          status = { ...status, progress: 100, downloaded: true, available: true };
+          emitState();
+        } else {
+          status = { ...status, progress: p, downloaded: false, available: true };
+          emitState();
+        }
+      }, 250);
+      return true;
+    }
+
     try {
       status = { ...status, progress: 0, downloaded: false };
       emitState();
       await au.downloadUpdate();
       return true;
-    } catch {
+    } catch (err) {
       status = { ...status, progress: 0 };
       emitState();
-      return false;
+      throw err;
     }
   },
 
   async install(): Promise<boolean> {
     const au = await getAutoUpdater();
-    if (!au) return false;
+    if (!au) {
+      // Dev mode: reset snapshot to up-to-date
+      status = { available: false, version: app.getVersion(), downloaded: false, progress: 0 };
+      emitState();
+      return true;
+    }
     try {
-      // `quitAndInstall` is synchronous; it closes windows + relaunches.
       au.quitAndInstall();
       return true;
-    } catch {
-      return false;
+    } catch (err) {
+      throw err;
     }
   },
 

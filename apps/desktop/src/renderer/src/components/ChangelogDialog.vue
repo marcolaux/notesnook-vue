@@ -105,6 +105,12 @@ function handleAction(): void {
           </div>
         </div>
 
+        <!-- Download error banner if present -->
+        <div v-if="updater.lastError" class="py-2 px-3 my-2 rounded bg-rose-500/10 border border-rose-500/20 text-xs text-rose-500 font-medium flex items-center gap-2">
+          <Icon name="alert-circle" :size="16" />
+          <span>{{ updater.lastError }}</span>
+        </div>
+
         <!-- Scrollable Rendered Markdown Body -->
         <div
           class="my-4 flex-1 overflow-y-auto pr-1 text-xs text-text-muted leading-relaxed font-sans changelog-body"
