@@ -165,3 +165,4 @@ publish:
   owner: marcolaux
   repo: notesnook-vue
   channel: latest
+  releaseType: release

@@ -162,7 +162,7 @@ jobs:
           for i in 1 2 3; do
             echo "::group::Package+publish attempt $i"
             rm -rf release
-            if npx electron-builder --config electron-builder.yml ${{ matrix.targets }} --publish onTagOrDraft; then
+            if npx electron-builder --config electron-builder.yml ${{ matrix.targets }} --publish always; then
               echo "::endgroup::"
               break
             fi
