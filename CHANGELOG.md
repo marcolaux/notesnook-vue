@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Extended `note-preview.spec.ts` to verify encrypted attachment thumbnail resolution.
   - Updated `context-menu-entries.spec.ts` for standardized shortcut and pin labels.
 
+### 🔄 Auto-Updater Fixes
+- **Version Comparison Gate**: Fixed a bug where `au.checkForUpdates()` returning a valid release response would mark an update as available even when the remote version (`0.4.0`) matched the running app version (`0.4.0`). `updaterServer.check` now uses `isNewerUpstreamRelease(remoteVersion, currentVersion)` to ensure updates are only flagged as available when the remote version is strictly newer.
+
 ## [0.3.1] - 2026-07-24
 
 ### 🔄 Auto-Updater Fixes

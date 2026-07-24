@@ -23,6 +23,7 @@
  */
 import { app, BrowserWindow } from "electron";
 import { registerUpdaterServer, type UpdateStatus, type UpdaterServer } from "../contracts/router";
+import { isNewerUpstreamRelease } from "../contracts/upstream-semver";
 
 const IDLE: UpdateStatus = { available: false, version: null, downloaded: false, progress: 0 };
 
@@ -96,12 +97,15 @@ export const updaterServer: UpdaterServer = {
     try {
       const result = await au.checkForUpdates();
       const info = result?.updateInfo ?? null;
-      const version = info?.version ?? null;
-      // `checkForUpdates` resolves with an update when a newer version exists;
-      // `null` means up-to-date. In the up-to-date case we record the running
-      // version (not `null`) so the UI can distinguish "checked, no update"
-      // from "haven't checked yet".
-      const available = !!result && version !== null;
+      const remoteVersion = info?.version ?? null;
+      const currentVersion = app.getVersion();
+      // `checkForUpdates` returns `UpdateCheckResult` containing the latest release info.
+      // We must verify that the remote version is strictly newer than the running app version;
+      // if remote <= current, the app is up to date (`available = false`).
+      const available =
+        !!result &&
+        remoteVersion !== null &&
+        isNewerUpstreamRelease(remoteVersion, currentVersion);
       const rawNotes = info?.releaseNotes;
       const releaseNotes = typeof rawNotes === "string"
         ? rawNotes
@@ -117,7 +121,7 @@ export const updaterServer: UpdaterServer = {
           : null;
       status = {
         available,
-        version: available ? version : app.getVersion(),
+        version: available ? remoteVersion : currentVersion,
         downloaded: status.downloaded,
         progress: 0,
         releaseNotes
