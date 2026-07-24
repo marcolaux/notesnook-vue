@@ -74,14 +74,21 @@ export async function listThemes(args: {
  */
 export async function installTheme(
   id: string,
-  userId?: string
+  userId?: string | undefined
 ): Promise<CatalogResult<CompiledThemeDefinition | undefined>> {
   try {
-    const data = await client.installTheme.query({
+    const payload: {
+      id: string;
+      userId?: string;
+      compatibilityVersion: number;
+    } = {
       id,
-      userId,
       compatibilityVersion: THEME_COMPATIBILITY_VERSION
-    });
+    };
+    if (userId && userId.trim()) {
+      payload.userId = userId.trim();
+    }
+    const data = await client.installTheme.query(payload);
     return ok(data);
   } catch (e) {
     return fail(`Failed to install theme: ${message(e)}`);
