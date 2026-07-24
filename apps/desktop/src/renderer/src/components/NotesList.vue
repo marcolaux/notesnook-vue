@@ -82,6 +82,41 @@ const collectionLabel = computed(() => {
   return collections.selectedLabel;
 });
 
+/** IntersectionObserver for lazy-loading note entry previews & thumbnails when scrolled into view */
+let listObserver: IntersectionObserver | null = null;
+
+function setupListObserver(): void {
+  if (typeof IntersectionObserver === "undefined") return;
+  listObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const noteId = (entry.target as HTMLElement).dataset.noteId;
+          if (noteId) {
+            void notes.loadPreview(noteId);
+            listObserver?.unobserve(entry.target);
+          }
+        }
+      }
+    },
+    { rootMargin: "150px 0px" }
+  );
+}
+
+const vLazyPreview = {
+  mounted(el: HTMLElement, binding: { value: string }) {
+    const noteId = binding.value;
+    if (!noteId) return;
+    if (notes.previews[noteId]) return;
+    el.dataset.noteId = noteId;
+    if (!listObserver) setupListObserver();
+    listObserver?.observe(el);
+  },
+  unmounted(el: HTMLElement) {
+    listObserver?.unobserve(el);
+  }
+};
+
 /** Typed lookup of a note's list preview (thumbnail + checklist progress). */
 function previewOf(id: string): NotePreview | undefined {
   return notes.previews[id];
@@ -654,6 +689,7 @@ function formatDate(ts: number): string {
         <button
           v-for="note in group.items"
           :key="note.id"
+          v-lazy-preview="note.id"
           class="note-row block w-full rounded-md px-2 py-1.5 text-left hover:bg-glass-hover"
           :class="{
             'bg-glass-active': notes.activeNote?.id === note.id && !noteRowSelected(note.id),

@@ -88,6 +88,7 @@ export interface EditorTab {
   history: string[];
   historyIndex: number;
   pinned?: boolean;
+  scrollTop?: number;
 }
 
 /** A JSON snapshot of the layout store's five refs. `layout` is `null` for a
@@ -188,7 +189,8 @@ export const EditorTabSchema = z.object({
   sessionId: z.string(),
   history: z.array(z.string()),
   historyIndex: z.number(),
-  pinned: z.boolean().optional()
+  pinned: z.boolean().optional(),
+  scrollTop: z.number().optional()
 });
 
 export const EditorGroupSchema = z.object({

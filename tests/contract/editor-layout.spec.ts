@@ -1005,4 +1005,24 @@ describe("useEditorLayoutStore — resize / focus-next / cycle-tab", () => {
     s.cycleTab(1);
     expect(s.activeTab?.noteId).toBe("a");
   });
+
+  it("saveScrollPosition and getScrollPosition preserve per-tab and per-note scroll positions", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const root = s.activeGroupId;
+    const tabId = s.openTab(root, "note-123");
+
+    expect(s.getScrollPosition(tabId, "note-123")).toBe(0);
+
+    // Save scroll position for tab & note
+    s.saveScrollPosition(tabId, "note-123", 450);
+
+    expect(s.getScrollPosition(tabId, "note-123")).toBe(450);
+    expect(s.noteScrollPositions["note-123"]).toBe(450);
+    expect(s.tabs[tabId].scrollTop).toBe(450);
+
+    // Opening note in a new tab retrieves note's saved scroll position
+    const tab2Id = s.openTab(root, "note-123");
+    expect(s.getScrollPosition(tab2Id, "note-123")).toBe(450);
+  });
 });

@@ -5,6 +5,26 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-07-24
+
+### 📜 Editor Scroll Position Persistence Across Tabs & Notes
+- **Per-Tab & Per-Note Scroll Memory**:
+  - Added `scrollTop?: number` to `EditorTab` contracts (`session-state.ts`) and editor layout store (`editor-layout.ts`).
+  - Added per-note scroll position tracking (`noteScrollPositions`) so scroll position is preserved when switching tabs, navigating between notes, or re-opening notes.
+- **DOM Detachment & Reflow Protection**:
+  - Implemented `lastKnownScrollTop` tracking in `Editor.vue` to prevent browser DOM false-zero reads when `<KeepAlive>` detaches inactive tab elements.
+  - Implemented multi-frame reflow restoration (`nextTick`, `requestAnimationFrame`, and delayed frame passes) with `isRestoringScroll` loopback guards to ensure flexbox reflow and image rendering don't reset `scrollTop`.
+  - Wired eager scroll saving into `onNoteChange`, `onDeactivated`, and `onBeforeUnmount`.
+- **Contract Verification**:
+  - Added unit test suite in `editor-layout.spec.ts` for per-tab and per-note scroll position memory.
+
+### 🖼️ Lazy Loading for Notes List Entries & Image Thumbnails
+- **Viewport-Driven Lazy Loading**:
+  - Implemented `v-lazy-preview` custom directive in `NotesList.vue` using native `IntersectionObserver` with a `150px` root margin.
+  - Previews, checklist progress bars, and attachment thumbnails (`hash:<hash>` -> base64/blob URL) are now requested on-demand only as note entries scroll into view.
+- **Optimized Boot & Mutex Protection**:
+  - Updated `notes.load()` in `notes.ts` to eagerly pre-fetch previews for only the top 15 visible notes on list initialization, eliminating SQLite IPC mutex saturation and `DOMParser` thread jank for off-screen notes.
+
 ## [0.4.6] - 2026-07-24
 
 ### 🛠️ Vite Build Resolution Fix for Bundled Changelog

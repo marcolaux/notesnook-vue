@@ -23,7 +23,7 @@
  * extensions share one ProseMirror schema. Importing `@tiptap/core` directly
  * here would grab the nested 2.6.6 copy and split the schema.
  */
-import { ref, watch, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated } from "vue";
+import { ref, watch, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, nextTick } from "vue";
 import { useEditor, EditorContent, type Editor } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -681,8 +681,67 @@ async function loadCurrentNote(): Promise<void> {
       // eslint-disable-next-line no-console
       console.log("[search-scroll] consume target", scrollKey, target.query, target.matchIndex);
       scrollEditorToMatch(inst, target.query, target.matchIndex, target.options);
+    } else {
+      restoreScrollPosition();
     }
   }
+}
+
+let isRestoringScroll = false;
+let lastKnownScrollTop = 0;
+let scrollSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function onScroll(): void {
+  if (isRestoringScroll) return;
+  const el = scrollEl.value;
+  if (!el || myContentState.value !== "loaded") return;
+  const top = el.scrollTop;
+  if (top > 0) {
+    lastKnownScrollTop = top;
+  }
+  if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
+  scrollSaveTimer = setTimeout(() => {
+    if (isRestoringScroll) return;
+    const currentTop = el.scrollTop > 0 ? el.scrollTop : lastKnownScrollTop;
+    if (currentTop > 0) {
+      layout.saveScrollPosition(myKey.value, myNoteId.value ?? undefined, currentTop);
+    }
+  }, 100);
+}
+
+function restoreScrollPosition(): void {
+  const targetScroll = layout.getScrollPosition(myKey.value, myNoteId.value ?? undefined);
+  if (targetScroll <= 0) return;
+
+  isRestoringScroll = true;
+
+  const apply = (): void => {
+    const el = scrollEl.value;
+    if (el) {
+      el.scrollTop = targetScroll;
+      if (el.scrollTop > 0) {
+        lastKnownScrollTop = el.scrollTop;
+      }
+    }
+  };
+
+  apply();
+  void nextTick(() => {
+    apply();
+    requestAnimationFrame(() => {
+      apply();
+      setTimeout(() => {
+        apply();
+        setTimeout(() => {
+          apply();
+          setTimeout(() => {
+            apply();
+            isRestoringScroll = false;
+          }, 150);
+        }, 100);
+      }, 50);
+    });
+  });
 }
 
 /** Force-reload this tab's content from DB and `setContent` ONLY when it differs
@@ -719,6 +778,7 @@ async function reloadIfStale(): Promise<void> {
     // Re-seed the per-pane word count — `setContent(…, false)` doesn't fire
     // `update`, so the live `refreshStatus` path wouldn't see a remote change.
     wordCount.value = textStats(inst.getText({ blockSeparator: "\n" })).words;
+    restoreScrollPosition();
   }
 }
 
@@ -726,6 +786,12 @@ async function onNoteChange(
   newId: string | null | undefined,
   oldId: string | null | undefined
 ): Promise<void> {
+  if (oldId && oldId !== newId && !isRestoringScroll) {
+    const top = (scrollEl.value && scrollEl.value.scrollTop > 0) ? scrollEl.value.scrollTop : lastKnownScrollTop;
+    if (top > 0) {
+      layout.saveScrollPosition(myKey.value, oldId, top);
+    }
+  }
   if (oldId && oldId !== newId && pendingNoteId === oldId) {
     await flushSave();
   }
@@ -934,6 +1000,8 @@ onActivated(async () => {
     // eslint-disable-next-line no-console
     console.log("[search-scroll] consume target (reactivated)", key, target.query, target.matchIndex);
     scrollEditorToMatch(inst, target.query, target.matchIndex, target.options);
+  } else {
+    restoreScrollPosition();
   }
 });
 
@@ -942,10 +1010,21 @@ onActivated(async () => {
 // responds, so split panes don't fight over it.
 onMounted(() => {
   window.addEventListener("keydown", onFindHotkey);
+  restoreScrollPosition();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onFindHotkey);
+  if (scrollSaveTimer) {
+    clearTimeout(scrollSaveTimer);
+    scrollSaveTimer = null;
+  }
+  if (!isRestoringScroll) {
+    const finalTop = (scrollEl.value && scrollEl.value.scrollTop > 0) ? scrollEl.value.scrollTop : lastKnownScrollTop;
+    if (finalTop > 0) {
+      layout.saveScrollPosition(myKey.value, myNoteId.value ?? undefined, finalTop);
+    }
+  }
   // Cancel any pending draft creation: if this draft editor is unmounting
   // before the debounce fired, the user navigated away mid-burst (an explicit
   // abandonment), so don't create a note for the half-typed text. (When
@@ -980,10 +1059,20 @@ onBeforeUnmount(() => {
 });
 
 onDeactivated(() => {
+  if (scrollSaveTimer) {
+    clearTimeout(scrollSaveTimer);
+    scrollSaveTimer = null;
+  }
+  if (!isRestoringScroll) {
+    const finalTop = (scrollEl.value && scrollEl.value.scrollTop > 0) ? scrollEl.value.scrollTop : lastKnownScrollTop;
+    if (finalTop > 0) {
+      layout.saveScrollPosition(myKey.value, myNoteId.value ?? undefined, finalTop);
+    }
+  }
   flushVectorIndexQueue();
 });
 
-// --- Click empty area below a short note → focus + caret on a new blank line -
+// --- Click empty area below a short note → focus + caret on a new blank line ---
 // When the window is much taller than the note, the editor surface (`.ProseMirror`,
 // capped at `min-height: 60vh`) leaves a dead band of scroll-container background
 // below it. Clicking there should not be a no-op: focus the editor and drop the
@@ -1047,15 +1136,7 @@ function onEditorAreaClick(e: MouseEvent): void {
 </script>
 
 <template>
-  <div
-    class="relative flex h-full flex-col bg-transparent"
-  >
-    <EditorToolbar
-      v-if="!isDraft"
-      :editor="editor"
-      :saving="saving"
-      :saved-at="savedAt"
-    />
+  <div class="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-surface">
     <FindBar
       v-if="findOpen && editor"
       :editor="editor"
@@ -1067,6 +1148,7 @@ function onEditorAreaClick(e: MouseEvent): void {
       class="min-h-0 flex-1 overflow-y-auto p-6 scroll-pb-[20vh]"
       @mousedown="onAreaMouseDown"
       @click="onEditorAreaClick"
+      @scroll.passive="onScroll"
     >
       <div v-if="myContentState === 'locked'" class="text-sm text-amber-300/80">
         This note is vault-locked. Unlock arrives in Phase 6.

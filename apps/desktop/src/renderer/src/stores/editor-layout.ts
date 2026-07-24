@@ -101,6 +101,8 @@ export interface EditorTab {
    *  (VS-Code-style scaled content). Defaults to `"toc"` when first toggled
    *  on. Note tabs only. */
   tocMode?: "toc" | "minimap";
+  /** Per-tab scroll position (scrollTop in pixels). */
+  scrollTop?: number;
 }
 
 function genId(): string {
@@ -113,6 +115,7 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
   const tabs = ref<Record<string, EditorTab>>({});
   const sessions = ref<Record<string, EditorSession>>({});
   const activeGroupId = ref<string>("");
+  const noteScrollPositions = ref<Record<string, number>>({});
   // Client-only persisted preferences (the ToC/Minimap last-used mode).
   const config = useConfigStore();
 
@@ -791,12 +794,42 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     return Object.values(tabs.value).filter((t) => t.groupId === groupId);
   }
 
+  /** Save scroll position for a tab and/or note. */
+  function saveScrollPosition(
+    tabId: string | undefined,
+    noteId: string | undefined,
+    scrollTop: number
+  ): void {
+    if (scrollTop < 0) return;
+    if (noteId) {
+      noteScrollPositions.value[noteId] = scrollTop;
+    }
+    if (tabId && tabs.value[tabId]) {
+      tabs.value[tabId] = {
+        ...tabs.value[tabId],
+        scrollTop
+      };
+    }
+  }
+
+  /** Retrieve saved scroll position for a tab or note (falls back to 0). */
+  function getScrollPosition(tabId: string | undefined, noteId: string | undefined): number {
+    if (tabId && tabs.value[tabId]?.scrollTop !== undefined) {
+      return tabs.value[tabId].scrollTop!;
+    }
+    if (noteId && noteScrollPositions.value[noteId] !== undefined) {
+      return noteScrollPositions.value[noteId];
+    }
+    return 0;
+  }
+
   return {
     layout,
     groups,
     tabs,
     sessions,
     activeGroupId,
+    noteScrollPositions,
     groupCount,
     topRightGroupId,
     hasSplitLayout,
@@ -836,6 +869,8 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     canGoForward,
     goBack,
     goForward,
-    tabsOf
+    tabsOf,
+    saveScrollPosition,
+    getScrollPosition
   };
 });

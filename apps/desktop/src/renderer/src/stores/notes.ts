@@ -626,11 +626,13 @@ export const useNotesStore = defineStore("notes", () => {
       void loadColor(id);
       void loadTags(id);
     });
-    // Phase 2 — heavy: content fetch + HTML parse for the thumbnail/checklist.
-    const previews = ids.map((id) => () => {
+    // Phase 2 — heavy: content fetch + HTML parse for thumbnail/checklist.
+    // Pre-fetch initial 15 notes (visible list header) so top thumbnails render immediately;
+    // remaining previews load lazily via IntersectionObserver in NotesList.vue as they scroll into view.
+    const initialPreviews = ids.slice(0, 15).map((id) => () => {
       void loadPreview(id);
     });
-    runChunked(colorTags, () => runChunked(previews, () => {}));
+    runChunked(colorTags, () => runChunked(initialPreviews, () => {}));
     // Refresh the published-id set for the list's globe icon (fire-and-forget —
     // never blocks the list render; a publish/unpublish calls load() again).
     void loadPublishedIds();
