@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Image & Attachment Thumbnail Extraction**:
   - Enhanced note list items in `NotesList.vue` to display thumbnail previews for notes containing images or encrypted file attachments.
   - Updated `note-preview.ts` (`extractThumbnail`) to detect `data-hash` and `hash` attributes on attachment-backed `<img>` elements in note content, returning `hash:<hash>` markers.
-  - Extended `useNotesStore.loadPreview` to resolve `hash:<hash>` thumbnails asynchronously via `db.attachments.read(hash, "base64")` or blob lookup.
+  - Extended `useNotesStore.loadPreview` in `notes.ts` to resolve `hash:<hash>` thumbnails asynchronously via `db.attachments.read(hash, "base64")` or blob lookup.
 
 ### 📎 Attachment File Embed Footers & Utilities
 - **Configurable File Embed Footers**:
@@ -21,17 +21,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✨ Context Menu Wording & Action Consistency
 - **Standardized Context Menu Actions**:
-  - Unified context menu labels across notes, notebooks, tags, colors, and multi-note selections.
+  - Unified context menu labels across notes, notebooks, tags, colors, and multi-note selections in `context-menu-entries.ts`.
   - Replaced legacy mixed wording ("Favorite", "Pin to sidebar") with uniform, intuitive labels: **Add to shortcuts** / **Remove from shortcuts** and **Pin to top** / **Unpin from top**.
 
-### 🧪 Contract Test Suite
+### 🔄 Auto-Updater & Changelog Rendering Fixes
+- **Version Comparison Gate**:
+  - Fixed a bug in `updaterServer.check` where `au.checkForUpdates()` returning a release response would mark an update as available even when the remote version (`0.4.0`) matched the running app version (`0.4.0`). `updaterServer.check` now uses `isNewerUpstreamRelease(remoteVersion, currentVersion)` to ensure updates are only flagged as available when the remote version is strictly newer.
+- **Changelog Modal HTML Rendering & Deep Styling**:
+  - Enhanced `parseMarkdownToHtml` in `markdown.ts` to preserve valid HTML tags (`<h3>`, `<p>`, `<ul>`, `<li>`, `<a>`, `<code>`, etc.) and unescape standalone `<` characters safely without escaping HTML tags into literal text (`&lt;h3&gt;`).
+  - Added `.changelog-body` deep CSS element styling in `ChangelogDialog.vue` for headings, paragraphs, lists, code chips, horizontal rules, and links.
+
+### 🧪 Contract Test Suite Expansion
 - **Expanded Contract Verification**:
+  - Added `markdown.spec.ts` contract suite for testing Markdown & HTML release note parsing.
   - Added `note-footer.spec.ts` contract suite for file embed footer interactions.
   - Extended `note-preview.spec.ts` to verify encrypted attachment thumbnail resolution.
   - Updated `context-menu-entries.spec.ts` for standardized shortcut and pin labels.
-
-### 🔄 Auto-Updater Fixes
-- **Version Comparison Gate**: Fixed a bug where `au.checkForUpdates()` returning a valid release response would mark an update as available even when the remote version (`0.4.0`) matched the running app version (`0.4.0`). `updaterServer.check` now uses `isNewerUpstreamRelease(remoteVersion, currentVersion)` to ensure updates are only flagged as available when the remote version is strictly newer.
 
 ## [0.3.1] - 2026-07-24
 
