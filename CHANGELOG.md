@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Optimized Boot & Mutex Protection**:
   - Updated `notes.load()` in `notes.ts` to eagerly pre-fetch previews for only the top 15 visible notes on list initialization, eliminating SQLite IPC mutex saturation and `DOMParser` thread jank for off-screen notes.
 
+### 🎨 Theme Store & API Request Navigation Security Fix
+- **Service Host Exemption**:
+  - Fixed an issue where `themes-api.notesnook.com` calls in `ThemesSection.vue` and `useThemesCatalog` failed due to navigation security intercepting network requests as external browser open events.
+  - Added `INTERNAL_SERVICE_HOSTS` exemption in `navigation.ts` covering `themes-api.notesnook.com`, `api.notesnook.com`, `auth.streetwriters.co`, `events.streetwriters.co`, `subscriptions.streetwriters.co`, `issues.streetwriters.co`, and `monogr.ph`.
+- **Main Frame Guard**:
+  - Updated `will-frame-navigate` listener to enforce `event.isMainFrame` checks, preventing background API requests or sub-resource fetches from being blocked.
+- **Contract Verification**:
+  - Updated `navigation.spec.ts` contract tests to verify service hosts are identified as internal non-external URLs.
+
 ## [0.4.6] - 2026-07-24
 
 ### 🛠️ Vite Build Resolution Fix for Bundled Changelog

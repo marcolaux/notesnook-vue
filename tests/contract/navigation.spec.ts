@@ -28,12 +28,15 @@ describe("navigation helper", () => {
       expect(isExternalUrl("tel:+1234567890")).toBe(true);
     });
 
-    it("identifies internal app protocols as non-external", () => {
+    it("identifies internal app protocols and service API hosts as non-external", () => {
       expect(isExternalUrl("file:///Users/app/index.html")).toBe(false);
       expect(isExternalUrl("devtools://devtools/bundled/inspector.html")).toBe(false);
       expect(isExternalUrl("about:blank")).toBe(false);
       expect(isExternalUrl("nn://note/12345")).toBe(false);
       expect(isExternalUrl("notesnook://note/12345")).toBe(false);
+      expect(isExternalUrl("https://themes-api.notesnook.com/trpc/themes.query")).toBe(false);
+      expect(isExternalUrl("https://api.notesnook.com")).toBe(false);
+      expect(isExternalUrl("https://auth.streetwriters.co")).toBe(false);
     });
 
     it("handles dev server URL env variable if present", () => {

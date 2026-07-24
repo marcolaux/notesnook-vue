@@ -21,6 +21,16 @@ export function isDeepLinkUrl(urlStr: string): boolean {
   return urlStr.startsWith("nn://") || urlStr.startsWith("notesnook://");
 }
 
+const INTERNAL_SERVICE_HOSTS = new Set([
+  "themes-api.notesnook.com",
+  "api.notesnook.com",
+  "auth.streetwriters.co",
+  "events.streetwriters.co",
+  "subscriptions.streetwriters.co",
+  "issues.streetwriters.co",
+  "monogr.ph"
+]);
+
 /**
  * Determine if a URL is an external web/protocol URL that should open in the system browser.
  */
@@ -45,6 +55,16 @@ export function isExternalUrl(urlStr: string): boolean {
       } catch {
         /* ignore invalid dev URL env */
       }
+    }
+
+    // Localhost or loopback
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      return false;
+    }
+
+    // Internal service / API hosts
+    if (INTERNAL_SERVICE_HOSTS.has(url.hostname)) {
+      return false;
     }
 
     // Internal protocols
@@ -104,8 +124,9 @@ export function setupExternalNavigation(contents: WebContents): void {
     }
   });
 
-  // Intercept sub-frame / frame navigations
+  // Intercept sub-frame / frame navigations — ONLY for top-level main frame navigations
   contents.on("will-frame-navigate", (event) => {
+    if (!event.isMainFrame) return;
     if (isDeepLinkUrl(event.url)) {
       event.preventDefault();
       handleDeepLinkUrl(event.url);
