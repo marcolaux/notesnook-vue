@@ -5,7 +5,29 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-07-26
+
+### 🛠️ Bug Fixes & UX Polish
+- **Standalone Dedicated Changelog Window**:
+  - Replaced in-app overlay with a dedicated singleton `BrowserWindow` (`openChangelogWindow`) reusing OS-native acrylic/vibrancy window chrome.
+  - Resolves multi-window duplicate overlay rendering across open windows.
+- **Link Note Dropdown Auto-Close**:
+  - Registered outside-click, `Escape`, and global `app:close-popups` listeners across inline and toolbar link pickers (`NoteLinkPicker.vue`).
+  - Automatically closes note-link popups when switching active notes or creating new notes.
+- **Checklist Caret Stability**:
+  - Added `inst.isFocused` guard in `reloadIfStale()` (`Editor.vue`).
+  - Prevents background HTML re-checks from calling `setContent()` while editing, eliminating caret jumping to the end of the note in checklists.
+- **`Cmd+,` Settings Shortcut**:
+  - Added `Cmd/Ctrl+,` keydown listener in `useTabShortcuts.ts` and macOS App Menu role in `menu.ts` so opening Settings works reliably when focus is inside the note editor.
+- **Cross-Window Note Dragging**:
+  - Corrected dragstart screen coordinates in `NotesList.vue` and `NoteTabs.vue` to exact DIP points (`window.screenX + e.clientX`).
+  - Fixes cross-window note drag-and-drop tear-off and window tab release on Retina/High-DPI displays.
+- **Strict TypeScript & Typecheck Verification**:
+  - Merged `DEFAULT_NOTE_LINK_LABELS` in `note-link-bridge.ts` and split `DisplayRow` into `NoteRow` & `BlockRow` discriminated unions in `NoteLinkPicker.vue`.
+  - 103 test files and 1,496 contract tests passing 100% cleanly.
+
 ## [0.7.0] - 2026-07-26
+
 
 ### 🕸️ Interactive Vector & Semantic Cluster Visualizer
 - **Local On-Device Vector Embeddings & Clustering**:
