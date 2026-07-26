@@ -5,6 +5,19 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-07-26
+
+### 🛡️ Custom Backup Directory & Release Notes Polish
+- **Custom Backup Directory Selection**:
+  - Added persistent `backupDirectory` setting in `useConfigStore` and UI in `BackupSection.vue`.
+  - Added native folder picker bridge (`selectDirectory` and `saveFileToDir` IPC procedures) so manual and automatic backups save directly to a chosen folder without prompting for location each time.
+- **Newest Version Release Notes View**:
+  - Updated `ChangelogDialog.vue` and `ChangelogLayout.vue` to compute the target release version tag (`updater.status.version` or latest version in `CHANGELOG.md`).
+  - Added `getLatestChangelogVersion()` and version section filtering in `formatBundledChangelog()` (`markdown.ts`) to extract specifically the uninstalled release notes section.
+  - Updated `triggerTestChangelog()` in `updater.ts` to simulate the newest version release notes in test mode.
+- **Contract Verification Suite**:
+  - All typechecks and contract tests passing 100% cleanly.
+
 ## [0.7.1] - 2026-07-26
 
 ### 🛠️ Bug Fixes & UX Polish

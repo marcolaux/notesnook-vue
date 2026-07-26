@@ -44,12 +44,25 @@ describe("config store", () => {
     expect(c.encryptBackups).toBe(false);
     expect(c.backupReminderOffset).toBe(0);
     expect(c.fullBackupReminderOffset).toBe(0);
+    expect(c.backupDirectory).toBeNull();
     expect(c.doubleSpacedLines).toBe(true);
     expect(c.markdownShortcuts).toBe(false);
     expect(c.fontLigatures).toBe(false);
     expect(c.hideNoteTitle).toBe(false);
     expect(c.homepage).toEqual({ type: "route", id: "notes" });
     expect(c.imageCompression).toBe(ImageCompressionOptions.ASK_EVERY_TIME);
+  });
+
+  it("persists + re-reads backupDirectory path", () => {
+    const c = useConfigStore();
+    c.setBackupDirectory("/Users/test/Backups");
+    expect(c.backupDirectory).toBe("/Users/test/Backups");
+    expect(storage.getItem(CONFIG_PREFIX + "backupDirectory")).toBe(
+      JSON.stringify("/Users/test/Backups")
+    );
+
+    setActivePinia(createPinia());
+    expect(useConfigStore().backupDirectory).toBe("/Users/test/Backups");
   });
 
   it("persists + re-reads a boolean toggle (write-through)", () => {

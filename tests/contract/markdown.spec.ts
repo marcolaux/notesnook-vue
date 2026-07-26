@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseMarkdownToHtml, formatBundledChangelog } from "@/utils/markdown";
+import { parseMarkdownToHtml, formatBundledChangelog, getLatestChangelogVersion } from "@/utils/markdown";
 
 describe("parseMarkdownToHtml", () => {
   it("returns empty string for empty input", () => {
@@ -45,15 +45,36 @@ describe("parseMarkdownToHtml", () => {
   });
 });
 
+describe("getLatestChangelogVersion", () => {
+  it("returns null for empty input", () => {
+    expect(getLatestChangelogVersion("")).toBeNull();
+  });
+
+  it("extracts the topmost version string", () => {
+    const raw = `# Changelog\n\n## [0.8.0] - 2026-07-27\n- Feature A\n\n## [0.7.1] - 2026-07-26\n- Fix B`;
+    expect(getLatestChangelogVersion(raw)).toBe("0.8.0");
+  });
+});
+
 describe("formatBundledChangelog", () => {
   it("returns empty string for empty input", () => {
     expect(formatBundledChangelog("")).toBe("");
   });
 
-  it("strips root # Changelog header and starts at the first ## [version] section", () => {
-    const rawContent = `# Changelog\n\nAll notable changes...\n\n## [0.4.3] - 2026-07-24\n\n### Feature\n- Notes`;
+  it("extracts the topmost version section when no target version is supplied", () => {
+    const rawContent = `# Changelog\n\nAll notable changes...\n\n## [0.8.0] - 2026-07-27\n\n### Feature\n- New feature\n\n## [0.7.1] - 2026-07-26\n\n### Fix\n- Bug fix`;
     const formatted = formatBundledChangelog(rawContent);
-    expect(formatted).toBe("## [0.4.3] - 2026-07-24\n\n### Feature\n- Notes");
+    expect(formatted).toContain("## [0.8.0]");
+    expect(formatted).toContain("New feature");
+    expect(formatted).not.toContain("## [0.7.1]");
     expect(formatted).not.toContain("# Changelog");
+  });
+
+  it("extracts specific section when target version is provided", () => {
+    const rawContent = `# Changelog\n\n## [0.8.0] - 2026-07-27\n\n- Feature A\n\n## [0.7.1] - 2026-07-26\n\n- Fix B`;
+    const formatted = formatBundledChangelog(rawContent, "0.7.1");
+    expect(formatted).toContain("## [0.7.1]");
+    expect(formatted).toContain("Fix B");
+    expect(formatted).not.toContain("0.8.0");
   });
 });

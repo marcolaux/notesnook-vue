@@ -8,6 +8,7 @@ import {
   type UpdatePhase
 } from "@/utils/updater";
 import type { UpdateStatus } from "@contracts/router";
+import { formatBundledChangelog, getLatestChangelogVersion } from "@/utils/markdown";
 
 let initialized = false;
 let ipcUnsub: (() => void) | undefined;
@@ -82,11 +83,15 @@ export const useUpdaterStore = defineStore("updater", () => {
   }
 
   function triggerTestChangelog(): void {
+    const rawChangelogText = typeof __CHANGELOG_CONTENT__ !== "undefined" ? __CHANGELOG_CONTENT__ : "";
+    const latestBundledVer = getLatestChangelogVersion(rawChangelogText);
+    const testVersion = latestBundledVer && latestBundledVer !== __APP_VERSION__ ? latestBundledVer : "0.8.0";
     status.value = {
       available: true,
-      version: __APP_VERSION__,
+      version: testVersion,
       downloaded: false,
-      progress: 0
+      progress: 0,
+      releaseNotes: formatBundledChangelog(rawChangelogText, testVersion)
     };
     dismissedVersion.value = null;
     openChangelog();

@@ -17,6 +17,7 @@
  */
 import { dialog, BrowserWindow } from "electron";
 import { writeFile, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { registerDialogServer, type DialogServer } from "../contracts/router";
 
 /** The focused window to parent dialogs to, or `undefined` for app-modal. */
@@ -62,6 +63,23 @@ export function createDialogServer(
       const slash = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
       const name = slash >= 0 ? filePath.slice(slash + 1) : filePath;
       return { name, data };
+    },
+    async selectDirectory(): Promise<string | undefined> {
+      const win = getParent();
+      const result = win
+        ? await dialog.showOpenDialog(win, {
+            properties: ["openDirectory", "createDirectory"]
+          })
+        : await dialog.showOpenDialog({
+            properties: ["openDirectory", "createDirectory"]
+          });
+      if (result.canceled || result.filePaths.length === 0) return undefined;
+      return result.filePaths[0];
+    },
+    async saveFileToDir(dir: string, defaultName: string, data: string): Promise<boolean> {
+      const fullPath = join(dir, defaultName);
+      await writeFile(fullPath, data, "utf-8");
+      return true;
     }
   };
 }

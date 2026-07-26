@@ -107,11 +107,48 @@ export function parseMarkdownToHtml(markdownText: string): string {
 }
 
 /**
- * Format raw root CHANGELOG.md content for rendering in the Changelog modal.
- * Strips the top header (`# Changelog...`) so content begins cleanly at the first release section `## [X.Y.Z]`.
+ * Extract the latest (topmost) version tag from raw CHANGELOG.md content (e.g. "0.8.0").
  */
-export function formatBundledChangelog(rawText: string): string {
+export function getLatestChangelogVersion(rawText: string): string | null {
+  if (!rawText) return null;
+  const match = rawText.match(/^##\s+\[?v?([0-9]+\.[0-9]+\.[0-9]+[^\s\]-]*)/m);
+  return match ? (match[1] as string) : null;
+}
+
+/**
+ * Format raw root CHANGELOG.md content for rendering in the Changelog modal.
+ * Strips the top header and extracts the release section for `targetVersion`
+ * (or the topmost newest version section if no target version is provided/matched).
+ */
+export function formatBundledChangelog(rawText: string, targetVersion?: string | null): string {
   if (!rawText) return "";
-  const matchIdx = rawText.search(/^##\s+\[/m);
-  return matchIdx !== -1 ? rawText.slice(matchIdx).trim() : rawText.trim();
+
+  const trimmed = rawText.trim();
+  const firstHeaderIdx = trimmed.search(/^##\s+\[?/m);
+  if (firstHeaderIdx === -1) return trimmed;
+
+  const content = trimmed.slice(firstHeaderIdx).trim();
+
+  if (targetVersion) {
+    const cleanVer = targetVersion.replace(/^v/i, "").trim();
+    const escaped = cleanVer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`^##\\s+\\[?v?${escaped}\\]?`, "m");
+    const match = content.match(regex);
+    if (match && match.index !== undefined) {
+      const startIdx = match.index;
+      const rest = content.slice(startIdx);
+      const nextHeaderMatch = rest.slice(match[0].length).search(/^##\s+\[?/m);
+      if (nextHeaderMatch !== -1) {
+        return rest.slice(0, match[0].length + nextHeaderMatch).trim();
+      }
+      return rest.trim();
+    }
+  }
+
+  // Fallback: extract the topmost (newest) version section
+  const nextHeaderIdx = content.slice(3).search(/^##\s+\[?/m);
+  if (nextHeaderIdx !== -1) {
+    return content.slice(0, 3 + nextHeaderIdx).trim();
+  }
+  return content;
 }

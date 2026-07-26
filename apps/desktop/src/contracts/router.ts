@@ -310,6 +310,10 @@ export interface DialogServer {
    *  and read the chosen file as UTF-8. Returns `{ name, data }` or `undefined`
    *  if the user cancelled. Rejects on a read error. */
   openFile(extensions: string[]): Promise<{ name: string; data: string } | undefined>;
+  /** Show a directory picker dialog. Returns selected folder path or `undefined` if cancelled. */
+  selectDirectory(): Promise<string | undefined>;
+  /** Write `data` directly to `dir/defaultName`. Returns `true` if written, rejects on error. */
+  saveFileToDir(dir: string, defaultName: string, data: string): Promise<boolean>;
 }
 
 let dialogServer: DialogServer | undefined;
@@ -779,7 +783,13 @@ export const appRouter = t.router({
       .mutation(({ input }) => requireDialog().saveFile(input.defaultName, input.data)),
     openFile: t.procedure
       .input(z.object({ extensions: z.array(z.string()) }))
-      .mutation(({ input }) => requireDialog().openFile(input.extensions))
+      .mutation(({ input }) => requireDialog().openFile(input.extensions)),
+    selectDirectory: t.procedure.mutation(() => requireDialog().selectDirectory()),
+    saveFileToDir: t.procedure
+      .input(z.object({ dir: z.string(), defaultName: z.string(), data: z.string() }))
+      .mutation(({ input }) =>
+        requireDialog().saveFileToDir(input.dir, input.defaultName, input.data)
+      )
   }),
 
   // Shell — OS-interaction for the attachment preview's "Open externally"

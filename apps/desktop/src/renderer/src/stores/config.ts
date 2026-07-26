@@ -68,6 +68,7 @@ export type ConfigKey =
   | "encryptBackups"
   | "backupReminderOffset"
   | "fullBackupReminderOffset"
+  | "backupDirectory"
   | "doubleSpacedLines"
   | "markdownShortcuts"
   | "fontLigatures"
@@ -91,6 +92,7 @@ export const CONFIG_DEFAULTS: {
   encryptBackups: boolean;
   backupReminderOffset: number;
   fullBackupReminderOffset: number;
+  backupDirectory: string | null;
   doubleSpacedLines: boolean;
   markdownShortcuts: boolean;
   fontLigatures: boolean;
@@ -114,6 +116,7 @@ export const CONFIG_DEFAULTS: {
   encryptBackups: false,
   backupReminderOffset: 0,
   fullBackupReminderOffset: 0,
+  backupDirectory: null,
   doubleSpacedLines: true,
   markdownShortcuts: false,
   fontLigatures: false,
@@ -168,6 +171,9 @@ export const useConfigStore = defineStore("config", () => {
   const fullBackupReminderOffset = ref(
     readConfig("fullBackupReminderOffset", CONFIG_DEFAULTS.fullBackupReminderOffset)
   );
+  const backupDirectory = ref(
+    readConfig("backupDirectory", CONFIG_DEFAULTS.backupDirectory)
+  );
 
   // --- editor / behaviour (Phase 4 consumers) ---------------------------------
   const doubleSpacedLines = ref(
@@ -212,6 +218,10 @@ export const useConfigStore = defineStore("config", () => {
     fullBackupReminderOffset.value = readConfig(
       "fullBackupReminderOffset",
       CONFIG_DEFAULTS.fullBackupReminderOffset
+    );
+    backupDirectory.value = readConfig(
+      "backupDirectory",
+      CONFIG_DEFAULTS.backupDirectory
     );
     doubleSpacedLines.value = readConfig(
       "doubleSpacedLines",
@@ -268,6 +278,10 @@ export const useConfigStore = defineStore("config", () => {
     fullBackupReminderOffset.value = v;
     writeConfig("fullBackupReminderOffset", v);
   }
+  function setBackupDirectory(v: string | null): void {
+    backupDirectory.value = v;
+    writeConfig("backupDirectory", v);
+  }
   function setDoubleSpacedLines(v: boolean): void {
     doubleSpacedLines.value = v;
     writeConfig("doubleSpacedLines", v);
@@ -315,6 +329,7 @@ export const useConfigStore = defineStore("config", () => {
     encryptBackups,
     backupReminderOffset,
     fullBackupReminderOffset,
+    backupDirectory,
     // editor / behaviour
     doubleSpacedLines,
     markdownShortcuts,
@@ -334,6 +349,7 @@ export const useConfigStore = defineStore("config", () => {
     setEncryptBackups,
     setBackupReminderOffset,
     setFullBackupReminderOffset,
+    setBackupDirectory,
     setDoubleSpacedLines,
     setMarkdownShortcuts,
     setFontLigatures,

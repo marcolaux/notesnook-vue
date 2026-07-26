@@ -5,23 +5,33 @@
  */
 import { computed } from "vue";
 import { useUpdaterStore } from "@/stores/updater";
-import { parseMarkdownToHtml, formatBundledChangelog } from "@/utils/markdown";
+import { parseMarkdownToHtml, formatBundledChangelog, getLatestChangelogVersion } from "@/utils/markdown";
 import { Icon } from "@notesnook-vue/ui-vue";
 
 const updater = useUpdaterStore();
 
+const rawChangelogText = typeof __CHANGELOG_CONTENT__ !== "undefined" ? __CHANGELOG_CONTENT__ : "";
+const latestBundledVersion = getLatestChangelogVersion(rawChangelogText);
+
+const targetVersion = computed(() => {
+  if (updater.status.version) return updater.status.version;
+  if (latestBundledVersion) return latestBundledVersion;
+  return __APP_VERSION__;
+});
+
 const versionTag = computed(() => {
-  const v = updater.status.version || __APP_VERSION__;
+  const v = targetVersion.value;
   return v ? (v.startsWith("v") ? v : `v${v}`) : `v${__APP_VERSION__}`;
 });
 
 const downloading = computed(() => updater.phase === "downloading");
 
-const rawChangelogText = typeof __CHANGELOG_CONTENT__ !== "undefined" ? __CHANGELOG_CONTENT__ : "";
-const fallbackNotes = formatBundledChangelog(rawChangelogText);
+const fallbackNotes = computed(() => {
+  return formatBundledChangelog(rawChangelogText, targetVersion.value);
+});
 
 const changelogContent = computed(() => {
-  return updater.status.releaseNotes?.trim() || fallbackNotes;
+  return updater.status.releaseNotes?.trim() || fallbackNotes.value;
 });
 
 const renderedHtml = computed(() => {

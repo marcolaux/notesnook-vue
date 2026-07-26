@@ -79,7 +79,20 @@ function backupFilename(mode: "partial" | "full"): string {
   return `${stamp}${mode === "full" ? "-full" : ""}.nnbackup`;
 }
 
-/** Export a backup and save it to a user-chosen `.nnbackup` file. Refuses
+async function onSelectBackupDirectory(): Promise<void> {
+  const dir = await desktop.dialog.selectDirectory.mutate();
+  if (dir) {
+    config.setBackupDirectory(dir);
+    info.value = `Backup directory set to: ${dir}`;
+  }
+}
+
+function onClearBackupDirectory(): void {
+  config.setBackupDirectory(null);
+  info.value = "Backup directory cleared.";
+}
+
+/** Export a backup and save it to a user-chosen `.nnbackup` file (or configured backup directory). Refuses
  *  multi-chunk exports (would need `.nnbackupz` zip) instead of truncating. */
 async function onBackupNow(): Promise<void> {
   formError.value = null;
@@ -110,10 +123,19 @@ async function onBackupNow(): Promise<void> {
       "This backup is too large for the single-file format (>10MB). Multi-file .nnbackupz support is coming; export a smaller range or wait for the zip format.";
     return;
   }
-  const saved = await desktop.dialog.saveFile.mutate({
-    defaultName: backupFilename(mode),
-    data: dataChunks[0]!.data
-  });
+  let saved = false;
+  if (config.backupDirectory) {
+    saved = await desktop.dialog.saveFileToDir.mutate({
+      dir: config.backupDirectory,
+      defaultName: backupFilename(mode),
+      data: dataChunks[0]!.data
+    });
+  } else {
+    saved = await desktop.dialog.saveFile.mutate({
+      defaultName: backupFilename(mode),
+      data: dataChunks[0]!.data
+    });
+  }
   if (!saved) return; // user cancelled
   info.value = "Backup saved.";
 }
@@ -224,6 +246,24 @@ async function onRestore(): Promise<void> {
           >
             <option v-for="o in reminderOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
+        </Flex>
+
+        <Flex direction="column" :gap="1">
+          <Text variant="body" size="sm" class="text-text-muted">Backup directory</Text>
+          <Flex direction="row" :gap="2" class="flex-wrap items-center">
+            <Input
+              :model-value="config.backupDirectory ?? ''"
+              readonly
+              block
+              placeholder="Not set (prompts for location on backup)"
+              class="flex-1"
+            />
+            <Button variant="secondary" @click="onSelectBackupDirectory">Choose directory</Button>
+            <Button v-if="config.backupDirectory" variant="ghost" @click="onClearBackupDirectory">Clear</Button>
+          </Flex>
+          <Text variant="body" size="xs" class="text-text-muted"
+            >Select a directory to store automatic and manual backups without prompting.</Text
+          >
         </Flex>
       </Flex>
 
