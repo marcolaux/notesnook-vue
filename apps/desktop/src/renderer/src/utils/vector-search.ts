@@ -140,11 +140,17 @@ export function bindUserActivityListeners(): void {
 /**
  * Incrementally index a note's text content.
  * Reuses existing chunk embeddings for unchanged paragraphs to eliminate unnecessary computations.
+ * Accepts optional note title to enrich chunk 0 with metadata context.
  */
-export async function indexNoteEmbeddings(noteId: string, rawContent: string): Promise<void> {
+export async function indexNoteEmbeddings(
+  noteId: string,
+  rawContent: string,
+  title?: string
+): Promise<void> {
   if (!readSemanticSearchEnabled() || !noteId) return;
 
-  const chunks = chunkText(rawContent);
+  const fullText = title && title.trim() ? `${title.trim()}\n\n${rawContent}` : rawContent;
+  const chunks = chunkText(fullText);
 
   try {
     // 1. Fetch existing chunks for this note
@@ -179,7 +185,7 @@ export async function indexNoteEmbeddings(noteId: string, rawContent: string): P
     for (const chunk of chunks) {
       // Check if user is actively typing/interacting. If so, suspend indexing
       if (isUserRecentlyActive(5000)) {
-        indexQueue.set(noteId, rawContent);
+        indexQueue.set(noteId, { rawContent, title });
         return;
       }
 
@@ -212,7 +218,12 @@ export async function indexNoteEmbeddings(noteId: string, rawContent: string): P
   }
 }
 
-const indexQueue = new Map<string, string>();
+interface QueuedItem {
+  rawContent: string;
+  title?: string | undefined;
+}
+
+const indexQueue = new Map<string, QueuedItem>();
 let queueTimer: ReturnType<typeof setTimeout> | null = null;
 const DEBOUNCE_DELAY_MS = 10_000; // 10s delay while actively editing
 
@@ -220,11 +231,15 @@ const DEBOUNCE_DELAY_MS = 10_000; // 10s delay while actively editing
  * Non-blocking, debounced, activity-gated embedding queue for note edits & preview loads.
  * Guarantees active typing and UI rendering remain 100% fast, fluid, and lag-free.
  */
-export function queueIndexNoteEmbeddings(noteId: string, rawContent: string): void {
+export function queueIndexNoteEmbeddings(
+  noteId: string,
+  rawContent: string,
+  title?: string
+): void {
   if (!readSemanticSearchEnabled() || !noteId || !rawContent) return;
 
   bindUserActivityListeners();
-  indexQueue.set(noteId, rawContent);
+  indexQueue.set(noteId, { rawContent, title });
 
   if (queueTimer) clearTimeout(queueTimer);
 
@@ -237,7 +252,7 @@ export function queueIndexNoteEmbeddings(noteId: string, rawContent: string): vo
     scheduleIdle(async () => {
       // Defer if user typed recently
       if (isUserRecentlyActive(8000)) {
-        queueIndexNoteEmbeddings(noteId, rawContent);
+        queueIndexNoteEmbeddings(noteId, rawContent, title);
         return;
       }
 
@@ -247,12 +262,12 @@ export function queueIndexNoteEmbeddings(noteId: string, rawContent: string): vo
       const pending = Array.from(indexQueue.entries());
       indexQueue.clear();
 
-      for (const [id, content] of pending) {
+      for (const [id, item] of pending) {
         if (isUserRecentlyActive(5000)) {
-          indexQueue.set(id, content);
+          indexQueue.set(id, item);
           break;
         }
-        await indexNoteEmbeddings(id, content);
+        await indexNoteEmbeddings(id, item.rawContent, item.title);
       }
 
       setTimeout(() => {
@@ -281,8 +296,8 @@ export function flushVectorIndexQueue(): void {
 
   scheduleIdle(async () => {
     isIndexing.value = true;
-    for (const [id, content] of pending) {
-      await indexNoteEmbeddings(id, content);
+    for (const [id, item] of pending) {
+      await indexNoteEmbeddings(id, item.rawContent, item.title);
     }
     setTimeout(() => {
       isIndexing.value = false;
@@ -312,3 +327,41 @@ export async function purgeVectorIndex(): Promise<void> {
     console.error("[vector-search] purgeVectorIndex failed:", err);
   }
 }
+
+/**
+ * Background catch-up scanner: finds unindexed notes in the database
+ * and queues them for vector embedding generation during idle CPU time.
+ */
+export async function indexUnindexedNotes(): Promise<void> {
+  if (!readSemanticSearchEnabled()) return;
+  try {
+    const indexedRows = await runSql<{ note_id: string }>(
+      "SELECT DISTINCT note_id FROM vec_notes"
+    );
+    const indexedSet = new Set(indexedRows.map((r) => r.note_id));
+
+    // Dynamic import to break any circular dependency with bootstrap platform
+    const { getDatabase } = await import("@/platform/bootstrap");
+    const db = getDatabase();
+    const allNotes = await db.notes.all.items();
+    const unindexed = allNotes.filter((n: { id: string; title: string }) => !indexedSet.has(n.id));
+
+    if (unindexed.length === 0) return;
+
+    for (const note of unindexed) {
+      if (!readSemanticSearchEnabled()) break;
+      try {
+        const item = await db.content.findByNoteId(note.id);
+        const data = item && typeof item.data === "string" ? item.data : "";
+        if (data) {
+          queueIndexNoteEmbeddings(note.id, data, note.title);
+        }
+      } catch {
+        // Skip individual note read error
+      }
+    }
+  } catch (err) {
+    console.error("[vector-search] indexUnindexedNotes failed:", err);
+  }
+}
+

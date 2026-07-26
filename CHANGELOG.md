@@ -5,6 +5,24 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-26
+
+### 🧠 Vector Search Engine Optimizations & Metadata Context Enrichment
+- **Multi-Field Title Metadata Context Enrichment**:
+  - Enhanced `indexNoteEmbeddings` and `queueIndexNoteEmbeddings` in `vector-search.ts` to accept note title metadata.
+  - Prepended title metadata to chunk 0 (`${title}\n\n${rawContent}`), enriching vector chunk 0 to boost semantic retrieval accuracy for title-level keywords.
+  - Updated `notes.ts` store (`loadPreview` and `saveContent`) to automatically pass note titles to the background vector indexing queue.
+- **Background Idle Catch-Up Scanner (`indexUnindexedNotes`)**:
+  - Implemented `indexUnindexedNotes()` in `vector-search.ts` to query unindexed notes from the database (`SELECT DISTINCT note_id FROM vec_notes`) and queue them into the embedding pipeline during idle CPU time.
+  - Integrated automatic idle scanner scheduling in `bootstrap.ts` after database initialization via `requestIdleCallback`.
+- **Contract Test Suite Coverage**:
+  - Extended `vector-search.spec.ts` contract tests to verify title metadata chunking and `indexUnindexedNotes` scanner exports.
+
+### 🛠️ Main Process SQLite Regexp Function Registration
+- **Custom SQL `regexp` Function**:
+  - Registered custom `regexp` function on `better-sqlite3-multiple-ciphers` instance in `apps/desktop/src/main/sqlite.ts` (`this.sqlite.function("regexp", ...)`).
+  - Resolved `SqliteError: no such function: regexp` error during `@notesnook/core` database lookup queries.
+
 ## [0.4.9] - 2026-07-24
 
 ### ✏️ Editor Toolbar, Active Pane Surfaces & Search Scroll Restoration

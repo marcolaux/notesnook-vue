@@ -30,12 +30,25 @@ describe("Vector Search Utilities", () => {
   });
 
   it("recordUserActivity & isUserRecentlyActive track active user interactions", async () => {
-    const { recordUserActivity, isUserRecentlyActive } = await import(
+    const { recordUserActivity, isUserRecentlyActive, indexUnindexedNotes } = await import(
       "../../apps/desktop/src/renderer/src/utils/vector-search"
     );
 
     recordUserActivity();
     expect(isUserRecentlyActive(5000)).toBe(true);
     expect(isUserRecentlyActive(0)).toBe(false);
+    expect(typeof indexUnindexedNotes).toBe("function");
+  });
+
+  it("chunkText includes prepended title metadata in chunk 0", () => {
+    const title = "Project Antigravity Architecture";
+    const rawContent = "<p>This is the note body content discussing vector search.</p>";
+    const fullText = `${title}\n\n${rawContent}`;
+    const chunks = chunkText(fullText);
+
+    expect(chunks.length).toBeGreaterThan(0);
+    expect(chunks[0].text).toContain("Project Antigravity Architecture");
+    expect(chunks[0].text).toContain("This is the note body content");
   });
 });
+

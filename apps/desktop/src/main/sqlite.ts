@@ -83,6 +83,15 @@ class SQLite {
       throw new Error("Database path is not allowed: " + this.filePath);
     try {
       this.sqlite = new Database(this.filePath).unsafeMode(true);
+      this.sqlite.function("regexp", (pattern: unknown, text: unknown) => {
+        if (typeof pattern !== "string" || text == null) return 0;
+        try {
+          const regex = new RegExp(pattern, "i");
+          return regex.test(String(text)) ? 1 : 0;
+        } catch {
+          return 0;
+        }
+      });
     } catch (e) {
       // Open itself rarely acquires the exclusive lock (the first write-class
       // PRAGMA does), but cover it so a held lock surfaces as the marked error

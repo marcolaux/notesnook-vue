@@ -85,6 +85,22 @@ export async function bootstrap(): Promise<Database> {
     // contexts get a real user via login. Idempotent + offline (no network).
     if (isLocal(contextId)) await ensureLocalUser(db);
     await desktop.log.mutate({ level: "info", message: `database initialised (context: ${contextId})` });
+
+    // Schedule background idle vector search catch-up indexing for unindexed notes
+    const triggerScanner = (): void => {
+      import("@/utils/vector-search")
+        .then(({ indexUnindexedNotes }) => {
+          void indexUnindexedNotes();
+        })
+        .catch(() => undefined);
+    };
+
+    if (typeof requestIdleCallback !== "undefined") {
+      requestIdleCallback(triggerScanner);
+    } else {
+      setTimeout(triggerScanner, 2000);
+    }
+
     return db;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

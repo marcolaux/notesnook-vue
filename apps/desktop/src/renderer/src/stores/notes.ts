@@ -684,7 +684,7 @@ export const useNotesStore = defineStore("notes", () => {
       const rawPreview = extractNotePreview(data);
       const preview = await resolveThumbnail(rawPreview);
       previews.value = { ...previews.value, [noteId]: preview };
-      if (data) queueIndexNoteEmbeddings(noteId, data);
+      if (data) queueIndexNoteEmbeddings(noteId, data, titleOf(noteId));
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[notes] loadPreview failed:", e);
@@ -1102,7 +1102,7 @@ export const useNotesStore = defineStore("notes", () => {
       const rawPreview = extractNotePreview(html);
       const preview = await resolveThumbnail(rawPreview);
       previews.value = { ...previews.value, [note.id]: preview };
-      queueIndexNoteEmbeddings(note.id, html);
+      queueIndexNoteEmbeddings(note.id, html, note.title);
       // Tell the other windows so an editor showing this note reloads.
       broadcastNoteChanged(note.id);
       // TEMP DIAG: confirm the note↔attachment relation was created by core's
