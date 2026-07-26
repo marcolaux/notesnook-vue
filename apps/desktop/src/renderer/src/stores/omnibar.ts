@@ -503,6 +503,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
   // --- notes-mode open actions (lifted; signatures load-bearing for
   //     SearchResultsPane) ---------------------------------------------------
   function openNoteAt(noteId: string, q: string, matchIndex = 0): void {
+    shell.setVisualizerVisible(false);
     const tabId = layout.openTab(layout.activeGroupId, noteId);
     if (!tabId) {
       close();
@@ -521,6 +522,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
   }
 
   function openResultsTab(): void {
+    shell.setVisualizerVisible(false);
     const q = query.value.trim();
     if (!q) return;
     layout.openSearchTab(q);
@@ -538,6 +540,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
    *  a command (e.g. `app:search-notes` → `openNotes`) may switch the omnibar to
    *  another mode and keep it open — only close if it did NOT switch modes. */
   function executeCommand(index = activeIndex.value): void {
+    shell.setVisualizerVisible(false);
     const cmd = commandItems.value[index];
     const modeBefore = mode.value;
     if (cmd) cmd.run(ctx.value);
@@ -546,6 +549,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
 
   /** Dispatch the active row's pick action for the current mode. */
   function pick(index = activeIndex.value): void {
+    shell.setVisualizerVisible(false);
     switch (mode.value) {
       case "notes":
         openResult(index);
@@ -565,6 +569,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
         close();
         return;
       }
+
       case "tabs": {
         const it = tabViewItems.value[index];
         if (!it) return;

@@ -399,6 +399,15 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     run: (e) => chain(e).toggleTaskList().run()
   },
   {
+    id: "detailsToggle",
+    title: "Toggle list",
+    keywords: ["toggle", "accordion", "collapsible", "details", "fold"],
+    slash: true,
+    glyph: "chevron-right-square",
+    isActive: (e) => e.isActive("details"),
+    run: (e) => chain(e).toggleDetails().run()
+  },
+  {
     id: "codeBlock",
     title: "Code block",
     keywords: ["pre", "code", "snippet"],
@@ -582,7 +591,7 @@ export const DEFAULT_TOOLBAR: ToolbarDefinition = [
     ]
   ],
   ["headings", "fontFamily"],
-  ["checkList", "numberedList", "bulletList"],
+  ["checkList", "numberedList", "bulletList", "detailsToggle"],
   ["alignment"],
   ["tableSettings", "imageSettings", "embedSettings"]
 ];

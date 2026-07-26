@@ -61,6 +61,8 @@ export const useShellStore = defineStore("shell", () => {
    * restores whatever they were). The torn-off note window boots with this on;
    * the main window can toggle it via the command palette. */
   const focusMode = ref(false);
+  /** Vector & Cluster Visualizer overlay state */
+  const visualizerVisible = ref(false);
 
   // --- Resizable left-panel widths (persisted, client-only) -------------------
   const sidebarWidth = ref(readWidth(SIDEBAR_WIDTH_KEY, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX));
@@ -86,6 +88,14 @@ export const useShellStore = defineStore("shell", () => {
     focusMode.value = value;
   }
 
+  function toggleVisualizer(): void {
+    visualizerVisible.value = !visualizerVisible.value;
+  }
+
+  function setVisualizerVisible(value: boolean): void {
+    visualizerVisible.value = value;
+  }
+
   /** Set + persist the sidebar width (clamped to `[SIDEBAR_MIN, SIDEBAR_MAX]`). */
   function setSidebarWidth(px: number): void {
     const next = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX);
@@ -105,6 +115,7 @@ export const useShellStore = defineStore("shell", () => {
     listCollapsed,
     propertiesVisible,
     focusMode,
+    visualizerVisible,
     sidebarWidth,
     listWidth,
     toggleSidebar,
@@ -112,6 +123,8 @@ export const useShellStore = defineStore("shell", () => {
     toggleProperties,
     toggleFocusMode,
     setFocusMode,
+    toggleVisualizer,
+    setVisualizerVisible,
     setSidebarWidth,
     setListWidth
   };

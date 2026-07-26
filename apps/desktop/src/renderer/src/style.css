@@ -615,6 +615,69 @@ html[data-transparency="off"] .editor-tab-inactive {
   display: none !important;
 }
 
+/* Collapsible Details / Accordion Block */
+.ProseMirror details.details-node-wrapper {
+  position: relative;
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.75rem 0.5rem 2.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in oklab, var(--paragraph) 18%, transparent);
+  background: color-mix(in oklab, var(--paragraph) 5%, transparent);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+.ProseMirror details.details-node-wrapper:hover {
+  border-color: color-mix(in oklab, var(--paragraph) 30%, transparent);
+  background: color-mix(in oklab, var(--paragraph) 8%, transparent);
+}
+.ProseMirror details.details-node-wrapper .details-toggle-btn {
+  position: absolute;
+  left: 0.5rem;
+  top: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: color-mix(in oklab, var(--paragraph) 70%, transparent);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.ProseMirror details.details-node-wrapper .details-toggle-btn:hover {
+  background: color-mix(in oklab, var(--paragraph) 15%, transparent);
+  color: var(--color-text);
+}
+.ProseMirror details.details-node-wrapper summary {
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  outline: none;
+  color: var(--color-text);
+  min-height: 1.5rem;
+}
+.ProseMirror details.details-node-wrapper summary::-webkit-details-marker {
+  display: none;
+}
+.ProseMirror details.details-node-wrapper summary.is-empty::before {
+  content: "Toggle title...";
+  color: color-mix(in oklab, var(--paragraph) 40%, transparent);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+.ProseMirror details.details-node-wrapper [data-type="details-content"] {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed color-mix(in oklab, var(--paragraph) 15%, transparent);
+}
+.ProseMirror details.details-node-wrapper:not([open]) [data-type="details-content"] {
+  display: none !important;
+}
+
 /* Table node-view (Phase 2.4h). The `.selectedCell` / `.column-resize-handle`
    decorations are drawn by the vendored columnResizing/tableEditing plugins on
    the cell DOM, so they must be global (not scoped to the Vue component). */

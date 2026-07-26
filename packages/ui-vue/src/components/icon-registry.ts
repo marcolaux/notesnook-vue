@@ -94,10 +94,12 @@ import {
   Link,
   Copy,
   Eye,
+  Network,
   // ToC/Minimap right-sidebar header toggle — chrome, must render at first paint.
   Map,
   Rows3
 } from "@lucide/vue";
+
 
 /**
  * Static curated set — the icons app chrome renders at first paint. Tree-shaken
@@ -172,6 +174,7 @@ export const ICONS: Record<string, Component> = {
   link: Link,
   copy: Copy,
   eye: Eye,
+  network: Network,
   // ToC/Minimap right-sidebar header toggle.
   map: Map,
   "rows-3": Rows3

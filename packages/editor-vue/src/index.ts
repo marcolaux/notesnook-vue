@@ -52,6 +52,14 @@ export { TableRow } from "@tiptap/extension-table-row";
 export { Heading } from "./extensions/heading/heading";
 export type { HeadingOptions } from "./extensions/heading/heading";
 
+// Collapsible Details / Accordion extension (details, summary, details-content)
+export { Details } from "./extensions/details/details";
+export type { DetailsOptions } from "./extensions/details/details";
+export { DetailsSummary } from "./extensions/details/details-summary";
+export type { DetailsSummaryOptions } from "./extensions/details/details-summary";
+export { DetailsContent } from "./extensions/details/details-content";
+export type { DetailsContentOptions } from "./extensions/details/details-content";
+
 // Slash-commands (2.5). A TipTap extension wiring `@tiptap/suggestion` to a Vue
 // render menu (`SlashMenu.vue`) driven by the vendored slash items below.
 export { SlashCommands } from "./extensions/slash-commands/slash-commands";

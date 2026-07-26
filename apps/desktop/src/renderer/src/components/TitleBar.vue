@@ -109,7 +109,7 @@ onUnmounted(() => {
     <button
       class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted transition-[opacity,background-color,color] duration-200 hover:bg-glass-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
       title="Toggle Sidebar"
-      :disabled="shell.focusMode"
+      :disabled="shell.focusMode || shell.visualizerVisible"
       @click="shell.toggleSidebar()"
     >
       <Icon name="panel-left" :size="16" />
@@ -119,9 +119,10 @@ onUnmounted(() => {
          is force-hidden — revealing it would just hide again on re-render).
          The icon scales up slightly when active for a tactile toggle feel. -->
     <button
-      class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted transition-[background-color,color,transform] duration-200 hover:bg-glass-hover"
+      class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted transition-[background-color,color,transform] duration-200 hover:bg-glass-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
       :class="shell.focusMode ? 'bg-glass-hover text-text' : ''"
       :title="shell.focusMode ? 'Exit focus mode' : 'Enter focus mode'"
+      :disabled="shell.visualizerVisible"
       @click="shell.toggleFocusMode()"
     >
       <Icon
@@ -131,6 +132,21 @@ onUnmounted(() => {
         :class="shell.focusMode ? 'scale-110' : ''"
       />
     </button>
+
+    <button
+      class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted transition-[background-color,color,transform] duration-200 hover:bg-glass-hover"
+      :class="shell.visualizerVisible ? 'bg-glass-hover text-text' : ''"
+      title="Vector & Semantic Cluster Visualizer"
+      @click="shell.toggleVisualizer()"
+    >
+      <Icon
+        name="network"
+        :size="16"
+        class="transition-transform duration-200"
+        :class="shell.visualizerVisible ? 'scale-110' : ''"
+      />
+    </button>
+
     <!-- The editor tab strips live per-pane (Phase 4.2/4.3); the title-bar
          center slot hosts the global search (replacing the old app label).
          Platform-aware padding still keeps this clear of the OS window controls. -->

@@ -20,20 +20,24 @@
  * composable stays headless-testable.
  */
 import { ref, watch, type Ref } from "vue";
-import type { Attachment, Note, Tag } from "@notesnook-vue/contracts";
+import type { Attachment, Note, Notebook, Tag } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
 import { usePropertiesStore } from "@/stores/properties";
 import { useLinksStore, toLinkRef, type NoteLinkRef } from "@/stores/links";
 import { useCollectionsStore } from "@/stores/collections";
 import {
   toAssignedTag,
+  toAssignedNotebook,
   uniqueById,
+  type AssignedNotebook,
   type AssignedTag
 } from "@/utils/properties";
 
 export interface NoteFooter {
   /** Tags assigned to this pane's note. */
   tags: Ref<AssignedTag[]>;
+  /** Notebooks this pane's note belongs to. */
+  notebooks: Ref<AssignedNotebook[]>;
   /** Notes this pane's note links to (outgoing). */
   outgoing: Ref<NoteLinkRef[]>;
   /** Notes that link to this pane's note (incoming / backlinks). */
@@ -53,6 +57,13 @@ export interface NoteFooter {
   /** Create a new tag + attach it; refreshes the sidebar. Returns the new
    *  `{id,title}` or `null` on failure (mirrors `properties.createTag`). */
   createTag: (title: string) => Promise<AssignedTag | null>;
+  /** Add this pane's note to a notebook (id-aware DB write + local reload). */
+  addNotebook: (notebookId: string) => Promise<void>;
+  /** Remove this pane's note from a notebook (id-aware DB write + local reload). */
+  removeNotebook: (notebookId: string) => Promise<void>;
+  /** Create a new notebook + add this note to it; refreshes the sidebar. Returns
+   *  the new `{id,title}` or `null` on failure (mirrors `properties.createNotebook`). */
+  createNotebook: (title: string) => Promise<AssignedNotebook | null>;
   /** Link this pane's note → `targetId` (outgoing). No-op for self-links. */
   link: (targetId: string) => Promise<void>;
   /** Remove this pane's note → `targetId` outgoing link. */
@@ -65,6 +76,7 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
   const collections = useCollectionsStore();
 
   const tags = ref<AssignedTag[]>([]);
+  const notebooks = ref<AssignedNotebook[]>([]);
   const outgoing = ref<NoteLinkRef[]>([]);
   const incoming = ref<NoteLinkRef[]>([]);
   const attachments = ref<Attachment[]>([]);
@@ -75,6 +87,7 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
     const id = noteId.value;
     if (!id) {
       tags.value = [];
+      notebooks.value = [];
       outgoing.value = [];
       incoming.value = [];
       attachments.value = [];
@@ -84,13 +97,15 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
     try {
       const db = getDatabase();
       const ref = { id, type: "note" as const };
-      const [tagItems, out, inc, attItems] = await Promise.all([
+      const [tagItems, nbItems, out, inc, attItems] = await Promise.all([
         db.relations.to(ref, "tag").resolve().catch(() => [] as Tag[]),
+        db.relations.to(ref, "notebook").resolve().catch(() => [] as Notebook[]),
         db.relations.from(ref, "note").resolve().catch(() => [] as Note[]),
         db.relations.to(ref, "note").resolve().catch(() => [] as Note[]),
         db.relations.from(ref, "attachment").resolve().catch(() => [] as Attachment[])
       ]);
       tags.value = uniqueById((tagItems as Tag[]).map(toAssignedTag));
+      notebooks.value = uniqueById((nbItems as Notebook[]).map(toAssignedNotebook));
       outgoing.value = (out as Note[]).map(toLinkRef);
       incoming.value = (inc as Note[]).map(toLinkRef);
       attachments.value = attItems as Attachment[];
@@ -98,6 +113,7 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
       // eslint-disable-next-line no-console
       console.error("[note-footer] reload failed:", e);
       tags.value = [];
+      notebooks.value = [];
       outgoing.value = [];
       incoming.value = [];
       attachments.value = [];
@@ -130,6 +146,30 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
     return created;
   }
 
+  async function addNotebook(notebookId: string): Promise<void> {
+    const id = noteId.value;
+    if (!id) return;
+    await properties.addNotebook(notebookId, id);
+    await reload();
+  }
+
+  async function removeNotebook(notebookId: string): Promise<void> {
+    const id = noteId.value;
+    if (!id) return;
+    await properties.removeNotebook(notebookId, id);
+    await reload();
+  }
+
+  async function createNotebook(title: string): Promise<AssignedNotebook | null> {
+    const id = noteId.value;
+    if (!id) return null;
+    const created = await properties.createNotebook(title, id);
+    if (!created) return null;
+    await collections.load();
+    await reload();
+    return created;
+  }
+
   async function link(targetId: string): Promise<void> {
     const id = noteId.value;
     if (!id) return;
@@ -148,5 +188,5 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
   // note seeds the footer on first mount.
   watch(noteId, () => void reload(), { immediate: true });
 
-  return { tags, outgoing, incoming, attachments, wordCount, loading, reload, addTag, removeTag, createTag, link, unlink };
+  return { tags, notebooks, outgoing, incoming, attachments, wordCount, loading, reload, addTag, removeTag, createTag, addNotebook, removeNotebook, createNotebook, link, unlink };
 }

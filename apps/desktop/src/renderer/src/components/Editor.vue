@@ -28,6 +28,9 @@ import { useEditor, EditorContent, type Editor } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import {
   Heading,
+  Details,
+  DetailsSummary,
+  DetailsContent,
   AttachmentNode,
   TaskItemNode,
   TaskListNode,
@@ -143,7 +146,7 @@ const myKey = computed(() => props.tabId ?? "draft:" + (props.groupId ?? ""));
 // unwraps them (the `footer` object itself is passed to the tag-mention
 // bridge, which needs the refs).
 const footer = useNoteFooter(myNoteId);
-const { tags, outgoing, incoming, attachments, wordCount } = footer;
+const { tags, notebooks, outgoing, incoming, attachments, wordCount } = footer;
 
 const ATTACHMENT_CATEGORY_ORDER: MimeCategory[] = [
   "image",
@@ -260,6 +263,116 @@ function onTitleEnter(): void {
   const inst = editor.value;
   if (!inst) return;
   inst.chain().focus().setTextSelection(1).run();
+}
+
+// --- Notebooks (assigned to this pane's note via the footer composable) ------
+const notebookQuery = ref("");
+const notebookMenuOpen = ref(false);
+const notebookActiveIndex = ref(0);
+const notebookInputEl = ref<HTMLInputElement | null>(null);
+
+/** Existing notebooks matching the query, excluding ones already assigned. */
+const notebookSuggestions = computed(() => {
+  const q = notebookQuery.value.trim().toLowerCase();
+  const assigned = new Set(notebooks.value.map((n) => n.id));
+  return collections.notebooks
+    .filter((n) => !assigned.has(n.id))
+    .filter((n) => (q ? n.title.toLowerCase().includes(q) : true))
+    .slice(0, 8);
+});
+
+watch(notebookSuggestions, (suggs) => {
+  if (notebookActiveIndex.value >= suggs.length) {
+    notebookActiveIndex.value = Math.max(0, suggs.length - 1);
+  }
+});
+
+function onNotebookKeyDown(e: KeyboardEvent): void {
+  const suggs = notebookSuggestions.value;
+  switch (e.key) {
+    case "ArrowDown":
+      e.preventDefault();
+      if (!notebookMenuOpen.value) {
+        notebookMenuOpen.value = true;
+        notebookActiveIndex.value = 0;
+      } else if (suggs.length > 0) {
+        notebookActiveIndex.value = (notebookActiveIndex.value + 1) % suggs.length;
+      }
+      break;
+    case "ArrowUp":
+      e.preventDefault();
+      if (!notebookMenuOpen.value) {
+        notebookMenuOpen.value = true;
+        notebookActiveIndex.value = Math.max(0, suggs.length - 1);
+      } else if (suggs.length > 0) {
+        notebookActiveIndex.value = (notebookActiveIndex.value - 1 + suggs.length) % suggs.length;
+      }
+      break;
+    case "Enter":
+      e.preventDefault();
+      if (notebookMenuOpen.value && notebookActiveIndex.value >= 0 && suggs[notebookActiveIndex.value]) {
+        void addExistingNotebook(suggs[notebookActiveIndex.value]!.id);
+      } else {
+        void commitNotebookInput();
+      }
+      break;
+    case "Escape":
+      e.preventDefault();
+      notebookMenuOpen.value = false;
+      notebookActiveIndex.value = -1;
+      break;
+  }
+}
+
+async function addExistingNotebook(notebookId: string): Promise<void> {
+  await footer.addNotebook(notebookId);
+  notebookQuery.value = "";
+  notebookMenuOpen.value = false;
+  notebookActiveIndex.value = 0;
+  notebookInputEl.value?.focus();
+}
+
+async function removeAssignedNotebook(notebookId: string): Promise<void> {
+  await footer.removeNotebook(notebookId);
+}
+
+/** Click a footer notebook chip → go to that notebook's note list. */
+function goToNotebook(notebookId: string): void {
+  void goToCollection("notebook", notebookId);
+}
+
+/** Enter in the notebook input: pick an exact existing match if there is one,
+ *  otherwise create a new notebook and assign it. No-op on empty input. */
+async function commitNotebookInput(): Promise<void> {
+  const q = notebookQuery.value.trim();
+  if (!q) return;
+  const exact = collections.notebooks.find(
+    (n) => n.title.toLowerCase() === q.toLowerCase()
+  );
+  if (exact && !notebooks.value.some((n) => n.id === exact.id)) {
+    await addExistingNotebook(exact.id);
+    return;
+  }
+  if (exact) {
+    // Already assigned — just clear.
+    notebookQuery.value = "";
+    notebookMenuOpen.value = false;
+    notebookActiveIndex.value = 0;
+    return;
+  }
+  const created = await footer.createNotebook(q);
+  if (created) {
+    notebookQuery.value = "";
+    notebookMenuOpen.value = false;
+    notebookActiveIndex.value = 0;
+    notebookInputEl.value?.focus();
+  }
+}
+
+function onNotebookInputBlur(): void {
+  setTimeout(() => {
+    notebookMenuOpen.value = false;
+  }, 150);
 }
 
 // --- Tags (assigned to this pane's note via the footer composable) ----------
@@ -498,6 +611,9 @@ const editor = useEditor({
   extensions: [
     StarterKit.configure({ codeBlock: false, heading: false }),
     Heading,
+    Details,
+    DetailsSummary,
+    DetailsContent,
     AttachmentNode,
     TaskListNode,
     TaskItemNode.configure({ nested: true }),
@@ -1303,6 +1419,57 @@ function onEditorAreaClick(e: MouseEvent): void {
           @keydown.enter.prevent="onTitleEnter"
         />
         <EditorContent :editor="editor" class="prose max-w-none text-sm text-text" />
+        <div
+          v-if="!isDraft"
+          class="editor-notebooks mt-4 flex flex-wrap items-center gap-2 border-t border-glass-border pt-3"
+        >
+          <span
+            v-for="nb in notebooks"
+            :key="nb.id"
+            class="group inline-flex items-center gap-1 rounded-full bg-glass-active px-2.5 py-1 text-xs text-text hover:bg-glass-hover"
+          >
+            <Icon name="book" :size="12" class="shrink-0 text-text-muted group-hover:text-text" />
+            <button
+              type="button"
+              class="max-w-40 cursor-pointer truncate hover:underline"
+              :title="`Show notes in notebook ${nb.title}`"
+              @click="goToNotebook(nb.id)"
+            >{{ nb.title }}</button>
+            <button
+              class="text-text-muted hover:text-text"
+              title="Remove notebook"
+              @click="removeAssignedNotebook(nb.id)"
+            >
+              ×
+            </button>
+          </span>
+          <div class="relative inline-flex items-center">
+            <input
+              ref="notebookInputEl"
+              v-model="notebookQuery"
+              class="titlebar-no-drag w-36 rounded-full border border-glass-border bg-glass-surface px-2.5 py-1 text-xs text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
+              placeholder="Add notebook…"
+              @focus="notebookMenuOpen = true; notebookActiveIndex = 0"
+              @blur="onNotebookInputBlur"
+              @keydown="onNotebookKeyDown"
+            />
+            <ul
+              v-if="notebookMenuOpen && notebookSuggestions.length"
+              class="absolute bottom-full left-0 z-20 mb-1.5 max-h-48 w-48 overflow-auto rounded-xl border border-glass-border/80 bg-surface-solid/95 p-1 text-xs shadow-2xl backdrop-blur-xl"
+            >
+              <li
+                v-for="(s, i) in notebookSuggestions"
+                :key="s.id"
+                class="cursor-pointer truncate rounded-lg px-2.5 py-1.5 text-text transition-colors"
+                :class="i === notebookActiveIndex ? 'bg-glass-active text-text font-medium' : 'hover:bg-glass-hover text-text-muted hover:text-text'"
+                @mouseenter="notebookActiveIndex = i"
+                @mousedown.prevent="addExistingNotebook(s.id)"
+              >
+                {{ s.title }}
+              </li>
+            </ul>
+          </div>
+        </div>
         <div
           v-if="!isDraft"
           class="editor-tags mt-4 flex flex-wrap items-center gap-2 border-t border-glass-border pt-3"

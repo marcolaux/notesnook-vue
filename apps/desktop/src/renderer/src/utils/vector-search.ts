@@ -365,3 +365,93 @@ export async function indexUnindexedNotes(): Promise<void> {
   }
 }
 
+function parseEmbedding(raw: any): Float32Array | null {
+  if (!raw) return null;
+  if (raw instanceof Float32Array) return raw;
+  if (raw instanceof Uint8Array || (typeof Buffer !== "undefined" && Buffer.isBuffer(raw))) {
+    return new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4);
+  }
+  if (Array.isArray(raw)) {
+    return new Float32Array(raw);
+  }
+  return null;
+}
+
+export interface NoteCentroidEmbedding {
+  noteId: string;
+  embedding: Float32Array;
+  chunkCount: number;
+}
+
+/**
+ * Retrieves all chunk embeddings stored in `vec_notes` and averages them per note
+ * to return a normalized 384-dimensional centroid vector for each note.
+ */
+export async function getAllNoteCentroidEmbeddings(): Promise<Map<string, NoteCentroidEmbedding>> {
+  if (!readSemanticSearchEnabled()) return new Map();
+
+  try {
+    const rows = await runSql<{
+      note_id: string;
+      chunk_index: number;
+      embedding: any;
+    }>("SELECT note_id, chunk_index, embedding FROM vec_notes");
+
+    const noteChunks = new Map<string, Float32Array[]>();
+
+    for (const row of rows) {
+      if (!row.note_id || !row.embedding) continue;
+      const vec = parseEmbedding(row.embedding);
+      if (!vec || vec.length !== 384) continue;
+
+      let list = noteChunks.get(row.note_id);
+      if (!list) {
+        list = [];
+        noteChunks.set(row.note_id, list);
+      }
+      list.push(vec);
+    }
+
+    const centroids = new Map<string, NoteCentroidEmbedding>();
+
+    for (const [noteId, chunks] of noteChunks.entries()) {
+      const dim = 384;
+      const centroid = new Float32Array(dim);
+
+      for (const chunkVec of chunks) {
+        for (let i = 0; i < dim; i++) {
+          const val = chunkVec[i] ?? 0;
+          centroid[i] = (centroid[i] ?? 0) + val;
+        }
+      }
+
+      let normSq = 0;
+      for (let i = 0; i < dim; i++) {
+        const val = (centroid[i] ?? 0) / chunks.length;
+        centroid[i] = val;
+        normSq += val * val;
+      }
+
+      const norm = Math.sqrt(normSq);
+      if (norm > 0) {
+        for (let i = 0; i < dim; i++) {
+          centroid[i] = (centroid[i] ?? 0) / norm;
+        }
+      }
+
+      centroids.set(noteId, {
+        noteId,
+        embedding: centroid,
+        chunkCount: chunks.length
+      });
+    }
+
+
+    return centroids;
+  } catch (err) {
+    console.error("[vector-search] getAllNoteCentroidEmbeddings failed:", err);
+    return new Map();
+  }
+}
+
+

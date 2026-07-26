@@ -5,7 +5,36 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-26
+
+### 🕸️ Interactive Vector & Semantic Cluster Visualizer
+- **Local On-Device Vector Embeddings & Clustering**:
+  - Leverages local 384-dimensional vector embeddings (`Xenova/all-MiniLM-L6-v2` stored in SQLite via `sqlite-vec`).
+  - Added `getAllNoteCentroidEmbeddings()` in `vector-search.ts` to compute normalized 384-d note centroid vectors.
+- **DBSCAN & K-Means Clustering Algorithms**:
+  - Implemented **DBSCAN** (Density-Based Spatial Clustering of Applications with Noise) as the default clustering algorithm with dynamic density threshold ($\epsilon$) and `minSamples` controls.
+  - Implemented **K-Means** clustering algorithm with k-means++ initialization and configurable cluster count ($K \in [2, 10]$).
+- **Hybrid Metadata Vectors for Tags, Notebooks & Colors**:
+  - Generates hybrid 384-d vector embeddings for **Tags**, **Notebooks**, and **Colors** by blending note centroid embeddings (70%) with label text embeddings (30%).
+  - Groups notes and metadata entities into a unified vector space.
+- **2D Dimensionality Reduction (PCA) & Topic Keyword Extraction**:
+  - Fast 2-component Principal Component Analysis projecting 384-d vectors to 2D canvas coordinates.
+  - Automated TF-IDF topic keyword extraction for cluster labeling (e.g. "Machine Learning", "Design System").
+- **Connection Link Types & Visual Filters**:
+  - Renders and filters connections by **Semantic Vector Similarity** (cosine threshold slider), **Shared Tags** (dashed lines), **Shared Notebooks**, and **Shared Colors**.
+- **Interactive 2D Canvas Workspace & Native Glassmorphism**:
+  - High-DPI HTML5 canvas overlay with smooth viewport pan & zoom, stationary screen-space node rendering (constant node dot & text size during zoom), and color-coded cluster boundary hulls.
+  - Floating glassmorphism top control bar aligned with Notesnook Vue design system tokens (`bg-glass-surface`, `border-glass-border`, `text-text`).
+  - Interactive Node Inspector Side Drawer: Displays selected node, cluster, topic keywords, top 5 semantically similar notes with exact similarity %, associated tags, and direct **"Open Note in Editor"** button.
+- **TitleBar Integration & Omnibar Auto-Close**:
+  - Added visualizer toggle button (`network` icon) to `TitleBar.vue` next to the Focus Mode toggle button.
+  - Disables Sidebar and Focus Mode title bar toggles while the visualizer is open.
+  - Automatically closes the visualizer when executing any command or selecting a note/navigation item via the Omnibar.
+- **Contract Verification Suite**:
+  - 103 test files and 1,496 tests passing cleanly.
+
 ## [0.6.1] - 2026-07-26
+
 
 ### 📑 Collapsible Headings (`<h1>` – `<h6>`)
 - **Precise Sibling-Based Folding Range Scanning**:

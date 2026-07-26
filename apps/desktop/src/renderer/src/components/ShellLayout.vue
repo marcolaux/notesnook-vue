@@ -9,6 +9,7 @@ import { SIDEBAR_MIN, SIDEBAR_MAX } from "@/utils/resizer";
 import TitleBar from "@/components/TitleBar.vue";
 import Sidebar from "@/components/Sidebar.vue";
 import CollapsiblePanel from "@/components/CollapsiblePanel.vue";
+import VectorVisualizerModal from "@/components/VectorVisualizerModal.vue";
 
 const shell = useShellStore();
 </script>
@@ -27,6 +28,10 @@ const shell = useShellStore();
         <Sidebar class="h-full backdrop-blur-2xl" />
       </CollapsiblePanel>
       <RouterView />
+      <VectorVisualizerModal
+        v-if="shell.visualizerVisible"
+        @close="shell.setVisualizerVisible(false)"
+      />
     </div>
   </div>
 </template>
