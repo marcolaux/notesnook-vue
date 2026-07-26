@@ -41,44 +41,10 @@
  */
 import type { Editor } from "@tiptap/vue-3";
 import { TextSelection } from "@tiptap/pm/state";
-import { findMatches, type SearchOptions } from "@notesnook-vue/editor-vue";
+import { findMatches, scrollPosIntoView, type SearchOptions } from "@notesnook-vue/editor-vue";
 
-/** Walk up from `el` to the first ancestor (inclusive) that scrolls
- *  vertically — i.e. has `overflow-y` of `auto` or `scroll` AND a bounded
- *  height (so it actually scrolls rather than growing with content). Returns
- *  `null` if none (e.g. the editor is in a non-scrolling context). */
-function findScrollContainer(el: HTMLElement | null): HTMLElement | null {
-  let node = el;
-  while (node && node !== document.body) {
-    const style = getComputedStyle(node);
-    const overflowY = style.overflowY;
-    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) {
-      return node;
-    }
-    node = node.parentElement;
-  }
-  return null;
-}
-
-/** Scroll the editor's real scroll container so the doc position `pos` is
- *  centered. `coordsAtPos` gives viewport coords of the caret; convert to a
- *  offset within the scroller and set `scrollTop` to center it. Returns true
- *  if a scroll was performed. */
 function scrollToPos(editor: Editor, pos: number): boolean {
-  if (editor.isDestroyed) return false;
-  const view = editor.view;
-  const scroller = findScrollContainer(view.dom as HTMLElement);
-  if (!scroller) return false;
-  // Clamp pos into the doc range.
-  const doc = editor.state.doc;
-  const p = Math.min(pos, doc.content.size - 1);
-  const coords = view.coordsAtPos(p);
-  const scrollerRect = scroller.getBoundingClientRect();
-  // Position of the match relative to the scroller's content origin.
-  const matchTop = coords.top - scrollerRect.top + scroller.scrollTop;
-  const target = matchTop - scroller.clientHeight / 2;
-  scroller.scrollTop = Math.max(0, target);
-  return true;
+  return scrollPosIntoView(editor.view, pos);
 }
 
 export function scrollEditorToMatch(

@@ -183,7 +183,15 @@ export const updaterServer: UpdaterServer = {
       return true;
     }
     try {
-      au.quitAndInstall();
+      au.autoInstallOnAppQuit = true;
+      setImmediate(() => {
+        try {
+          au.quitAndInstall(false, true);
+        } catch (err) {
+          console.error("[updater] au.quitAndInstall error:", err);
+          app.quit();
+        }
+      });
       return true;
     } catch (err) {
       throw err;

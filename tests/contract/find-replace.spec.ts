@@ -225,3 +225,70 @@ describe("scrollEditorToMatch (global-search scroll hook)", () => {
     expect(editor.state.selection.from).toBe(before);
   });
 });
+
+describe("FindReplace viewport scrolling & selection relative positioning", () => {
+  let editor: Editor;
+  beforeEach(() => {
+    editor = makeEditor();
+    editor.commands.setContent("<p>foo 1</p><p>bar</p><p>foo 2</p><p>baz</p><p>foo 3</p>");
+  });
+  afterEach(() => editor.destroy());
+
+  it("findNext jumps to the first match at or after arbitrary cursor selection", async () => {
+    const { TextSelection } = await import("@tiptap/pm/state");
+    editor.commands.setFind("foo", {});
+    const matches = state(editor).matches;
+    expect(matches).toHaveLength(3);
+
+    // Place caret inside paragraph "bar" (between match 1 and match 2)
+    const midPos = matches[0]!.to + 5; // inside paragraph "bar"
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, midPos)));
+
+    // findNext should jump to match 2 (index 1)
+    editor.commands.findNext();
+    expect(state(editor).currentIndex).toBe(1);
+    expect(editor.state.selection.from).toBe(matches[1]!.from);
+  });
+
+  it("findPrev jumps to the match before arbitrary cursor selection", async () => {
+    const { TextSelection } = await import("@tiptap/pm/state");
+    editor.commands.setFind("foo", {});
+    const matches = state(editor).matches;
+    expect(matches).toHaveLength(3);
+
+    // Place caret inside paragraph "baz" (between match 2 and match 3)
+    const posBetween = matches[1]!.to + 5; // inside paragraph "baz"
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, posBetween)));
+
+    // findPrev should jump to match 2 (index 1)
+    editor.commands.findPrev();
+    expect(state(editor).currentIndex).toBe(1);
+    expect(editor.state.selection.from).toBe(matches[1]!.from);
+  });
+
+  it("scrollPosIntoView updates scrollTop on a scrollable ancestor DOM element", async () => {
+    const { scrollPosIntoView, findScrollContainer } = await import("@notesnook-vue/editor-vue");
+
+    // Create a scrollable parent container in DOM
+    const container = document.createElement("div");
+    container.style.overflowY = "auto";
+    container.style.height = "100px";
+    Object.defineProperty(container, "scrollHeight", { value: 500, configurable: true });
+    Object.defineProperty(container, "clientHeight", { value: 100, configurable: true });
+
+    container.appendChild(editor.options.element);
+    document.body.appendChild(container);
+
+    expect(findScrollContainer(editor.view.dom as HTMLElement)).toBe(container);
+
+    // Mock coordsAtPos to return predictable viewport coords
+    editor.view.coordsAtPos = () => ({ top: 300, bottom: 320, left: 0, right: 0 });
+    container.getBoundingClientRect = () => ({ top: 50, bottom: 150, left: 0, right: 0, width: 100, height: 100, x: 0, y: 50, toJSON: () => ({}) });
+
+    const scrolled = scrollPosIntoView(editor.view, 10);
+    expect(scrolled).toBe(true);
+    expect(container.scrollTop).toBeGreaterThan(0);
+
+    document.body.removeChild(container);
+  });
+});

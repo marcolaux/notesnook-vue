@@ -105,8 +105,7 @@ export { DEFAULT_NOTE_LINK_LABELS } from "./extensions/note-link/types";
 // `replace`/`replaceAll`/`clearFind`); the pure matcher lives in
 // `./extensions/search/match`. `findReplacePluginKey` is exported so the
 // `FindBar` component can read live match state for its counter.
-export { FindReplace } from "./extensions/search/find-replace";
-export { findReplacePluginKey } from "./extensions/search/find-replace";
+export { FindReplace, findReplacePluginKey, scrollPosIntoView, findScrollContainer } from "./extensions/search/find-replace";
 export type { FindReplaceState } from "./extensions/search/find-replace";
 export {
   findMatches,

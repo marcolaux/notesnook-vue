@@ -15,7 +15,7 @@ in this package.
 */
 import { Extension } from "@tiptap/vue-3";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node } from "@tiptap/pm/model";
 import type { SearchMatch, SearchOptions } from "./match";
 import { findMatches } from "./match";
@@ -34,6 +34,38 @@ const INDEX_META = "findReplace.index";
 
 /** Plugin key — exported so `FindBar.vue` can read live match state. */
 export const findReplacePluginKey = new PluginKey<FindReplaceState>("findReplace");
+
+/** Walk up from `el` to the first ancestor (inclusive) that scrolls
+ *  vertically — i.e. has `overflow-y` of `auto` or `scroll` AND a bounded
+ *  height (so it actually scrolls rather than growing with content). Returns
+ *  `null` if none. */
+export function findScrollContainer(el: HTMLElement | null): HTMLElement | null {
+  let node = el;
+  while (node && node !== document.body) {
+    const style = getComputedStyle(node);
+    const overflowY = style.overflowY;
+    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
+/** Scroll the editor's scroll container so doc position `pos` is centered. */
+export function scrollPosIntoView(view: EditorView | undefined | null, pos: number): boolean {
+  if (!view || view.isDestroyed || typeof document === "undefined") return false;
+  const scroller = findScrollContainer(view.dom as HTMLElement);
+  if (!scroller) return false;
+  const doc = view.state.doc;
+  const p = Math.max(0, Math.min(pos, doc.content.size - 1));
+  const coords = view.coordsAtPos(p);
+  const scrollerRect = scroller.getBoundingClientRect();
+  const matchTop = coords.top - scrollerRect.top + scroller.scrollTop;
+  const target = matchTop - scroller.clientHeight / 2;
+  scroller.scrollTop = Math.max(0, target);
+  return true;
+}
 
 function buildDecorations(
   doc: Node,
@@ -147,44 +179,102 @@ export const FindReplace = Extension.create({
     return {
       setFind:
         (query, options) =>
-        ({ tr, dispatch }) => {
-          tr.setMeta(SET_META, { query, options: options ?? {} });
-          if (dispatch) dispatch(tr);
+        ({ tr, dispatch, view }) => {
+          const opts = options ?? {};
+          tr.setMeta(SET_META, { query, options: opts });
+          if (query) {
+            const matches = findMatches(tr.doc, query, opts);
+            if (matches.length > 0) {
+              const m = matches[0]!;
+              tr.setSelection(TextSelection.create(tr.doc, m.from, m.to));
+              tr.scrollIntoView();
+            }
+          }
+          if (dispatch) {
+            dispatch(tr);
+            if (query && view) {
+              const matches = findMatches(view.state.doc, query, opts);
+              if (matches.length > 0) {
+                scrollPosIntoView(view, matches[0]!.from);
+              }
+            }
+          }
           return true;
         },
 
       findNext:
         () =>
-        ({ state, tr, dispatch }) => {
+        ({ state, tr, dispatch, view }) => {
           const st = findReplacePluginKey.getState(state);
           if (!st || st.matches.length === 0) return false;
-          const next = (st.currentIndex + 1) % st.matches.length;
-          const m = st.matches[next]!;
-          tr.setMeta(INDEX_META, next);
+
+          let targetIndex = -1;
+          const currentMatch = st.currentIndex >= 0 ? st.matches[st.currentIndex] : null;
+          const currentSel = state.selection;
+
+          if (
+            currentMatch &&
+            currentSel.from === currentMatch.from &&
+            currentSel.to === currentMatch.to
+          ) {
+            targetIndex = (st.currentIndex + 1) % st.matches.length;
+          } else {
+            const idx = st.matches.findIndex((m) => m.from >= currentSel.from);
+            targetIndex = idx >= 0 ? idx : 0;
+          }
+
+          const m = st.matches[targetIndex]!;
+          tr.setMeta(INDEX_META, targetIndex);
           tr.setSelection(TextSelection.create(tr.doc, m.from, m.to));
           tr.scrollIntoView();
-          if (dispatch) dispatch(tr);
+          if (dispatch) {
+            dispatch(tr);
+            if (view) scrollPosIntoView(view, m.from);
+          }
           return true;
         },
 
       findPrev:
         () =>
-        ({ state, tr, dispatch }) => {
+        ({ state, tr, dispatch, view }) => {
           const st = findReplacePluginKey.getState(state);
           if (!st || st.matches.length === 0) return false;
-          const prev =
-            (st.currentIndex - 1 + st.matches.length) % st.matches.length;
-          const m = st.matches[prev]!;
-          tr.setMeta(INDEX_META, prev);
+
+          let targetIndex = -1;
+          const currentMatch = st.currentIndex >= 0 ? st.matches[st.currentIndex] : null;
+          const currentSel = state.selection;
+
+          if (
+            currentMatch &&
+            currentSel.from === currentMatch.from &&
+            currentSel.to === currentMatch.to
+          ) {
+            targetIndex = (st.currentIndex - 1 + st.matches.length) % st.matches.length;
+          } else {
+            let idx = -1;
+            for (let i = st.matches.length - 1; i >= 0; i--) {
+              if (st.matches[i]!.from < currentSel.from) {
+                idx = i;
+                break;
+              }
+            }
+            targetIndex = idx >= 0 ? idx : st.matches.length - 1;
+          }
+
+          const m = st.matches[targetIndex]!;
+          tr.setMeta(INDEX_META, targetIndex);
           tr.setSelection(TextSelection.create(tr.doc, m.from, m.to));
           tr.scrollIntoView();
-          if (dispatch) dispatch(tr);
+          if (dispatch) {
+            dispatch(tr);
+            if (view) scrollPosIntoView(view, m.from);
+          }
           return true;
         },
 
       replace:
         (replacement) =>
-        ({ state, tr, dispatch }) => {
+        ({ state, tr, dispatch, view }) => {
           const st = findReplacePluginKey.getState(state);
           if (!st || st.currentIndex < 0) return false;
           const m = st.matches[st.currentIndex];
@@ -193,7 +283,19 @@ export const FindReplace = Extension.create({
           // keeping `currentIndex` (clamped in `apply`) naturally lands on the
           // match that used to follow the replaced one → "find next" feel.
           tr.insertText(replacement, m.from, m.to);
-          if (dispatch) dispatch(tr);
+          if (dispatch) {
+            dispatch(tr);
+            if (view) {
+              const updatedSt = findReplacePluginKey.getState(view.state);
+              if (
+                updatedSt &&
+                updatedSt.currentIndex >= 0 &&
+                updatedSt.matches[updatedSt.currentIndex]
+              ) {
+                scrollPosIntoView(view, updatedSt.matches[updatedSt.currentIndex]!.from);
+              }
+            }
+          }
           return true;
         },
 

@@ -5,6 +5,20 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-07-26
+
+### 🔍 In-Note Search Navigation & Viewport Scroll Restoration
+- **Viewport Scroll Centering (`scrollPosIntoView`)**:
+  - Added ancestor scroll container lookup and centering function `scrollPosIntoView` in `@notesnook-vue/editor-vue`.
+  - Resolved issue where ProseMirror's `tr.scrollIntoView()` target (`.ProseMirror`) had no overflow, leaving off-screen search matches hidden when navigating with `Next`/`Prev`.
+- **Match 1 Initial Selection & Cursor-Relative Navigation**:
+  - Updated `setFind` to select and center Match 1 as soon as a non-empty search query is entered.
+  - Refactored `findNext` and `findPrev` commands to navigate relative to the user's active cursor/text selection position, enabling seamless navigation from any point in the document.
+- **Shared Extension Exports & Contract Verification**:
+  - Exported `scrollPosIntoView` and `findScrollContainer` from `@notesnook-vue/editor-vue`.
+  - Refactored `search-scroll.ts` to consume the shared `scrollPosIntoView` helper.
+  - Added contract tests in `find-replace.spec.ts` for relative cursor jumping and ancestor scroll container positioning.
+
 ## [0.5.0] - 2026-07-26
 
 ### 🧠 Vector Search Engine Optimizations & Metadata Context Enrichment
