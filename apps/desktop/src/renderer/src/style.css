@@ -555,6 +555,66 @@ html[data-transparency="off"] .editor-tab-inactive {
   height: 0;
 }
 
+/* Collapsible Headings */
+.ProseMirror .heading-node-wrapper {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+.ProseMirror .heading-node-wrapper .heading-fold-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: color-mix(in oklab, var(--paragraph) 60%, transparent);
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.3;
+  transition: opacity 150ms ease, background-color 150ms ease;
+  user-select: none;
+  flex-shrink: 0;
+}
+.ProseMirror .heading-node-wrapper:hover .heading-fold-btn,
+.ProseMirror .heading-node-wrapper.is-collapsed .heading-fold-btn {
+  opacity: 1;
+}
+.ProseMirror .heading-fold-btn:hover {
+  background: color-mix(in oklab, var(--paragraph) 15%, transparent);
+  color: var(--color-text);
+}
+.ProseMirror .heading-node-wrapper .heading-content {
+  flex: 1;
+  margin: 0;
+}
+.ProseMirror .heading-collapsed-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--paragraph) 75%, transparent);
+  background: color-mix(in oklab, var(--paragraph) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--paragraph) 20%, transparent);
+  border-radius: 9999px;
+  cursor: pointer;
+  user-select: none;
+  margin-left: 0.5rem;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.ProseMirror .heading-collapsed-badge:hover {
+  background: color-mix(in oklab, var(--color-accent) 30%, transparent);
+  color: var(--color-text);
+}
+.ProseMirror .heading-collapsed-hidden {
+  display: none !important;
+}
+
 /* Table node-view (Phase 2.4h). The `.selectedCell` / `.column-resize-handle`
    decorations are drawn by the vendored columnResizing/tableEditing plugins on
    the cell DOM, so they must be global (not scoped to the Vue component). */

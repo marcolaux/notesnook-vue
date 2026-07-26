@@ -5,6 +5,23 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-07-26
+
+### 📑 Collapsible Headings (`<h1>` – `<h6>`)
+- **Precise Sibling-Based Folding Range Scanning**:
+  - Implemented collapsible heading extension in `@notesnook-vue/editor-vue` with `collapsed` attribute (`data-collapsed="true"`).
+  - Uses parent sibling block iteration (`parent.child(j)`) in ProseMirror `headingCollapsePlugin` to fold content starting immediately after the heading and stopping precisely before the next heading of the same or higher level (e.g. `siblingLevel <= headingLevel`).
+  - Ensures collapsing an `H2` hides only its immediate paragraphs and nested subheadings (`H3`, `H4`), leaving subsequent `H2` headings and their sections 100% visible.
+- **Vue NodeView & Hover Fold Chevron**:
+  - Rendered `HeadingView.vue` with an inline fold chevron button (`ChevronRight` / `ChevronDown`) and folded indicator badge (`···`).
+- **Auto-Expansion Guard on Selection / Search**:
+  - Automatically unfolds parent headings when cursor navigation or search-jump (`FindReplace`) lands inside a collapsed section.
+- **Commands & Keyboard Shortcut**:
+  - Exported `toggleHeadingCollapse`, `collapseHeading`, `expandHeading`, `collapseAllHeadings`, `expandAllHeadings`.
+  - Added shortcut `Cmd+Alt+F` to toggle heading collapse at cursor position.
+- **Contract Test Verification**:
+  - Added `tests/contract/collapsible-headings.spec.ts` covering HTML parsing, commands, sibling level boundary stopping, document-wide folding, and 100% data-preserving roundtrips.
+
 ## [0.6.0] - 2026-07-26
 
 ### 📊 Comprehensive Table Integration & Manipulation

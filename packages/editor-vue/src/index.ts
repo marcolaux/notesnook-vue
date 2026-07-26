@@ -48,6 +48,10 @@ export { TableHeader } from "./extensions/table-header/table-header";
 export type { TableHeaderOptions } from "./extensions/table-header/table-header";
 export { TableRow } from "@tiptap/extension-table-row";
 
+// Heading extension with collapsible sections (h1-h6).
+export { Heading } from "./extensions/heading/heading";
+export type { HeadingOptions } from "./extensions/heading/heading";
+
 // Slash-commands (2.5). A TipTap extension wiring `@tiptap/suggestion` to a Vue
 // render menu (`SlashMenu.vue`) driven by the vendored slash items below.
 export { SlashCommands } from "./extensions/slash-commands/slash-commands";

@@ -27,6 +27,7 @@ import { ref, watch, computed, onMounted, onBeforeUnmount, onActivated, onDeacti
 import { useEditor, EditorContent, type Editor } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import {
+  Heading,
   AttachmentNode,
   TaskItemNode,
   TaskListNode,
@@ -495,7 +496,8 @@ function onLinkInputBlur(): void {
 // TableComponent owns the <table>/<colgroup>/<tbody> via addNodeView.
 const editor = useEditor({
   extensions: [
-    StarterKit.configure({ codeBlock: false }),
+    StarterKit.configure({ codeBlock: false, heading: false }),
+    Heading,
     AttachmentNode,
     TaskListNode,
     TaskItemNode.configure({ nested: true }),
