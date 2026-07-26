@@ -30,9 +30,9 @@
 import type { Range } from "@tiptap/core";
 import type { Trigger, SuggestionMatch } from "@tiptap/suggestion";
 
-// `@[^\s@\[]*` : `@` then zero-or-more non-space, non-`@`, non-`[` chars.
-// `\[\[[^\s\]]*` : `[[` then zero-or-more non-space, non-`]` chars.
-const REGEXP = /(?:@[^\s@\[]*|\[\[[^\s\]]*)/gm;
+// `@[^@\[\n]*` : `@` then zero-or-more non-`@`, non-`[`, non-newline chars (allows spaces).
+// `\[\[[^\]\n]*` : `[[` then zero-or-more non-`]`, non-newline chars (allows spaces).
+const REGEXP = /(?:@[^@\[\n]*|\[\[[^\]\n]*)/gm;
 
 export function findNoteSuggestionMatch(config: Trigger): SuggestionMatch {
   const { $position } = config;

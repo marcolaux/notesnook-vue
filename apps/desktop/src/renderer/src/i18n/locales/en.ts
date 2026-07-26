@@ -63,13 +63,17 @@ export default {
     unsupportedPreview: "No in-app preview for this file type."
   },
   linkNote: {
-    title: "Link to note",
-    searchPlaceholder: "Search notes…",
+    title: "Link to note or web/file URL",
+    searchPlaceholder: "Search notes or enter URL…",
     blockSearchPlaceholder: "Search section…",
     linkWholeNote: "Link to whole note",
     backToNotes: "Back to notes",
     noResults: "No notes found",
     noBlocks: "No sections in this note",
-    emptyBlock: "(empty)"
+    emptyBlock: "(empty)",
+    createNote: "Create note",
+    webLinkOption: "Link to web page",
+    fileLinkOption: "Link to local file",
+    browseFile: "Browse file…"
   }
 } as const;

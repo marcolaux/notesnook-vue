@@ -41,6 +41,17 @@ export interface NoteLinkLabels {
   noResults: string;
   noBlocks: string;
   emptyBlock: string;
+  createNote: string;
+  notesTab: string;
+  webTab: string;
+  fileTab: string;
+  webPlaceholder: string;
+  filePlaceholder: string;
+  displayTitlePlaceholder: string;
+  browseFile: string;
+  insertLink: string;
+  webLinkOption: string;
+  fileLinkOption: string;
 }
 
 export const DEFAULT_NOTE_LINK_LABELS: NoteLinkLabels = {
@@ -50,7 +61,18 @@ export const DEFAULT_NOTE_LINK_LABELS: NoteLinkLabels = {
   backToNotes: "Back to notes",
   noResults: "No notes found",
   noBlocks: "No sections in this note",
-  emptyBlock: "(empty)"
+  emptyBlock: "(empty)",
+  createNote: "Create note",
+  notesTab: "Notes",
+  webTab: "Web URL",
+  fileTab: "Local File",
+  webPlaceholder: "https://example.com",
+  filePlaceholder: "file:///path/to/file",
+  displayTitlePlaceholder: "Display text (optional)",
+  browseFile: "Browse file…",
+  insertLink: "Insert Link",
+  webLinkOption: "Link to web page",
+  fileLinkOption: "Link to local file"
 };
 
 export interface NoteSuggestOptions {

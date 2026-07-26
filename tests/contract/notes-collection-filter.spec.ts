@@ -8,12 +8,20 @@ import type { NoteListItem } from "@/stores/notes";
 // `notes.ts` imports `getDatabase` from the platform bootstrap; stub it so the
 // sodium/crypto/bridge graph isn't loaded. The fake db is per-test controllable.
 let mockDb: {
+  notes: {
+    add: (data: unknown) => Promise<string>;
+    all: { items: () => Promise<any[]> };
+    addToNotebook: (nbId: string, noteId: string) => Promise<void>;
+  };
   notebooks: { notes: (id: string) => Promise<string[]> };
+  tags: { add: (t: { title: string }) => Promise<string> };
   relations: {
-    to: (ref: unknown, type: unknown) => { resolve: () => Promise<{ id: string }[]> };
+    to: (ref: unknown, type: unknown) => { resolve: () => Promise<{ id: string }[]>; unlink: () => Promise<void> };
     from: (ref: unknown, type: unknown) => { resolve: () => Promise<{ id: string }[]> };
+    add: (fromRef: unknown, toRef: unknown) => Promise<void>;
   };
 };
+
 vi.mock("@/platform/bootstrap", () => ({
   getDatabase: () => mockDb,
   bootstrap: vi.fn()
@@ -42,10 +50,17 @@ const ALL: NoteListItem[] = [
 beforeEach(() => {
   setActivePinia(createPinia());
   mockDb = {
+    notes: {
+      add: async () => "new_note_1",
+      all: { items: async () => [] },
+      addToNotebook: async () => {}
+    },
     notebooks: { notes: async () => [] },
+    tags: { add: async () => "t_new" },
     relations: {
-      to: () => ({ resolve: async () => [] }),
-      from: () => ({ resolve: async () => [] })
+      to: () => ({ resolve: async () => [], unlink: async () => {} }),
+      from: () => ({ resolve: async () => [] }),
+      add: async () => {}
     }
   };
 });
@@ -209,5 +224,44 @@ describe("notes store — collection filter", () => {
     notes.items = ALL;
     await notes.filterByCollection("notebook", "empty");
     expect(notes.visibleItems).toEqual([]);
+  });
+
+  it("automatically attaches active notebook filter when creating a new note", async () => {
+    let addedNotebookId = "";
+    let addedNoteId = "";
+    mockDb.notes.addToNotebook = async (nbId, noteId) => {
+      addedNotebookId = nbId;
+      addedNoteId = noteId;
+    };
+    mockDb.notebooks.notes = async (id) => (id === "nb_work" ? ["new_note_1"] : []);
+
+    const notes = useNotesStore();
+    await notes.filterByCollection("notebook", "nb_work");
+    await notes.create();
+
+    expect(addedNotebookId).toBe("nb_work");
+    expect(addedNoteId).toBe("new_note_1");
+    expect(notes.collectionFilter?.noteIds.has("new_note_1")).toBe(true);
+  });
+
+  it("automatically attaches active tag filter when creating a new note", async () => {
+    let addedRelationFrom: any = null;
+    let addedRelationTo: any = null;
+    mockDb.relations.add = async (from, to) => {
+      addedRelationFrom = from;
+      addedRelationTo = to;
+    };
+    mockDb.relations.from = () => ({ resolve: async () => [{ id: "new_note_1" }] });
+
+    const collections = useCollectionsStore();
+    collections.tags = [{ id: "t_work", title: "work", dateCreated: 0, dateModified: 0 }];
+
+    const notes = useNotesStore();
+    await notes.filterByCollection("tag", "t_work");
+    await notes.create();
+
+    expect(addedRelationFrom).toEqual({ id: "t_work", type: "tag" });
+    expect(addedRelationTo).toEqual({ id: "new_note_1", type: "note" });
+    expect(notes.collectionFilter?.noteIds.has("new_note_1")).toBe(true);
   });
 });

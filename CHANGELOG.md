@@ -5,6 +5,40 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-07-26
+
+### 📝 Inline Note Creation & Space Support in Editor (`[[` / `@`)
+- **Inline Create Note Option (`+ Create note "[query]"`)**:
+  - Added dynamic create option in `NoteLinkPicker.vue` when typing a note title that doesn't exist yet after `[[` or `@`.
+  - Creates the note in the database and inserts the link mark `[[Title]]` at the cursor without swapping active tabs (`openNote: false`).
+  - Newly created notes automatically inherit any active Notebook, Tag, or Color filter context.
+- **Space Support in Note Queries**:
+  - Updated `NoteSuggest` extension configuration to `allowSpaces: true` and updated `findNoteSuggestionMatch` regex to `/(?:@[^@\[\n]*|\[\[[^\]\n]*)/gm`.
+  - Enables multi-word title searches and note creation with spaces (e.g. `[[Meeting Notes 2026`) without the picker closing on space.
+  - Handled `Escape` key to clear suggestion decoration and outside click to unmount popup.
+
+### 🌐 Web Links, Local File Links & Native File Picker
+- **Selection-Aware Text Linking**:
+  - Highlight text in the editor -> press `Cmd+K` or click toolbar Link button -> converts highlighted text into a link.
+- **Smart Web URL & Local File Detection**:
+  - Automatically identifies `http://`, `https://`, `www.` as `🌐 Link to web page "..."`.
+  - Automatically identifies `file://`, `/`, `~/`, `C:\` as `📁 Link to local file "..."`.
+- **Native OS File Browser ("📁 Browse file…")**:
+  - Added **"📁 Browse file…"** button in the link picker using native OS open file dialogs (`desktop.dialog.openFile`).
+  - Clicking `file://` links in the editor opens the local file in the OS default application via `desktop.shell.openPath`.
+  - Clicking web links opens the system default browser.
+
+### ⌨️ Keyboard Shortcuts for Tab Switching & Editor Actions
+- **Tab Cycling & Direct Tab Navigation**:
+  - `Ctrl+Tab` / `Cmd+Alt+→` / `Cmd+Shift+]` / `Ctrl+PageDown`: Cycle to Next Tab (`layout.cycleTab(1)`).
+  - `Ctrl+Shift+Tab` / `Cmd+Alt+←` / `Cmd+Shift+[` / `Ctrl+PageUp`: Cycle to Previous Tab (`layout.cycleTab(-1)`).
+  - `Cmd+1` .. `Cmd+8` / `Ctrl+1` .. `Ctrl+8`: Switch to 1st through 8th tab (`layout.activateTabAtIndex(0..7)`).
+  - `Cmd+9` / `Ctrl+9`: Switch to Last Tab (`layout.activateTabAtIndex(-1)`).
+  - `Cmd+T` / `Ctrl+T`: Create new note in a new tab (`notes.create()`).
+  - `Cmd+K` / `Ctrl+K`: Open Link popover on active editor.
+- **Contract Verification**:
+  - Extended contract test suite (`notes-tabs-facade.spec.ts`, `note-suggest-full.spec.ts`) with 1475/1475 passing tests.
+
 ## [0.5.1] - 2026-07-26
 
 ### 🔍 In-Note Search Navigation & Viewport Scroll Restoration
@@ -18,6 +52,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exported `scrollPosIntoView` and `findScrollContainer` from `@notesnook-vue/editor-vue`.
   - Refactored `search-scroll.ts` to consume the shared `scrollPosIntoView` helper.
   - Added contract tests in `find-replace.spec.ts` for relative cursor jumping and ancestor scroll container positioning.
+
+### 🏷️ Footer Tags & Links Keyboard Navigation & Glassmorphism Styling
+- **Keyboard Navigation (`ArrowUp`/`ArrowDown`/`Enter`/`Escape`)**:
+  - Added keyboard listener and active index tracking (`tagActiveIndex`, `linkActiveIndex`) to footer tag and link inputs in `Editor.vue`.
+  - Enabled cycling through tag and link suggestions with `ArrowDown` / `ArrowUp` and selecting active suggestions via `Enter`.
+  - Added `Escape` key handling to close suggestion popovers.
+  - Synchronized `@mouseenter` hover state with keyboard active indices.
+- **Glassmorphism Design Elevation**:
+  - Replaced plain dropdown surface with rich glassmorphism popover panels (`bg-surface-solid/95 backdrop-blur-xl border border-glass-border/80 shadow-2xl rounded-xl p-1`).
+  - Added active item highlighting (`bg-glass-active text-text font-medium`) and `#` tag prefixing.
+
+### 🎯 Automatic Context Inheritance for Note Creation in Filtered Views
+- **Filter-Aware Note Creation (`applyActiveFilterToNote`)**:
+  - Implemented `applyActiveFilterToNote(noteId)` in `stores/notes.ts` to inspect the active `collectionFilter` or `collections.selected` context during note creation.
+  - Automatically attaches the active **Notebook** (`addToNotebook`), **Tag** (`db.relations.add`), or **Color** (`setColor`) to newly created notes (`create()` and `createDraft()`).
+  - Instantly refreshes collection membership so new notes remain visible in `visibleItems` without requiring a manual refresh or view switch.
+- **Contract Verification**:
+  - Added unit contract tests in `notes-collection-filter.spec.ts` verifying automatic notebook and tag assignment upon note creation in filtered views.
 
 ## [0.5.0] - 2026-07-26
 

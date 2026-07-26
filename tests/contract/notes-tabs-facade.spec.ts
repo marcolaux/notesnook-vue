@@ -279,4 +279,30 @@ describe("notes-tabs facade — tab state lives in the editor-layout store", () 
     await notes.saveContent("a", "<p>new</p>");
     expect(notifyChangedMutate).toHaveBeenCalledWith({ noteId: "a" });
   });
+
+  it("activateTabAtIndex and cycleTab switch tabs by index or cycle direction", () => {
+    const notes = useNotesStore();
+    const layout = useEditorLayoutStore();
+    layout.init();
+    notes.items = SAMPLE;
+    notes.selectNote("a");
+    notes.selectNote("b");
+    notes.selectNote("c");
+
+    expect(layout.activeTab?.noteId).toBe("c");
+    layout.activateTabAtIndex(0);
+    expect(layout.activeTab?.noteId).toBe("a");
+
+    layout.activateTabAtIndex(1);
+    expect(layout.activeTab?.noteId).toBe("b");
+
+    layout.activateTabAtIndex(-1);
+    expect(layout.activeTab?.noteId).toBe("c");
+
+    layout.cycleTab(-1);
+    expect(layout.activeTab?.noteId).toBe("b");
+
+    layout.cycleTab(1);
+    expect(layout.activeTab?.noteId).toBe("c");
+  });
 });

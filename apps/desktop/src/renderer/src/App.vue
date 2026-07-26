@@ -42,6 +42,7 @@ import {
 } from "@contracts/db-locked";
 import { setTheme, ThemeDark, ThemeLight, type VueTheme } from "@notesnook-vue/theme-vue";
 import { useReminderNotifications } from "@/composables/use-reminder-notifications";
+import { useTabShortcuts } from "@/composables/use-tab-shortcuts";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ColorEditorDialog from "@/components/ColorEditorDialog.vue";
@@ -259,7 +260,10 @@ function bindCrossWindowThemeListener(): void {
 // store's `items` to `desktop.reminders.schedule` + listens for
 // `app:reminder-fired` to reschedule. Called synchronously at setup so its
 // `onUnmounted` cleanup registers against this component instance.
-if (!isSettingsWindow && !isNoteWindow) useReminderNotifications();
+if (!isSettingsWindow && !isNoteWindow) {
+  useReminderNotifications();
+  useTabShortcuts();
+}
 
 // Deep-link (Phase 6.5): the main process forwards `nn://note/<id>` URLs as
 // `app:open-note` events. Open the note in the editor when the shell is

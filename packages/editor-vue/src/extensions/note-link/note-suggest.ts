@@ -57,7 +57,7 @@ export const NoteSuggest = Extension.create<NoteSuggestOptions>({
         // the custom `findSuggestionMatch` below, which ignores `char`.
         char: "@",
         allowedPrefixes: null,
-        allowSpaces: false,
+        allowSpaces: true,
         findSuggestionMatch: findNoteSuggestionMatch,
         items: ({ query }) => {
           const fetch = (editor.storage as Record<string, unknown>).getNoteSuggestions as

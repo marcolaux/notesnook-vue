@@ -80,7 +80,8 @@ export function wireNoteLink(
     backToNotes: t("linkNote.backToNotes"),
     noResults: t("linkNote.noResults"),
     noBlocks: t("linkNote.noBlocks"),
-    emptyBlock: t("linkNote.emptyBlock")
+    emptyBlock: t("linkNote.emptyBlock"),
+    createNote: t("linkNote.createNote")
   } satisfies NoteLinkLabels;
 
   storage.getNoteSuggestions = (query: string): NoteSuggestionItem[] => {
@@ -90,6 +91,21 @@ export function wireNoteLink(
       .filter((n) => n.id !== excludeId)
       .slice(0, 12)
       .map((n) => ({ id: n.id, title: n.title || "Untitled" }));
+  };
+
+  storage.createNoteForLink = async (
+    title: string
+  ): Promise<{ id: string; title: string } | null> => {
+    try {
+      const notes = useNotesStore();
+      const cleanTitle = title.trim() || "Untitled";
+      const id = await notes.create({ title: cleanTitle, openNote: false, content: "" });
+      return { id, title: cleanTitle };
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[note-link-bridge] createNoteForLink failed:", e);
+      return null;
+    }
   };
 
   storage.getContentBlocks = async (noteId: string): Promise<ContentBlockItem[]> => {
@@ -108,6 +124,21 @@ export function wireNoteLink(
     }
   };
 
+  storage.pickLocalFile = async (): Promise<{ href: string; title: string } | null> => {
+    try {
+      const file = await desktop.dialog.openFile.mutate({ extensions: [] });
+      if (file) {
+        const name = file.name || "local-file";
+        const href = name.startsWith("file://") ? name : `file://${name}`;
+        return { href, title: name };
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[note-link-bridge] pickLocalFile failed:", e);
+    }
+    return null;
+  };
+
   storage.openLink = (href: string, _newTab: boolean): void => {
     if (isInternalLink(href)) {
       const parsed = parseInternalLink(href);
@@ -119,6 +150,18 @@ export function wireNoteLink(
         layout.openTab(getGroupId(), parsed.id);
         return;
       }
+    }
+    if (href.startsWith("file://") || href.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(href)) {
+      let rawPath = href;
+      if (href.startsWith("file://")) {
+        try {
+          rawPath = decodeURIComponent(href.slice(7));
+        } catch {
+          rawPath = href.slice(7);
+        }
+      }
+      void desktop.shell.openPath.mutate({ path: rawPath });
+      return;
     }
     // External link → OS browser. `noopener` matches the mark's `rel`.
     window.open(href, "_blank", "noopener,noreferrer");

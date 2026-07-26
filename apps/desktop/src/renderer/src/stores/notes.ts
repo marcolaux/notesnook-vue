@@ -21,6 +21,7 @@ import { toBlobURL } from "@notesnook-vue/editor-vue";
 import { toColorListItem, type ColorListItem } from "@/utils/colors";
 import type { CollectionType } from "@/stores/collections";
 import { useCollectionsStore } from "@/stores/collections";
+import { usePropertiesStore } from "@/stores/properties";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useShellStore } from "@/stores/shell";
 import { useSettingsStore } from "@/stores/settings";
@@ -765,15 +766,60 @@ export const useNotesStore = defineStore("notes", () => {
    * tray/menu "New note" all behave identically. The ephemeral draft path
    * (`createDraft`) is deliberately separate and NEVER applies a template: a
    * user typing into an empty pane must not suddenly get template content. */
+  /**
+   * Automatically attach the active list filter context (notebook, tag, or color)
+   * to a newly created note so it immediately matches the current view.
+   */
+  async function applyActiveFilterToNote(noteId: string): Promise<void> {
+    const filter = collectionFilter.value ?? (
+      useCollectionsStore().selected
+        ? { type: useCollectionsStore().selected!.type, id: useCollectionsStore().selected!.id }
+        : null
+    );
+    if (!filter) return;
+
+    try {
+      const db = getDatabase();
+      const properties = usePropertiesStore();
+
+      if (filter.type === "notebook") {
+        await db.notes.addToNotebook(filter.id, noteId);
+      } else if (filter.type === "color") {
+        await properties.setColor(filter.id, noteId);
+      } else if (filter.type === "tag") {
+        const tagList = useCollectionsStore().tags;
+        const realTag = tagList.find((t) => t.id === filter.id);
+        const tagId = realTag ? realTag.id : filter.id;
+        await db.relations.add(
+          { id: tagId, type: "tag" },
+          { id: noteId, type: "note" }
+        );
+      }
+
+      await filterByCollection(filter.type, filter.id);
+      await properties.loadAssignments();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[notes] applyActiveFilterToNote failed:", e);
+    }
+  }
+
   async function create(
-    opts?: { task?: boolean; templateId?: string; content?: string }
+    opts?: { task?: boolean; templateId?: string; content?: string; title?: string; openNote?: boolean }
   ): Promise<string> {
     const db = getDatabase();
     const data = await resolveCreateContent(opts);
-    const id = await db.notes.add({ content: { type: "tiptap", data } });
+    const addArg: { title?: string; content: { type: "tiptap"; data: string } } = {
+      content: { type: "tiptap", data }
+    };
+    if (opts?.title) addArg.title = opts.title;
+    const id = await db.notes.add(addArg);
+    await applyActiveFilterToNote(id);
     await load();
-    pendingTitleFocus.value = "select";
-    layout.openNote(id);
+    if (opts?.openNote !== false) {
+      pendingTitleFocus.value = "select";
+      layout.openNote(id);
+    }
     return id;
   }
 
@@ -852,6 +898,7 @@ export const useNotesStore = defineStore("notes", () => {
     let id: string;
     try {
       id = await db.notes.add(addArg);
+      await applyActiveFilterToNote(id);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("[notes] createDraft failed:", e);
@@ -1380,6 +1427,7 @@ export const useNotesStore = defineStore("notes", () => {
     unarchiveMany,
     filterByCollection,
     clearCollectionFilter,
+    applyActiveFilterToNote,
     tasksFilterActive,
     setTasksFilterActive,
     setQuery,

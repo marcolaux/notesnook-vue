@@ -36,6 +36,22 @@ function getBlocksFn(editor: Editor): ((noteId: string) => Promise<ContentBlockI
     | undefined;
 }
 
+function createNoteFn(
+  editor: Editor
+): ((title: string) => Promise<{ id: string; title: string } | null>) | undefined {
+  return (editor.storage as Storage).createNoteForLink as
+    | ((title: string) => Promise<{ id: string; title: string } | null>)
+    | undefined;
+}
+
+function pickLocalFileFn(
+  editor: Editor
+): (() => Promise<{ href: string; title: string } | null>) | undefined {
+  return (editor.storage as Storage).pickLocalFile as
+    | (() => Promise<{ href: string; title: string } | null>)
+    | undefined;
+}
+
 function labelsFn(editor: Editor): Partial<NoteLinkLabels> | undefined {
   return (editor.storage as Storage).noteLinkLabels as Partial<NoteLinkLabels> | undefined;
 }
@@ -44,8 +60,11 @@ function syncProps(state: RenderState, props: RenderProps): void {
   state.props = props;
   state.component?.updateProps({
     items: props.items,
+    query: props.query,
     command: props.command,
-    clientRect: props.clientRect
+    clientRect: props.clientRect,
+    createNote: createNoteFn(props.editor as unknown as Editor),
+    pickLocalFile: pickLocalFileFn(props.editor as unknown as Editor)
   });
 }
 
@@ -63,9 +82,12 @@ export function noteLinkMenuRenderer(): {
         props: {
           variant: "inline",
           items: props.items,
+          query: props.query,
           command: props.command,
           clientRect: props.clientRect,
           getBlocks: getBlocksFn(props.editor as unknown as Editor),
+          createNote: createNoteFn(props.editor as unknown as Editor),
+          pickLocalFile: pickLocalFileFn(props.editor as unknown as Editor),
           labels: labelsFn(props.editor as unknown as Editor)
         },
         editor: props.editor as unknown as Editor

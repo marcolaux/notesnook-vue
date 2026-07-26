@@ -112,6 +112,19 @@ export const Link = Mark.create<LinkOptions>({
     };
   },
 
+  addKeyboardShortcuts() {
+    return {
+      "Mod-k": () => {
+        const triggerBtn = document.querySelector("[data-note-link-trigger]") as HTMLElement | null;
+        if (triggerBtn) {
+          triggerBtn.click();
+          return true;
+        }
+        return false;
+      }
+    };
+  },
+
   addProseMirrorPlugins() {
     const editor = this.editor;
     if (!this.options.openOnClick) return [];

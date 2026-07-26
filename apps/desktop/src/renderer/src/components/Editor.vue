@@ -269,6 +269,7 @@ function onTitleEnter(): void {
 // the sidebar) so it appears there.
 const tagQuery = ref("");
 const tagMenuOpen = ref(false);
+const tagActiveIndex = ref(0);
 const tagInputEl = ref<HTMLInputElement | null>(null);
 
 /** Existing tags matching the query, excluding ones already assigned. */
@@ -281,10 +282,54 @@ const tagSuggestions = computed(() => {
     .slice(0, 8);
 });
 
+watch(tagSuggestions, (suggs) => {
+  if (tagActiveIndex.value >= suggs.length) {
+    tagActiveIndex.value = Math.max(0, suggs.length - 1);
+  }
+});
+
+function onTagKeyDown(e: KeyboardEvent): void {
+  const suggs = tagSuggestions.value;
+  switch (e.key) {
+    case "ArrowDown":
+      e.preventDefault();
+      if (!tagMenuOpen.value) {
+        tagMenuOpen.value = true;
+        tagActiveIndex.value = 0;
+      } else if (suggs.length > 0) {
+        tagActiveIndex.value = (tagActiveIndex.value + 1) % suggs.length;
+      }
+      break;
+    case "ArrowUp":
+      e.preventDefault();
+      if (!tagMenuOpen.value) {
+        tagMenuOpen.value = true;
+        tagActiveIndex.value = Math.max(0, suggs.length - 1);
+      } else if (suggs.length > 0) {
+        tagActiveIndex.value = (tagActiveIndex.value - 1 + suggs.length) % suggs.length;
+      }
+      break;
+    case "Enter":
+      e.preventDefault();
+      if (tagMenuOpen.value && tagActiveIndex.value >= 0 && suggs[tagActiveIndex.value]) {
+        void addExistingTag(suggs[tagActiveIndex.value]!.id);
+      } else {
+        void commitTagInput();
+      }
+      break;
+    case "Escape":
+      e.preventDefault();
+      tagMenuOpen.value = false;
+      tagActiveIndex.value = -1;
+      break;
+  }
+}
+
 async function addExistingTag(tagId: string): Promise<void> {
   await footer.addTag(tagId);
   tagQuery.value = "";
   tagMenuOpen.value = false;
+  tagActiveIndex.value = 0;
   tagInputEl.value?.focus();
 }
 
@@ -314,12 +359,14 @@ async function commitTagInput(): Promise<void> {
     // Already assigned — just clear.
     tagQuery.value = "";
     tagMenuOpen.value = false;
+    tagActiveIndex.value = 0;
     return;
   }
   const created = await footer.createTag(q);
   if (created) {
     tagQuery.value = "";
     tagMenuOpen.value = false;
+    tagActiveIndex.value = 0;
     tagInputEl.value?.focus();
   }
 }
@@ -338,6 +385,7 @@ function onTagInputBlur(): void {
 // this note + already-linked) — Enter links the first match.
 const linkQuery = ref("");
 const linkMenuOpen = ref(false);
+const linkActiveIndex = ref(0);
 const linkInputEl = ref<HTMLInputElement | null>(null);
 
 /** Notes matching the query, excluding this note + already-linked. */
@@ -351,10 +399,54 @@ const linkSuggestions = computed(() => {
     .slice(0, 8);
 });
 
+watch(linkSuggestions, (suggs) => {
+  if (linkActiveIndex.value >= suggs.length) {
+    linkActiveIndex.value = Math.max(0, suggs.length - 1);
+  }
+});
+
+function onLinkKeyDown(e: KeyboardEvent): void {
+  const suggs = linkSuggestions.value;
+  switch (e.key) {
+    case "ArrowDown":
+      e.preventDefault();
+      if (!linkMenuOpen.value) {
+        linkMenuOpen.value = true;
+        linkActiveIndex.value = 0;
+      } else if (suggs.length > 0) {
+        linkActiveIndex.value = (linkActiveIndex.value + 1) % suggs.length;
+      }
+      break;
+    case "ArrowUp":
+      e.preventDefault();
+      if (!linkMenuOpen.value) {
+        linkMenuOpen.value = true;
+        linkActiveIndex.value = Math.max(0, suggs.length - 1);
+      } else if (suggs.length > 0) {
+        linkActiveIndex.value = (linkActiveIndex.value - 1 + suggs.length) % suggs.length;
+      }
+      break;
+    case "Enter":
+      e.preventDefault();
+      if (linkMenuOpen.value && linkActiveIndex.value >= 0 && suggs[linkActiveIndex.value]) {
+        void addOutgoingLink(suggs[linkActiveIndex.value]!.id);
+      } else {
+        void commitLinkInput();
+      }
+      break;
+    case "Escape":
+      e.preventDefault();
+      linkMenuOpen.value = false;
+      linkActiveIndex.value = -1;
+      break;
+  }
+}
+
 async function addOutgoingLink(noteId: string): Promise<void> {
   await footer.link(noteId);
   linkQuery.value = "";
   linkMenuOpen.value = false;
+  linkActiveIndex.value = 0;
   linkInputEl.value?.focus();
 }
 
@@ -1238,21 +1330,23 @@ function onEditorAreaClick(e: MouseEvent): void {
               v-model="tagQuery"
               class="titlebar-no-drag w-32 rounded-full border border-glass-border bg-glass-surface px-2.5 py-1 text-xs text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
               placeholder="Add tag…"
-              @focus="tagMenuOpen = true"
+              @focus="tagMenuOpen = true; tagActiveIndex = 0"
               @blur="onTagInputBlur"
-              @keydown.enter.prevent="commitTagInput"
+              @keydown="onTagKeyDown"
             />
             <ul
               v-if="tagMenuOpen && tagSuggestions.length"
-              class="absolute bottom-full left-0 z-10 mb-1 max-h-48 w-48 overflow-auto rounded-md border border-glass-border bg-glass-surface py-1 text-xs shadow-lg"
+              class="absolute bottom-full left-0 z-20 mb-1.5 max-h-48 w-48 overflow-auto rounded-xl border border-glass-border/80 bg-surface-solid/95 p-1 text-xs shadow-2xl backdrop-blur-xl"
             >
               <li
-                v-for="s in tagSuggestions"
+                v-for="(s, i) in tagSuggestions"
                 :key="s.id"
-                class="cursor-pointer truncate px-2 py-1 text-text hover:bg-glass-hover"
+                class="cursor-pointer truncate rounded-lg px-2.5 py-1.5 text-text transition-colors"
+                :class="i === tagActiveIndex ? 'bg-glass-active text-text font-medium' : 'hover:bg-glass-hover text-text-muted hover:text-text'"
+                @mouseenter="tagActiveIndex = i"
                 @mousedown.prevent="addExistingTag(s.id)"
               >
-                {{ s.title }}
+                #{{ s.title }}
               </li>
             </ul>
           </div>
@@ -1292,18 +1386,20 @@ function onEditorAreaClick(e: MouseEvent): void {
                 v-model="linkQuery"
                 class="titlebar-no-drag w-40 rounded-full border border-glass-border bg-glass-surface px-2.5 py-1 text-xs text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
                 placeholder="Link to note…"
-                @focus="linkMenuOpen = true"
+                @focus="linkMenuOpen = true; linkActiveIndex = 0"
                 @blur="onLinkInputBlur"
-                @keydown.enter.prevent="commitLinkInput"
+                @keydown="onLinkKeyDown"
               />
               <ul
                 v-if="linkMenuOpen && linkSuggestions.length"
-                class="absolute bottom-full left-0 z-10 mb-1 max-h-48 w-56 overflow-auto rounded-md border border-glass-border bg-glass-surface py-1 text-xs shadow-lg"
+                class="absolute bottom-full left-0 z-20 mb-1.5 max-h-48 w-56 overflow-auto rounded-xl border border-glass-border/80 bg-surface-solid/95 p-1 text-xs shadow-2xl backdrop-blur-xl"
               >
                 <li
-                  v-for="s in linkSuggestions"
+                  v-for="(s, i) in linkSuggestions"
                   :key="s.id"
-                  class="cursor-pointer truncate px-2 py-1 text-text hover:bg-glass-hover"
+                  class="cursor-pointer truncate rounded-lg px-2.5 py-1.5 text-text transition-colors"
+                  :class="i === linkActiveIndex ? 'bg-glass-active text-text font-medium' : 'hover:bg-glass-hover text-text-muted hover:text-text'"
+                  @mouseenter="linkActiveIndex = i"
                   @mousedown.prevent="addOutgoingLink(s.id)"
                 >
                   {{ s.title }}

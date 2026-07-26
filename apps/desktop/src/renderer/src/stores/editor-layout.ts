@@ -823,6 +823,17 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     return 0;
   }
 
+  /** Activate tab by 0-based index in the active group (or -1 for last tab). */
+  function activateTabAtIndex(index: number): void {
+    const siblings = tabsOf(activeGroupId.value);
+    if (siblings.length === 0) return;
+    if (index === -1 || index >= siblings.length) {
+      activateTab(siblings[siblings.length - 1]!.id);
+    } else if (index >= 0 && siblings[index]) {
+      activateTab(siblings[index]!.id);
+    }
+  }
+
   return {
     layout,
     groups,
@@ -858,6 +869,7 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     closeActiveTab,
     cycleTab,
     activateTab,
+    activateTabAtIndex,
     setActiveGroup,
     toggleHistory,
     toggleToc,

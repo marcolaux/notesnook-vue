@@ -92,6 +92,15 @@ async function fetchBlocks(noteId: string): Promise<ContentBlockItem[]> {
 function linkNoteRect(): DOMRect | null {
   return linkNoteBtn.value?.getBoundingClientRect() ?? null;
 }
+async function createNote(title: string): Promise<{ id: string; title: string } | null> {
+  const fn = linkNoteStorage()?.createNoteForLink as ((t: string) => Promise<{ id: string; title: string } | null>) | undefined;
+  return fn ? await fn(title) : null;
+}
+async function pickFile(): Promise<{ href: string; title: string } | null> {
+  const fn = linkNoteStorage()?.pickLocalFile as (() => Promise<{ href: string; title: string } | null>) | undefined;
+  return fn ? await fn() : null;
+}
+
 /** On picker selection: insert the note link at the editor's selection, then
  *  close. `insertNoteLink` is selection-aware (over a selection → mark it; empty
  *  → insert the title text + trailing space) and re-focuses the editor. */
@@ -290,6 +299,8 @@ onBeforeUnmount(() => {
       variant="toolbar"
       :search="searchNotes"
       :get-blocks="fetchBlocks"
+      :create-note="createNote"
+      :pick-local-file="pickFile"
       :command="onLinkNoteCommand"
       :client-rect="linkNoteRect"
       :labels="linkNoteLabels"

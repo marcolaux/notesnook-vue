@@ -92,4 +92,29 @@ describe("NoteSuggest in the FULL live extension set", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(document.body.querySelector(".nl-menu"), "popup missing").not.toBeNull();
   });
+  it("renders the create note option when createNote hook is present and query is typed", async () => {
+    let createdTitle = "";
+    (editor.storage as Record<string, unknown>).createNoteForLink = async (t: string) => {
+      createdTitle = t;
+      return { id: "n_created", title: t };
+    };
+    editor.chain().focus().setContent("<p></p>").run();
+    editor.chain().insertContent("[[NewNote").run();
+    await new Promise((r) => setTimeout(r, 10));
+    const createBtn = document.body.querySelector(".nl-item--create");
+    expect(createBtn, "create button missing").not.toBeNull();
+    expect(createBtn?.textContent).toContain('NewNote');
+  });
+
+  it("remains active when typing spaces in `@` or `[[` queries", async () => {
+    (editor.storage as Record<string, unknown>).createNoteForLink = async (t: string) => {
+      return { id: "n_created", title: t };
+    };
+    editor.chain().focus().setContent("<p></p>").run();
+    editor.chain().insertContent("[[New Note With Spaces").run();
+    await new Promise((r) => setTimeout(r, 10));
+    const createBtn = document.body.querySelector(".nl-item--create");
+    expect(createBtn, "create button missing for query with spaces").not.toBeNull();
+    expect(createBtn?.textContent).toContain('New Note With Spaces');
+  });
 });

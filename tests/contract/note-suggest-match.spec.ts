@@ -55,22 +55,12 @@ describe("findNoteSuggestionMatch (@ and [[)", () => {
     expect(match("[[")!.query).toBe("");
   });
 
-  it("deactivates once the cursor moves past a trailing space", () => {
-    // `@ ` / `[[ ` with the cursor at the very end (past the space) → no match.
-    expect(match("foo @ ")).toBeNull();
-    expect(match("foo [[ ")).toBeNull();
-  });
-
-  it("picks the match straddling the cursor (last match)", () => {
-    const m = match("@alpha [[beta");
-    // Both `@alpha` and `[[beta` match; the last one straddles the end cursor.
-    expect(m!.text).toBe("[[beta");
-    expect(m!.query).toBe("beta");
-  });
-
-  it("returns null when the cursor is after trailing text past the trigger", () => {
-    // Cursor at the very end of `@foo bar` is past the `@foo` match → no match.
-    expect(match("@foo bar")).toBeNull();
+  it("maintains match when typing spaces in @ or [[ note queries", () => {
+    // `@ Note` / `[[ Note` with spaces in title query stays active.
+    expect(match("foo @bar baz")).not.toBeNull();
+    expect(match("foo @bar baz")!.query).toBe("bar baz");
+    expect(match("foo [[wiki note")).not.toBeNull();
+    expect(match("foo [[wiki note")!.query).toBe("wiki note");
   });
 
   it("matches when the cursor sits just after the trigger text", () => {

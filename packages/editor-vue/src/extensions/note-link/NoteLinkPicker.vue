@@ -39,6 +39,8 @@ const props = withDefaults(
     variant?: "inline" | "toolbar";
     /** Note results (inline variant). Ignored in toolbar variant. */
     items?: NoteSuggestionItem[];
+    /** Live query typed after `@` or `[[` (inline variant). */
+    query?: string;
     /** Invoked with the final `{href, title}` once a note/block is chosen. */
     command: (result: NoteLinkResult) => void;
     /** Live cursor rect from the suggestion plugin (inline variant). */
@@ -46,6 +48,10 @@ const props = withDefaults(
     /** Note search (toolbar variant). When omitted in toolbar mode, the
      *  popup lists `items` (if provided) or shows no-results. */
     search?: (query: string) => NoteSuggestionItem[];
+    /** Create note hook (both variants). Called when user chooses the create row. */
+    createNote?: (title: string) => Promise<{ id: string; title: string } | null>;
+    /** Local file picker hook. Opens native OS open file dialog. */
+    pickLocalFile?: () => Promise<{ href: string; title: string } | null>;
     /** Block drilldown (both variants). Returns a note's content blocks. */
     getBlocks?: (noteId: string) => Promise<ContentBlockItem[]>;
     labels?: Partial<NoteLinkLabels>;
@@ -80,22 +86,63 @@ const noteItems = computed<NoteSuggestionItem[]>(() =>
   props.variant === "toolbar" ? toolbarItems.value : props.items ?? []
 );
 
-interface Row {
-  kind: "whole" | "block";
-  block?: ContentBlockItem;
-}
-
-/** Block-mode rows: a leading "Link to whole note" row + one row per block. */
-const blockRows = computed<Row[]>(() => [
-  { kind: "whole" },
-  ...blocks.value.map((b) => ({ kind: "block", block: b }) as Row)
-]);
-
-const rows = computed<(NoteSuggestionItem | Row)[]>(() =>
-  mode.value === "notes" ? noteItems.value : blockRows.value
+const activeQuery = computed(() =>
+  (props.variant === "toolbar" ? query.value : props.query ?? "").trim()
 );
 
-const rowCount = computed(() => (mode.value === "notes" ? noteItems.value.length : blockRows.value.length));
+export type DisplayRow =
+  | { kind: "note"; item: NoteSuggestionItem }
+  | { kind: "create"; title: string }
+  | { kind: "web"; url: string; title: string }
+  | { kind: "file"; url: string; title: string }
+  | { kind: "whole" }
+  | { kind: "block"; block: ContentBlockItem };
+
+function isWebUrl(q: string): boolean {
+  return /^https?:\/\//i.test(q) || /^www\./i.test(q);
+}
+
+function isFilePath(q: string): boolean {
+  return /^file:\/\//i.test(q) || /^\//.test(q) || /^~\//.test(q) || /^[a-zA-Z]:[\\/]/.test(q);
+}
+
+function formatWebUrl(q: string): string {
+  if (/^www\./i.test(q)) return `https://${q}`;
+  return q;
+}
+
+function formatFileUrl(q: string): string {
+  if (q.startsWith("file://")) return q;
+  return `file://${q}`;
+}
+
+const noteRows = computed<DisplayRow[]>(() => {
+  const result: DisplayRow[] = noteItems.value.map((item) => ({ kind: "note" as const, item }));
+  const q = activeQuery.value;
+  if (q.length > 0) {
+    if (isWebUrl(q)) {
+      result.unshift({ kind: "web" as const, url: formatWebUrl(q), title: q });
+    } else if (isFilePath(q)) {
+      result.unshift({ kind: "file" as const, url: formatFileUrl(q), title: q });
+    }
+    if (props.createNote) {
+      result.push({ kind: "create" as const, title: q });
+    }
+  }
+  return result;
+});
+
+/** Block-mode rows: a leading "Link to whole note" row + one row per block. */
+const blockRows = computed<DisplayRow[]>(() => [
+  { kind: "whole" as const },
+  ...blocks.value.map((b) => ({ kind: "block" as const, block: b }))
+]);
+
+const rows = computed<DisplayRow[]>(() =>
+  mode.value === "notes" ? noteRows.value : blockRows.value
+);
+
+const rowCount = computed(() => rows.value.length);
 
 function clampActive(): void {
   if (rowCount.value === 0) activeIndex.value = 0;
@@ -127,6 +174,35 @@ function emitBlock(b: ContentBlockItem): void {
     href: createInternalLink("note", n.id, { blockId: b.id }),
     title: b.content.trim() || n.title
   });
+}
+
+async function handleCreate(title: string): Promise<void> {
+  if (!props.createNote) return;
+  loadingBlocks.value = true;
+  try {
+    const created = await props.createNote(title);
+    if (created) {
+      props.command({
+        href: createInternalLink("note", created.id),
+        title: created.title
+      });
+    }
+  } finally {
+    loadingBlocks.value = false;
+  }
+}
+
+async function browseLocalFile(): Promise<void> {
+  if (!props.pickLocalFile) return;
+  loadingBlocks.value = true;
+  try {
+    const picked = await props.pickLocalFile();
+    if (picked) {
+      props.command({ href: picked.href, title: picked.title });
+    }
+  } finally {
+    loadingBlocks.value = false;
+  }
 }
 
 async function selectNote(note: NoteSuggestionItem): Promise<void> {
@@ -163,15 +239,22 @@ function backToNotes(): void {
 }
 
 function selectRow(i: number): void {
-  if (mode.value === "notes") {
-    const note = noteItems.value[i];
-    if (note) void selectNote(note);
-    return;
-  }
-  const row = blockRows.value[i];
+  const row = rows.value[i];
   if (!row) return;
-  if (row.kind === "whole") emitWhole();
-  else if (row.block) emitBlock(row.block);
+
+  if (row.kind === "note") {
+    void selectNote(row.item);
+  } else if (row.kind === "create") {
+    void handleCreate(row.title);
+  } else if (row.kind === "web") {
+    props.command({ href: row.url, title: row.title });
+  } else if (row.kind === "file") {
+    props.command({ href: row.url, title: row.title });
+  } else if (row.kind === "whole") {
+    emitWhole();
+  } else if (row.kind === "block" && row.block) {
+    emitBlock(row.block);
+  }
 }
 
 function next(): void {
@@ -275,14 +358,25 @@ function ellipsize(s: string, n = 80): string {
       @mousedown.prevent
     >
       <div v-if="variant === 'toolbar' && mode === 'notes'" class="nl-search">
-        <input
-          ref="searchInput"
-          v-model="query"
-          class="nl-search__input"
-          :placeholder="L.searchPlaceholder"
-          @keydown="onSearchKeydown"
-          @input="runSearch"
-        />
+        <div class="nl-search__row">
+          <input
+            ref="searchInput"
+            v-model="query"
+            class="nl-search__input"
+            :placeholder="L.searchPlaceholder"
+            @keydown="onSearchKeydown"
+            @input="runSearch"
+          />
+          <button
+            v-if="pickLocalFile"
+            type="button"
+            class="nl-browse-btn"
+            :title="L.browseFile"
+            @click="browseLocalFile"
+          >
+            📁
+          </button>
+        </div>
       </div>
 
       <div v-if="mode === 'blocks'" class="nl-back">
@@ -290,18 +384,34 @@ function ellipsize(s: string, n = 80): string {
       </div>
 
       <div v-if="mode === 'notes'">
-        <div v-if="noteItems.length === 0" class="nl-empty">{{ L.noResults }}</div>
+        <div v-if="noteRows.length === 0" class="nl-empty">{{ L.noResults }}</div>
         <button
-          v-for="(item, i) in noteItems"
-          :key="item.id"
+          v-for="(row, i) in noteRows"
+          :key="row.kind === 'note' ? row.item.id : row.kind + '-' + row.title"
           class="nl-item"
-          :class="{ 'nl-item--active': i === activeIndex }"
+          :class="{
+            'nl-item--active': i === activeIndex,
+            'nl-item--create': row.kind === 'create',
+            'nl-item--web': row.kind === 'web',
+            'nl-item--file': row.kind === 'file'
+          }"
           type="button"
-          @click="selectNote(item)"
+          @click="selectRow(i)"
           @mouseenter="activeIndex = i"
         >
-          <span class="nl-item__title">{{ item.title }}</span>
-          <span v-if="item.snippetHtml" class="nl-item__snippet" v-html="item.snippetHtml" />
+          <template v-if="row.kind === 'note'">
+            <span class="nl-item__title">{{ row.item.title }}</span>
+            <span v-if="row.item.snippetHtml" class="nl-item__snippet" v-html="row.item.snippetHtml" />
+          </template>
+          <template v-else-if="row.kind === 'web'">
+            <span class="nl-item__title nl-item__web-title">🌐 {{ L.webLinkOption }} "{{ row.title }}"</span>
+          </template>
+          <template v-else-if="row.kind === 'file'">
+            <span class="nl-item__title nl-item__file-title">📁 {{ L.fileLinkOption }} "{{ row.title }}"</span>
+          </template>
+          <template v-else-if="row.kind === 'create'">
+            <span class="nl-item__title nl-item__create-title">+ {{ L.createNote }} "{{ row.title }}"</span>
+          </template>
         </button>
       </div>
 
@@ -342,22 +452,40 @@ function ellipsize(s: string, n = 80): string {
   font-size: 13px;
 }
 
-.nl-search {
-  padding: 4px 4px 6px;
+.nl-search__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
-.nl-search__input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 6px 8px;
+.nl-browse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 8px;
   border-radius: 6px;
   border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
   background: transparent;
-  color: var(--color-text, rgba(255, 255, 255, 0.85));
-  font: inherit;
-  outline: none;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.6));
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
 }
-.nl-search__input:focus {
-  border-color: var(--color-hover, rgba(255, 255, 255, 0.25));
+.nl-browse-btn:hover {
+  background: var(--color-hover, rgba(255, 255, 255, 0.08));
+  color: var(--color-text, rgba(255, 255, 255, 0.9));
+}
+.nl-item--create, .nl-item--web, .nl-item--file {
+  font-weight: 500;
+}
+.nl-item--web {
+  color: #3b82f6;
+}
+.nl-item--file {
+  color: #10b981;
+}
+.nl-item--create {
+  color: var(--color-accent, #8b5cf6);
 }
 
 .nl-back {
