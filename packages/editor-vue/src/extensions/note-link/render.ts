@@ -88,8 +88,20 @@ export function noteLinkMenuRenderer(): {
           getBlocks: getBlocksFn(props.editor as unknown as Editor),
           createNote: createNoteFn(props.editor as unknown as Editor),
           pickLocalFile: pickLocalFileFn(props.editor as unknown as Editor),
-          labels: labelsFn(props.editor as unknown as Editor)
+          labels: labelsFn(props.editor as unknown as Editor),
+          onClose: () => {
+            const p = state.props;
+            if (p) {
+              try {
+                p.editor.chain().focus().deleteRange(p.range).run();
+              } catch {}
+            }
+            state.component?.destroy();
+            state.component = null;
+            state.props = null;
+          }
         },
+
         editor: props.editor as unknown as Editor
       });
       state.props = props;

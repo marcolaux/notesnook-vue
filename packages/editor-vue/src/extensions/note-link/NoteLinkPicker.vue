@@ -57,9 +57,11 @@ const props = withDefaults(
     labels?: Partial<NoteLinkLabels>;
     /** Initial query for the toolbar variant's search field. */
     initialQuery?: string;
+    onClose?: () => void;
   }>(),
   { variant: "inline", items: () => [], initialQuery: "" }
 );
+
 
 /** Toolbar variant: emitted on outside-click / Escape so the host closes the
  *  popup. (The inline variant is closed by the Suggestion plugin's `onExit`,
@@ -313,17 +315,23 @@ function onScroll(): void {
   reposition();
 }
 
-// --- Toolbar variant: close on outside-click / Escape ---------------------
+// --- Close on outside-click / Escape / app:close-popups -------------------
+function closePopup(): void {
+  props.onClose?.();
+  emit("close");
+}
+
 function onOutsideMousedown(event: MouseEvent): void {
   const target = event.target as HTMLElement | null;
   if (!target) return;
   // Ignore clicks on the toolbar trigger button itself — it toggles the popup
   // via its own `@click`, so an outside-click here would close-then-reopen.
   if (target.closest("[data-note-link-trigger]")) return;
-  if (el.value && !el.value.contains(target)) emit("close");
+  if (el.value && !el.value.contains(target)) closePopup();
 }
+
 function onGlobalKeydown(event: KeyboardEvent): void {
-  if (event.key === "Escape") emit("close");
+  if (event.key === "Escape") closePopup();
 }
 
 onMounted(() => {
@@ -331,22 +339,24 @@ onMounted(() => {
   if (props.variant === "toolbar") {
     runSearch();
     nextTick(() => searchInput.value?.focus());
-    window.addEventListener("mousedown", onOutsideMousedown, true);
-    window.addEventListener("keydown", onGlobalKeydown, true);
   } else {
     void nextTick(reposition);
   }
+  window.addEventListener("mousedown", onOutsideMousedown, true);
+  window.addEventListener("keydown", onGlobalKeydown, true);
+  window.addEventListener("app:close-popups", closePopup, true);
   window.addEventListener("scroll", onScroll, true);
   window.addEventListener("resize", onScroll);
 });
+
 onBeforeUnmount(() => {
   window.removeEventListener("scroll", onScroll, true);
   window.removeEventListener("resize", onScroll);
-  if (props.variant === "toolbar") {
-    window.removeEventListener("mousedown", onOutsideMousedown, true);
-    window.removeEventListener("keydown", onGlobalKeydown, true);
-  }
+  window.removeEventListener("mousedown", onOutsideMousedown, true);
+  window.removeEventListener("keydown", onGlobalKeydown, true);
+  window.removeEventListener("app:close-popups", closePopup, true);
 });
+
 
 function ellipsize(s: string, n = 80): string {
   const t = s.trim();

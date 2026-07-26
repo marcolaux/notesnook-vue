@@ -12,6 +12,7 @@ import { onMounted, onUnmounted } from "vue";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
+import { desktop } from "@/platform/desktop-bridge";
 
 export function useTabShortcuts(): void {
   const layout = useEditorLayoutStore();
@@ -24,7 +25,16 @@ export function useTabShortcuts(): void {
     const isMac = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
     const metaOrCtrl = isMac ? e.metaKey : e.ctrlKey;
 
+    // --- Cmd/Ctrl + , -> Settings ---
+    if (metaOrCtrl && !e.shiftKey && !e.altKey && (e.key === "," || e.code === "Comma")) {
+      e.preventDefault();
+      e.stopPropagation();
+      void desktop.window.openSettings.mutate().catch(() => undefined);
+      return;
+    }
+
     // --- Next Tab ---
+
     if (
       (e.ctrlKey && !e.shiftKey && e.key === "Tab" && !e.metaKey) ||
       (metaOrCtrl && e.altKey && (e.key === "ArrowRight" || e.key === "Right")) ||

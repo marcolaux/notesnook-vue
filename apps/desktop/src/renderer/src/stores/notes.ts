@@ -481,8 +481,12 @@ export const useNotesStore = defineStore("notes", () => {
    *  existing consumers (`App.vue`, `Sidebar.vue`) that call `selectNote` also
    *  establish a one-element selection. */
   function selectNote(id: string): void {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("app:close-popups"));
+    }
     selectOnly(id);
   }
+
 
   /** Update the search query (plain or regex per `regexSearch`). */
   function setQuery(q: string): void {

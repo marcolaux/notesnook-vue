@@ -111,8 +111,11 @@ function onTabDragStart(e: DragEvent, tab: { id: string; noteId: string }): void
   writeTabPayload(e, { tabId: tab.id, groupId: props.groupId, noteId: tab.noteId });
   // Clear stale handled state from any previous drag before this one starts.
   resetTabDropHandled();
-  tabDragStart.value = { x: e.screenX, y: e.screenY, tabId: tab.id, noteId: tab.noteId };
+  const screenX = window.screenX + e.clientX;
+  const screenY = window.screenY + e.clientY;
+  tabDragStart.value = { x: screenX, y: screenY, tabId: tab.id, noteId: tab.noteId };
 }
+
 
 /** Middle-click (button 1) closes a tab — the browser/VS Code convention. The
  *  regular `@click` only fires for the left button, so middle-click never

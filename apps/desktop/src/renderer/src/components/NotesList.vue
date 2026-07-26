@@ -201,8 +201,11 @@ function onNoteDragStart(note: NoteListItem, e: DragEvent): void {
   if (!notes.isSelected(note.id)) notes.setSelection([note.id]);
   writeNotePayload(e, { ids });
   resetNoteDropHandled();
-  noteDragStart.value = { x: e.screenX, y: e.screenY, noteId: note.id };
+  const screenX = window.screenX + e.clientX;
+  const screenY = window.screenY + e.clientY;
+  noteDragStart.value = { x: screenX, y: screenY, noteId: note.id };
 }
+
 
 /** A note drag released outside every window (or over another app window) opens
  *  the grabbed note in a new window / the target window — the same

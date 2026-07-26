@@ -975,6 +975,8 @@ function restoreScrollPosition(): void {
  *  Skipped while a save is in-flight so an unsaved edit is never overwritten. */
 async function reloadIfStale(): Promise<void> {
   if (saving.value) return;
+  const inst = editor.value;
+  if (!inst || inst.isFocused) return;
   const id = myNoteId.value;
   if (!id) return;
   const [fresh, tagIds] = await Promise.all([
@@ -983,9 +985,10 @@ async function reloadIfStale(): Promise<void> {
     ),
     properties.getAssignedTagIds(id)
   ]);
-  const inst = editor.value;
-  if (!inst) return;
+  if (!inst || inst.isFocused) return;
   if (inst.getHTML() !== fresh) {
+    const selFrom = inst.state.selection.from;
+    const selTo = inst.state.selection.to;
     wireAttachmentStorage(inst, () => myGroupId.value);
     // Chain the cosmetic reconcile so a stale reload of a note that still has
     // orphan chips in saved content re-strips them (see `loadCurrentNote`).
@@ -994,6 +997,12 @@ async function reloadIfStale(): Promise<void> {
       .setContent(fresh, false)
       .reconcileTagMentions(tagIds, { silent: true })
       .run();
+    try {
+      const maxPos = inst.state.doc.content.size;
+      if (selFrom <= maxPos) {
+        inst.commands.setTextSelection({ from: Math.min(selFrom, maxPos), to: Math.min(selTo, maxPos) });
+      }
+    } catch {}
     // Re-seed outgoing-link relations for inline `nn://` links on a remote
     // reload (same rationale as `loadCurrentNote`). Idempotent.
     void ((inst.storage as Record<string, unknown>).syncNoteLinks as (() => void) | undefined)?.();
@@ -1006,6 +1015,7 @@ async function reloadIfStale(): Promise<void> {
     restoreScrollPosition();
   }
 }
+
 
 async function onNoteChange(
   newId: string | null | undefined,
