@@ -81,18 +81,22 @@ describe("isUpdateAvailable / isReadyToInstall (pure)", () => {
 // `vi.hoisted` runs before imports (the `vi.mock` factory is hoisted above
 // the spec body, so a plain top-level `const bridge` would be uninitialised
 // when the factory reads it). The fns are created here and configured per-test.
-const { bridge } = vi.hoisted(() => ({
+const { bridge, windowBridge } = vi.hoisted(() => ({
   bridge: {
     check: { query: vi.fn() },
     download: { mutate: vi.fn() },
     install: { mutate: vi.fn() },
     status: { query: vi.fn() }
+  },
+  windowBridge: {
+    openChangelog: { mutate: vi.fn().mockResolvedValue(undefined) }
   }
 }));
 
 vi.mock("@/platform/desktop-bridge", () => ({
-  desktop: { updater: bridge }
+  desktop: { updater: bridge, window: windowBridge }
 }));
+
 
 function resetBridge(): void {
   bridge.check.query.mockReset();

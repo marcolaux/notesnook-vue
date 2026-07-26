@@ -23,8 +23,10 @@ export const RouteName = {
   archive: "archive",
   trash: "trash",
   reminders: "reminders",
-  settings: "settings"
+  settings: "settings",
+  changelog: "changelog"
 } as const;
+
 
 export type RouteName = (typeof RouteName)[keyof typeof RouteName];
 
@@ -168,5 +170,10 @@ export const routes: RouteRecordRaw[] = [
     path: "/settings",
     name: RouteName.settings,
     component: () => import("@/components/SettingsLayout.vue")
+  },
+  {
+    path: "/changelog",
+    name: RouteName.changelog,
+    component: () => import("@/components/ChangelogLayout.vue")
   }
 ];

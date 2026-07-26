@@ -22,6 +22,7 @@ import type { WindowBounds } from "../contracts/session-state";
 import { resolveTabRelease, type ScreenRect, type WindowRect } from "../contracts/tab-tear-off";
 import { selectBroadcastTargets } from "../contracts/note-broadcast";
 import { openSettingsWindow, isSettingsWindow } from "./settings-window";
+import { openChangelogWindow } from "./changelog-window";
 import { openNoteWindow } from "./note-window";
 import { resolveContextForSender } from "./session-state";
 
@@ -38,7 +39,11 @@ export function createWindowServer(preloadPath: string): WindowServer {
     openSettings(section: string | undefined): void {
       openSettingsWindow(preloadPath, section);
     },
+    openChangelog(): void {
+      openChangelogWindow(preloadPath);
+    },
     openNote(noteId: string, bounds?: WindowBounds | undefined, contextId?: string | undefined): void {
+
       openNoteWindow(preloadPath, noteId, bounds, contextId);
     },
     releaseTab(

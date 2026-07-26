@@ -339,6 +339,12 @@ export interface WindowServer {
    */
   openSettings(section: string | undefined): void;
   /**
+   * Open the shared Changelog window (singleton). Focuses the existing window
+   * if alive; otherwise creates a dedicated window displaying release notes.
+   */
+  openChangelog(): void;
+
+  /**
    * Open a note in its own window (torn off from a tab in another window).
    * Focuses the existing window for that note if one is alive; otherwise
    * creates one that boots the full shell into focus mode with the note open.
@@ -600,6 +606,9 @@ export const appRouter = t.router({
     openSettings: t.procedure
       .input(z.object({ section: z.string().optional() }).optional())
       .mutation(({ input }) => requireWindowServer().openSettings(input?.section)),
+    openChangelog: t.procedure
+      .mutation(() => requireWindowServer().openChangelog()),
+
     // Open a note in its own window (torn off from a tab). Focuses the existing
     // window for that note if alive; otherwise creates one that boots into
     // focus mode with the note open (see `src/main/note-window.ts`). Optional

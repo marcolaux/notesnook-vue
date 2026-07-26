@@ -50,7 +50,7 @@ import IconEditorDialog from "@/components/IconEditorDialog.vue";
 import ReminderEditorDialog from "@/components/ReminderEditorDialog.vue";
 import PublishDialog from "@/components/PublishDialog.vue";
 import SemanticSearchPromptDialog from "@/components/SemanticSearchPromptDialog.vue";
-import ChangelogDialog from "@/components/ChangelogDialog.vue";
+
 
 const router = useRouter();
 
@@ -115,21 +115,15 @@ async function forceUnlock(): Promise<void> {
 // routes to the top-level `/settings` — no auth/sync/vault/notes, and none of
 // the shell-only watches below (those would redirect to /login since auth is
 // never initialised in this window).
-const isSettingsWindow =
-  typeof URLSearchParams !== "undefined" &&
-  new URLSearchParams(location.search).get("window") === "settings";
-
-// A torn-off note window (multi-window) loads the renderer with
-// `?window=note&noteId=<id>`. It runs the *normal* full-shell boot (not the
-// settings minimal boot), then enables focus mode (hides sidebar + notes list)
-// and opens the note as a tab. One window per note — the main process focuses
-// an existing note window instead of creating a duplicate.
 const windowType =
   typeof URLSearchParams !== "undefined" ? new URLSearchParams(location.search).get("window") : null;
+const isSettingsWindow = windowType === "settings";
+const isChangelogWindow = windowType === "changelog";
 const isNoteWindow = windowType === "note";
 const noteWindowNoteId = isNoteWindow
   ? new URLSearchParams(location.search).get("noteId")
   : null;
+
 
 const auth = useAuthStore();
 const status = useStatusStore();
@@ -260,10 +254,11 @@ function bindCrossWindowThemeListener(): void {
 // store's `items` to `desktop.reminders.schedule` + listens for
 // `app:reminder-fired` to reschedule. Called synchronously at setup so its
 // `onUnmounted` cleanup registers against this component instance.
-if (!isSettingsWindow && !isNoteWindow) {
+if (!isSettingsWindow && !isChangelogWindow && !isNoteWindow) {
   useReminderNotifications();
   useTabShortcuts();
 }
+
 
 // Deep-link (Phase 6.5): the main process forwards `nn://note/<id>` URLs as
 // `app:open-note` events. Open the note in the editor when the shell is
@@ -368,6 +363,30 @@ onMounted(async () => {
     }
     return;
   }
+
+  if (isChangelogWindow) {
+    applyTheme(settings.themeMode);
+    applyTransparency(settings.transparencyEnabled);
+    bindSystemThemeListener();
+    bindCrossWindowThemeListener();
+    try {
+      await bootstrap();
+      applyTheme(settings.themeMode);
+      await settings.load();
+      void spellChecker.refresh();
+      bootState.value = "ready";
+      void router.replace("/changelog");
+      // eslint-disable-next-line no-console
+      console.info("[boot] changelog window ready");
+    } catch (e) {
+      bootState.value = "error";
+      bootError.value = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error("[boot:changelog]", e);
+    }
+    return;
+  }
+
 
   // Subscribe to deep-link note events as early as possible so a cold-start
   // `nn://note/<id>` (queued in main until the page loads) is not missed.
@@ -833,9 +852,6 @@ if (!isSettingsWindow) {
       <!-- Semantic Search Onboarding Dialog (existing users updating for the first time).
            Prompted only when logged in. -->
       <SemanticSearchPromptDialog />
-
-      <!-- Version Update Changelog Dialog (auto-triggered on new version & accessible in Settings) -->
-      <ChangelogDialog />
     </div>
   </div>
 </template>

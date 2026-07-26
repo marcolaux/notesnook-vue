@@ -52,7 +52,7 @@ export const useUpdaterStore = defineStore("updater", () => {
     const isNew = (next.available || next.downloaded) && next.version && next.version !== dismissedVersion.value;
     status.value = next;
     if (isNew) {
-      showChangelog.value = true;
+      openChangelog();
     }
   }
 
@@ -65,7 +65,9 @@ export const useUpdaterStore = defineStore("updater", () => {
         progress: 0
       };
     }
-    showChangelog.value = true;
+    void desktop.window.openChangelog.mutate().catch(() => {
+      showChangelog.value = true;
+    });
   }
 
   function closeChangelog(): void {
@@ -87,7 +89,7 @@ export const useUpdaterStore = defineStore("updater", () => {
       progress: 0
     };
     dismissedVersion.value = null;
-    showChangelog.value = true;
+    openChangelog();
   }
 
   function init(): void {
