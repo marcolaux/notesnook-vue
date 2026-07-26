@@ -5,6 +5,22 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-07-26
+
+### 📊 Comprehensive Table Integration & Manipulation
+- **Robust Row & Column Movement Algorithms**:
+  - Replaced naive cell-swapping routines (`moveColumnLeft`, `moveColumnRight`, `moveRowUp`, `moveRowDown`) in `actions.ts` with `prosemirror-tables` matrix transformation utilities (`moveRow` and `moveColumn`).
+  - Preserves table structure, colspans/rowspans, colwidths, and cell selections during row/column movements without document or cell corruption.
+- **Dynamic Floating Toolbars & Selection Positioning**:
+  - Enhanced `findSelectedDOMNode` in `prosemirror.ts` to properly resolve target row/cell DOM elements during `CellSelection` and nested inline text selections.
+  - Added transaction, window resize, and scroll event listeners to `TableRowToolbar.vue` and `TableColumnToolbar.vue` to keep floating action toolbars smoothly anchored.
+- **Full Main Toolbar & Context Menu Integration**:
+  - Expanded `tableSettings` conditional menu in `tool-definitions.ts` to expose complete table manipulation options (Insert Row Above/Below, Delete Row, Insert Column Before/After, Delete Column, Merge/Split Cells, Toggle Header Row/Column/Cell, and Delete Table).
+  - Re-exported table action helpers directly from `@notesnook-vue/editor-vue`.
+- **Contract Verification Suite**:
+  - Added comprehensive contract test suite `tests/contract/table-manipulation.spec.ts` covering table insertion, row/column addition/deletion/movement, cell merging/splitting, header toggles, and cell attribute styling.
+  - Verified 101/101 test files and 1486/1486 contract tests passing cleanly.
+
 ## [0.5.2] - 2026-07-26
 
 ### 📝 Inline Note Creation & Space Support in Editor (`[[` / `@`)

@@ -4,7 +4,7 @@
   Contains "insert row below" (＋) and "row properties" (⋯) → popup.
 -->
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { Editor } from "@tiptap/core";
 import { Plus, Ellipsis } from "@lucide/vue";
 import { findSelectedDOMNode } from "../../../utils/prosemirror";
@@ -15,6 +15,7 @@ const props = defineProps<{ editor: Editor; wrapper: HTMLElement | null }>();
 
 const el = ref<HTMLElement | null>(null);
 const showProps = ref(false);
+let scrollEl: HTMLElement | null = null;
 
 function reposition() {
   if (!el.value) return;
@@ -38,16 +39,36 @@ function reposition() {
   el.value.style.top = `${r.top - w.top + r.height / 2 - 14}px`;
 }
 
-function onSel() {
+function onUpdate() {
   reposition();
 }
 
+watch(
+  () => props.wrapper,
+  (newW) => {
+    if (scrollEl) scrollEl.removeEventListener("scroll", onUpdate, true);
+    scrollEl = newW?.querySelector(".scroll-bar") ?? null;
+    if (scrollEl) scrollEl.addEventListener("scroll", onUpdate, true);
+    reposition();
+  }
+);
+
 onMounted(() => {
-  props.editor.on("selectionUpdate", onSel);
+  props.editor.on("selectionUpdate", onUpdate);
+  props.editor.on("transaction", onUpdate);
+  window.addEventListener("resize", onUpdate);
+  window.addEventListener("scroll", onUpdate, true);
+  scrollEl = props.wrapper?.querySelector(".scroll-bar") ?? null;
+  if (scrollEl) scrollEl.addEventListener("scroll", onUpdate, true);
   reposition();
 });
+
 onBeforeUnmount(() => {
-  props.editor.off("selectionUpdate", onSel);
+  props.editor.off("selectionUpdate", onUpdate);
+  props.editor.off("transaction", onUpdate);
+  window.removeEventListener("resize", onUpdate);
+  window.removeEventListener("scroll", onUpdate, true);
+  if (scrollEl) scrollEl.removeEventListener("scroll", onUpdate, true);
 });
 </script>
 

@@ -113,16 +113,36 @@ export function changedDescendants(
  * — used by the table row/column toolbars to anchor on the active row/cell.
  */
 export function findSelectedDOMNode(editor: Editor, types: string[]): HTMLElement | null {
-  const { $anchor } = editor.state.selection;
+  const sel = editor.state.selection;
+  const $anchor = (sel as { $anchorCell?: ResolvedPos }).$anchorCell ?? sel.$anchor;
+  if (!$anchor) return null;
 
-  const selectedNode = editor.state.doc.nodeAt($anchor.pos);
-  const pos =
-    types.includes(selectedNode?.type.name || "")
-      ? $anchor.pos
-      : findParentNode((node) => types.includes(node.type.name))(editor.state.selection)?.pos;
-  if (!pos) return null;
+  const parent = findParentNodeClosestToPos($anchor, (node) => types.includes(node.type.name));
+  if (!parent) return null;
 
-  return (editor.view.nodeDOM(pos) as HTMLElement) || null;
+  const dom = editor.view.nodeDOM(parent.pos) as HTMLElement | null;
+  if (dom && dom.nodeType === 1) return dom;
+
+  try {
+    const domAtPos = editor.view.domAtPos(parent.start);
+    let target = domAtPos.node as HTMLElement | null;
+    if (target && target.nodeType === 3) {
+      target = target.parentElement;
+    }
+    if (!target) return null;
+
+    if (types.includes("tableRow")) {
+      const tr = target.closest("tr") as HTMLElement | null;
+      if (tr) return tr;
+    }
+    if (types.includes("tableCell") || types.includes("tableHeader")) {
+      const cell = target.closest("td, th") as HTMLElement | null;
+      if (cell) return cell;
+    }
+    return target;
+  } catch {
+    return null;
+  }
 }
 
 /** Changed block ranges in a transaction (via TipTap's `getChangedRanges`). */

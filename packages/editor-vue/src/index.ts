@@ -34,6 +34,14 @@ export type { CodeBlockAttributes, CodeBlockOptions } from "./extensions/code-bl
 // vendored prosemirror-tables fork (see extensions/table/prosemirror-tables).
 export { Table } from "./extensions/table/table";
 export type { TableOptions } from "./extensions/table/table";
+export {
+  moveColumnLeft,
+  moveColumnRight,
+  moveRowDown,
+  moveRowUp,
+  selectRow,
+  selectColumn
+} from "./extensions/table/actions";
 export { TableCell } from "./extensions/table-cell/table-cell";
 export type { TableCellOptions } from "./extensions/table-cell/table-cell";
 export { TableHeader } from "./extensions/table-header/table-header";
