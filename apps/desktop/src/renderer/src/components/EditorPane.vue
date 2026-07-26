@@ -217,7 +217,8 @@ function moveOrCreateTab(noteId: string, targetGroupId: string): void {
         <TocSidebar
           v-if="activeTab?.kind === 'note' && activeTab.tocVisible && activeTabId"
           :tab-id="activeTabId"
-          class="my-2 mr-2 w-80 shrink-0"
+          class="my-2 mr-2 shrink-0 transition-[width] duration-200 ease-in-out"
+          :class="activeTab?.tocMode === 'minimap' ? 'w-40' : 'w-80'"
         />
       </Transition>
 

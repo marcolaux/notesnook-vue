@@ -42,7 +42,7 @@ function setMode(next: "toc" | "minimap"): void {
 
 <template>
   <RightSidebar @close="close">
-    <template #title>{{ t("toc.title") }}</template>
+    <template #title>{{ mode === "minimap" ? t("toc.minimap") : t("toc.title") }}</template>
     <template #actions>
       <div class="flex items-center rounded-md border border-glass-border bg-glass-bg p-0.5">
         <button

@@ -29,7 +29,7 @@ describe("icon registry (static curated set)", () => {
   it("resolves the curated names from the static set alone", () => {
     const curated = [
       "book", "hash", "star", "pin", "x", "plus", "check", "ellipsis", "search",
-      "list", "list-ordered", "list-checks", "file-text", "file", "file-code-2",
+      "list", "list-ordered", "list-checks", "list-tree", "file-text", "file", "file-code-2",
       "image", "video", "audio-lines", "film", "table-2", "quote", "minus",
       "bold", "italic", "underline", "strikethrough", "code", "subscript",
       "superscript", "highlighter", "type", "remove-formatting", "undo-2",

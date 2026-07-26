@@ -71,6 +71,17 @@ const items = computed<RenderItem[]>(() => {
   return out;
 });
 
+function getGlyph(action: EditorAction): string | undefined {
+  const ed = props.editor;
+  if (action.id === "lists") {
+    if (ed?.isActive("orderedList")) return "list-ordered";
+    if (ed?.isActive("taskList")) return "list-checks";
+    if (ed?.isActive("outlineList")) return "list-tree";
+    if (ed?.isActive("bulletList")) return "list";
+  }
+  return action.glyph;
+}
+
 /** A toggle action runs directly; dropdown / colour / conditional open a menu. */
 function onClick(action: EditorAction, e: MouseEvent): void {
   const ed = props.editor;
@@ -99,7 +110,7 @@ function onClick(action: EditorAction, e: MouseEvent): void {
       :title="item.action.title"
       @click="onClick(item.action, $event)"
     >
-      <Icon v-if="item.action.glyph" :name="item.action.glyph" :size="16" />
+      <Icon v-if="getGlyph(item.action)" :name="getGlyph(item.action)!" :size="16" />
       <template v-else>{{ item.action.title }}</template>
     </button>
   </template>

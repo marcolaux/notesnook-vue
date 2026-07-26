@@ -28,9 +28,8 @@ import { useEditor, EditorContent, type Editor } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import {
   Heading,
-  Details,
-  DetailsSummary,
-  DetailsContent,
+  OutlineList,
+  OutlineListItem,
   AttachmentNode,
   TaskItemNode,
   TaskListNode,
@@ -611,9 +610,8 @@ const editor = useEditor({
   extensions: [
     StarterKit.configure({ codeBlock: false, heading: false }),
     Heading,
-    Details,
-    DetailsSummary,
-    DetailsContent,
+    OutlineList,
+    OutlineListItem,
     AttachmentNode,
     TaskListNode,
     TaskItemNode.configure({ nested: true }),

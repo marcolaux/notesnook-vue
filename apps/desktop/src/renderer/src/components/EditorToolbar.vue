@@ -252,26 +252,6 @@ onBeforeUnmount(() => {
     </button>
     <button
       type="button"
-      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
-      :class="{ 'bg-glass-active text-text': !!layout.activeTab?.tocVisible }"
-      title="Table of contents"
-      :disabled="!notes.activeNote"
-      @click="toggleToc()"
-    >
-      <Icon name="list" :size="16" />
-    </button>
-    <button
-      type="button"
-      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
-      :class="{ 'bg-glass-active text-text': !!layout.activeTab?.historyVisible }"
-      title="Note history"
-      :disabled="!notes.activeNote"
-      @click="toggleHistory()"
-    >
-      <Icon name="history" :size="16" />
-    </button>
-    <button
-      type="button"
       class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
       title="Remind me about this note"
       :disabled="!notes.activeNote"
@@ -306,12 +286,31 @@ onBeforeUnmount(() => {
       :labels="linkNoteLabels"
       @close="linkNoteOpen = false"
     />
+    <button
+      type="button"
+      class="ml-auto grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
+      :class="{ 'bg-glass-active text-text': !!layout.activeTab?.tocVisible }"
+      title="Table of contents"
+      :disabled="!notes.activeNote"
+      @click="toggleToc()"
+    >
+      <Icon name="list" :size="16" />
+    </button>
+    <button
+      type="button"
+      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+      :class="{ 'bg-glass-active text-text': !!layout.activeTab?.historyVisible }"
+      title="Note history"
+      :disabled="!notes.activeNote"
+      @click="toggleHistory()"
+    >
+      <Icon name="history" :size="16" />
+    </button>
     <!-- Autosave indicator for THIS pane's editor. `saving`/`savedAt` are
          passed in as props from `Editor.vue` (per-instance), so each pane's
          toolbar reflects its own note's save — not a shared global slot.
-         `ml-auto` anchors this (and the publish button after it) to the right
-         edge; the empty-string idle state keeps the layout stable. -->
-    <span class="ml-auto shrink-0 px-1 text-[10px] text-text-muted">
+         The empty-string idle state keeps the layout stable. -->
+    <span class="shrink-0 px-1 text-[10px] text-text-muted">
       {{ props.saving ? "Saving…" : props.savedAt ? "Saved" : "" }}
     </span>
     <!-- Publish button — a single affordance that reflects publish state:

@@ -134,6 +134,18 @@ export interface EditorAction {
 // decoupled from a specific extension set (see EditorAction.run doc comment).
 const chain = (editor: Editor): any => editor.chain().focus();
 
+export type ListTypeKey = "bulletList" | "numberedList" | "checkList" | "outlineList";
+
+let lastSelectedListType: ListTypeKey = "bulletList";
+
+export function getLastSelectedListType(): ListTypeKey {
+  return lastSelectedListType;
+}
+
+export function setLastSelectedListType(type: ListTypeKey): void {
+  lastSelectedListType = type;
+}
+
 const toggleHeading = (level: 1 | 2 | 3) => (editor: Editor): void => {
   chain(editor).toggleHeading({ level }).run();
 };
@@ -370,7 +382,7 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     }
   },
 
-  // --- Lists (palette + slash; toolbar toggles) ---
+  // --- Lists (palette + slash; toolbar toggles + grouped toolbar dropdown) ---
   {
     id: "bulletList",
     title: "Bullet list",
@@ -378,7 +390,10 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     slash: true,
     glyph: "list",
     isActive: (e) => e.isActive("bulletList"),
-    run: (e) => chain(e).toggleBulletList().run()
+    run: (e) => {
+      setLastSelectedListType("bulletList");
+      chain(e).toggleBulletList().run();
+    }
   },
   {
     id: "numberedList",
@@ -387,7 +402,10 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     slash: true,
     glyph: "list-ordered",
     isActive: (e) => e.isActive("orderedList"),
-    run: (e) => chain(e).toggleOrderedList().run()
+    run: (e) => {
+      setLastSelectedListType("numberedList");
+      chain(e).toggleOrderedList().run();
+    }
   },
   {
     id: "checkList",
@@ -396,16 +414,104 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     slash: true,
     glyph: "list-checks",
     isActive: (e) => e.isActive("taskList"),
-    run: (e) => chain(e).toggleTaskList().run()
+    run: (e) => {
+      setLastSelectedListType("checkList");
+      chain(e).toggleTaskList().run();
+    }
   },
   {
-    id: "detailsToggle",
-    title: "Toggle list",
-    keywords: ["toggle", "accordion", "collapsible", "details", "fold"],
+    id: "outlineList",
+    title: "Outline list",
+    keywords: ["outline", "toggle list", "collapsible", "tree", "fold"],
     slash: true,
-    glyph: "chevron-right-square",
-    isActive: (e) => e.isActive("details"),
-    run: (e) => chain(e).toggleDetails().run()
+    glyph: "list-tree",
+    isActive: (e) => e.isActive("outlineList"),
+    run: (e) => {
+      setLastSelectedListType("outlineList");
+      chain(e).toggleOutlineList().run();
+    }
+  },
+  {
+    id: "lists",
+    title: "Lists",
+    keywords: ["list", "bullet", "numbered", "task", "checklist", "outline"],
+    glyph: "list",
+    kind: "dropdown",
+    isActive: (e) =>
+      e.isActive("bulletList") ||
+      e.isActive("orderedList") ||
+      e.isActive("taskList") ||
+      e.isActive("outlineList"),
+    isDisabled: (e) => e.isActive("codeblock"),
+    menu: (e) => [
+      {
+        id: "list-bullet",
+        label: "Bullet list",
+        icon: "list",
+        checked: e.isActive("bulletList"),
+        onSelect: () => {
+          setLastSelectedListType("bulletList");
+          chain(e).toggleBulletList().run();
+        }
+      },
+      {
+        id: "list-numbered",
+        label: "Numbered list",
+        icon: "list-ordered",
+        checked: e.isActive("orderedList"),
+        onSelect: () => {
+          setLastSelectedListType("numberedList");
+          chain(e).toggleOrderedList().run();
+        }
+      },
+      {
+        id: "list-task",
+        label: "Task list",
+        icon: "list-checks",
+        checked: e.isActive("taskList"),
+        onSelect: () => {
+          setLastSelectedListType("checkList");
+          chain(e).toggleTaskList().run();
+        }
+      },
+      {
+        id: "list-outline",
+        label: "Outline list",
+        icon: "list-tree",
+        checked: e.isActive("outlineList"),
+        onSelect: () => {
+          setLastSelectedListType("outlineList");
+          chain(e).toggleOutlineList().run();
+        }
+      }
+    ],
+    run: (e) => {
+      if (e.isActive("bulletList")) {
+        chain(e).toggleBulletList().run();
+      } else if (e.isActive("orderedList")) {
+        chain(e).toggleOrderedList().run();
+      } else if (e.isActive("taskList")) {
+        chain(e).toggleTaskList().run();
+      } else if (e.isActive("outlineList")) {
+        chain(e).toggleOutlineList().run();
+      } else {
+        switch (lastSelectedListType) {
+          case "numberedList":
+            chain(e).toggleOrderedList().run();
+            break;
+          case "checkList":
+            chain(e).toggleTaskList().run();
+            break;
+          case "outlineList":
+            chain(e).toggleOutlineList().run();
+            break;
+          case "bulletList":
+          default:
+            chain(e).toggleBulletList().run();
+            break;
+        }
+      }
+    }
   },
   {
     id: "codeBlock",
@@ -591,7 +697,7 @@ export const DEFAULT_TOOLBAR: ToolbarDefinition = [
     ]
   ],
   ["headings", "fontFamily"],
-  ["checkList", "numberedList", "bulletList", "detailsToggle"],
+  ["lists"],
   ["alignment"],
   ["tableSettings", "imageSettings", "embedSettings"]
 ];

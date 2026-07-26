@@ -615,67 +615,52 @@ html[data-transparency="off"] .editor-tab-inactive {
   display: none !important;
 }
 
-/* Collapsible Details / Accordion Block */
-.ProseMirror details.details-node-wrapper {
+/* Upstream Outline List Styles */
+.ProseMirror ul[data-type="outlineList"] {
+  list-style: none;
+  padding-left: 1.25rem;
+  margin: 0.25rem 0;
+}
+.ProseMirror ul[data-type="outlineList"][data-collapsed="true"] {
+  display: none !important;
+}
+.ProseMirror li[data-type="outlineListItem"] {
   position: relative;
-  margin: 0.75rem 0;
-  padding: 0.5rem 0.75rem 0.5rem 2.25rem;
-  border-radius: 0.75rem;
-  border: 1px solid color-mix(in oklab, var(--paragraph) 18%, transparent);
-  background: color-mix(in oklab, var(--paragraph) 5%, transparent);
-  transition: border-color 150ms ease, background-color 150ms ease;
+  list-style: none;
+  margin: 0.125rem 0;
 }
-.ProseMirror details.details-node-wrapper:hover {
-  border-color: color-mix(in oklab, var(--paragraph) 30%, transparent);
-  background: color-mix(in oklab, var(--paragraph) 8%, transparent);
-}
-.ProseMirror details.details-node-wrapper .details-toggle-btn {
+.ProseMirror li[data-type="outlineListItem"] .outline-toggle-btn {
   position: absolute;
-  left: 0.5rem;
-  top: 0.6rem;
+  left: -1.25rem;
+  top: 0.25rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 1rem;
+  height: 1rem;
   padding: 0;
   border: none;
   background: transparent;
-  color: color-mix(in oklab, var(--paragraph) 70%, transparent);
-  border-radius: 4px;
+  color: color-mix(in oklab, var(--paragraph) 60%, transparent);
+  border-radius: 3px;
   cursor: pointer;
   user-select: none;
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: transform 150ms ease, color 150ms ease;
 }
-.ProseMirror details.details-node-wrapper .details-toggle-btn:hover {
+.ProseMirror li[data-type="outlineListItem"] .outline-toggle-btn:hover {
+  color: var(--color-text);
   background: color-mix(in oklab, var(--paragraph) 15%, transparent);
-  color: var(--color-text);
 }
-.ProseMirror details.details-node-wrapper summary {
-  font-weight: 600;
-  cursor: pointer;
-  list-style: none;
-  outline: none;
-  color: var(--color-text);
-  min-height: 1.5rem;
+.ProseMirror li[data-type="outlineListItem"] .outline-toggle-btn.is-collapsed {
+  transform: rotate(-90deg);
 }
-.ProseMirror details.details-node-wrapper summary::-webkit-details-marker {
-  display: none;
-}
-.ProseMirror details.details-node-wrapper summary.is-empty::before {
-  content: "Toggle title...";
-  color: color-mix(in oklab, var(--paragraph) 40%, transparent);
+.ProseMirror li[data-type="outlineListItem"] .outline-bullet-dot {
+  position: absolute;
+  left: -1rem;
+  top: 0.1rem;
+  color: color-mix(in oklab, var(--paragraph) 50%, transparent);
+  user-select: none;
   pointer-events: none;
-  float: left;
-  height: 0;
-}
-.ProseMirror details.details-node-wrapper [data-type="details-content"] {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px dashed color-mix(in oklab, var(--paragraph) 15%, transparent);
-}
-.ProseMirror details.details-node-wrapper:not([open]) [data-type="details-content"] {
-  display: none !important;
 }
 
 /* Table node-view (Phase 2.4h). The `.selectedCell` / `.column-resize-handle`

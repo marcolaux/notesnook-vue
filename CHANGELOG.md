@@ -5,6 +5,28 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-07-26
+
+### 🗺️ Scaled Live DOM Minimap Engine & Responsive Sidebar Layout
+- **Scaled Live DOM Minimap Engine**:
+  - Replaced inaccurate placeholder line bars with a scaled live clone of the editor's `.ProseMirror` DOM element (`NoteMinimap.vue`).
+  - Eliminates fixed line-height assumptions and magic numbers, dynamically computing exact width-fitting scale (`minimapScale`).
+  - Preserves 100% visual fidelity matching exact note content (text, line wrapping, syntax-highlighted code blocks, tables, callout borders, blockquotes, checklist items, images, embeds).
+  - Real-time updates via `MutationObserver` on editor edits and `ResizeObserver` on layout changes.
+- **Dynamic Per-Mode Right Sidebar Resizing**:
+  - Updated `EditorPane.vue` to dynamically adjust the right sidebar width based on `activeTab.tocMode`:
+    - Headings (ToC) mode: `w-80` (`320px`) for reading outline headings.
+    - Minimap mode: `w-40` (`160px`) for a compact vertical minimap strip.
+  - Smooth CSS width transitions (`transition-[width] duration-200 ease-in-out`).
+  - Header title in `TocSidebar.vue` dynamically displays "Minimap" in minimap mode and "Table of contents" in headings mode.
+- **Toolbar Layout & Alignment Polish**:
+  - Re-ordered toolbar items in `EditorToolbar.vue`:
+    - Left-aligned: Formatting groups, search button, reminder button, and note link picker button.
+    - Right-aligned: ToC/Minimap toggle button (`Icon list`), Note History toggle (`Icon history`), autosave status indicator, and publish controls (`ml-auto`).
+- **Next Steps & Roadmap**:
+  - Phase 6 Vault Unlocking & PGP encryption integration.
+  - Canvas-based minimap virtual scrolling optimizations for ultra-long documents (>10,000 lines).
+
 ## [0.7.2] - 2026-07-26
 
 ### 🛡️ Custom Backup Directory & Release Notes Polish
