@@ -52,11 +52,13 @@ import {
   collectNoteLinkIds,
   addedNoteLinkIds,
   removedNoteLinkIds,
+  DEFAULT_NOTE_LINK_LABELS,
   type NoteSuggestionItem,
   type ContentBlockItem,
   type NoteLinkLabels
 } from "@notesnook-vue/editor-vue";
 import { getDatabase } from "@/platform/bootstrap";
+import { desktop } from "@/platform/desktop-bridge";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import i18n from "@/i18n";
@@ -74,6 +76,7 @@ export function wireNoteLink(
   // is picked up the next time the picker opens.
   const t = i18n.global.t.bind(i18n.global);
   storage.noteLinkLabels = {
+    ...DEFAULT_NOTE_LINK_LABELS,
     searchPlaceholder: t("linkNote.searchPlaceholder"),
     blockSearchPlaceholder: t("linkNote.blockSearchPlaceholder"),
     linkWholeNote: t("linkNote.linkWholeNote"),
@@ -83,6 +86,7 @@ export function wireNoteLink(
     emptyBlock: t("linkNote.emptyBlock"),
     createNote: t("linkNote.createNote")
   } satisfies NoteLinkLabels;
+
 
   storage.getNoteSuggestions = (query: string): NoteSuggestionItem[] => {
     const notes = useNotesStore();

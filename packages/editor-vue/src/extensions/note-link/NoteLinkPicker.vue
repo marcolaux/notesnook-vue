@@ -90,13 +90,17 @@ const activeQuery = computed(() =>
   (props.variant === "toolbar" ? query.value : props.query ?? "").trim()
 );
 
-export type DisplayRow =
+export type NoteRow =
   | { kind: "note"; item: NoteSuggestionItem }
   | { kind: "create"; title: string }
   | { kind: "web"; url: string; title: string }
-  | { kind: "file"; url: string; title: string }
+  | { kind: "file"; url: string; title: string };
+
+export type BlockRow =
   | { kind: "whole" }
   | { kind: "block"; block: ContentBlockItem };
+
+export type DisplayRow = NoteRow | BlockRow;
 
 function isWebUrl(q: string): boolean {
   return /^https?:\/\//i.test(q) || /^www\./i.test(q);
@@ -116,8 +120,8 @@ function formatFileUrl(q: string): string {
   return `file://${q}`;
 }
 
-const noteRows = computed<DisplayRow[]>(() => {
-  const result: DisplayRow[] = noteItems.value.map((item) => ({ kind: "note" as const, item }));
+const noteRows = computed<NoteRow[]>(() => {
+  const result: NoteRow[] = noteItems.value.map((item) => ({ kind: "note" as const, item }));
   const q = activeQuery.value;
   if (q.length > 0) {
     if (isWebUrl(q)) {
@@ -133,7 +137,7 @@ const noteRows = computed<DisplayRow[]>(() => {
 });
 
 /** Block-mode rows: a leading "Link to whole note" row + one row per block. */
-const blockRows = computed<DisplayRow[]>(() => [
+const blockRows = computed<BlockRow[]>(() => [
   { kind: "whole" as const },
   ...blocks.value.map((b) => ({ kind: "block" as const, block: b }))
 ]);
@@ -141,6 +145,7 @@ const blockRows = computed<DisplayRow[]>(() => [
 const rows = computed<DisplayRow[]>(() =>
   mode.value === "notes" ? noteRows.value : blockRows.value
 );
+
 
 const rowCount = computed(() => rows.value.length);
 
