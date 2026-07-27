@@ -6,9 +6,12 @@
   per-theme, so Tailwind utilities can't express them).
 -->
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import type { PreviewColors } from "@notesnook-vue/theme-vue";
 
 defineProps<{ colors: PreviewColors }>();
+
+const { t } = useI18n();
 
 /** Mix a hex colour toward transparent at `pct`% for the accent-tinted card bg. */
 function tint(hex: string, pct: number): string {
@@ -37,7 +40,7 @@ function tint(hex: string, pct: number): string {
         class="list"
         :style="{ background: colors.list.background, borderColor: colors.border }"
       >
-        <div class="list-head" :style="{ color: colors.list.heading }">Notes</div>
+        <div class="list-head" :style="{ color: colors.list.heading }">{{ t("themePreview.notesLabel") }}</div>
         <div class="list-add" :style="{ background: colors.list.accent, color: colors.list.accentForeground }">
           +
         </div>

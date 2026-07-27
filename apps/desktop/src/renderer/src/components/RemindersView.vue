@@ -19,12 +19,13 @@
  * tick (1 min) so relative labels ("Today, 5:00 PM") + the active/inactive
  * boundary stay fresh without a manual refresh.
  *
- * Labels are English literals (the codebase is mid-i18n — TrashView hardcodes
- * the same way; migrating these is the Phase 7.1 sweep). Destructive delete
- * uses the headless `useDialogStore.confirm` overlay (mounted once in App.vue).
+ * Labels resolve via vue-i18n (`reminders.*` / `reminder.*` / `common.*`).
+ * Destructive delete uses the headless `useDialogStore.confirm` overlay
+ * (mounted once in App.vue).
  */
 import { onMounted, onUnmounted, computed, ref } from "vue";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { useRemindersStore } from "@/stores/reminders";
 import { useNotesStore } from "@/stores/notes";
 import { useReminderDialogStore } from "@/stores/reminder-dialog";
@@ -41,6 +42,7 @@ const reminderDialog = useReminderDialogStore();
 const dialog = useDialogStore();
 const contextMenu = useContextMenuStore();
 const router = useRouter();
+const { t } = useI18n();
 
 /** Open a note by id — the same deep-link path App.vue uses: route to /all
  *  (the editor-bearing view) then collapse the selection to the note. */
@@ -99,9 +101,10 @@ function toggle(r: Reminder): void {
 /** Delete a reminder (confirm-gated). */
 async function deleteReminder(r: Reminder): Promise<void> {
   const ok = await dialog.confirm({
-    title: "Delete reminder",
-    message: `Delete “${r.title}”? This cannot be undone.`,
-    confirmLabel: "Delete",
+    title: t("reminders.delete"),
+    message: t("reminders.deleteConfirm", { title: r.title }),
+    confirmLabel: t("common.delete"),
+    cancelLabel: t("common.cancel"),
     danger: true
   });
   if (!ok) return;
@@ -115,33 +118,33 @@ function onRowContext(r: Reminder, e: MouseEvent): void {
   if (link) {
     items.push({
       id: "open-note",
-      label: "Open note",
+      label: t("reminders.openNote"),
       onSelect: () => openNote(link.noteId)
     });
     items.push(separator("sep-open"));
   }
   items.push(
-    { id: "edit", label: "Edit…", onSelect: () => void editReminder(r) },
+    { id: "edit", label: t("reminders.editEllipsis"), onSelect: () => void editReminder(r) },
     {
       id: "snooze",
-      label: "Snooze",
+      label: t("reminders.snooze"),
       submenu: {
         build: () => [
-          { id: "1h", label: "1 hour", onSelect: () => snooze(r, Date.now() + 3_600_000) },
-          { id: "1d", label: "1 day", onSelect: () => snooze(r, Date.now() + 86_400_000) },
-          { id: "tomorrow", label: "Until tomorrow 9am", onSelect: () => snooze(r, untilTomorrow9am()) }
+          { id: "1h", label: t("reminders.snooze1h"), onSelect: () => snooze(r, Date.now() + 3_600_000) },
+          { id: "1d", label: t("reminders.snooze1d"), onSelect: () => snooze(r, Date.now() + 86_400_000) },
+          { id: "tomorrow", label: t("reminders.snoozeTomorrow"), onSelect: () => snooze(r, untilTomorrow9am()) }
         ]
       }
     },
     {
       id: "toggle",
-      label: r.disabled ? "Enable" : "Disable",
+      label: r.disabled ? t("reminders.enable") : t("reminders.disable"),
       onSelect: () => toggle(r)
     },
     separator("sep"),
     {
       id: "delete",
-      label: "Delete",
+      label: t("common.delete"),
       danger: true,
       onSelect: () => void deleteReminder(r)
     }
@@ -159,14 +162,28 @@ function untilTomorrow9am(): number {
 
 /** Short mode label for the row badge. */
 function modeLabel(r: Reminder): string {
-  if (r.mode === "permanent") return "ongoing";
-  if (r.mode === "repeat") return `repeat · ${r.recurringMode ?? "day"}`;
-  return "once";
+  if (r.mode === "permanent") return t("reminders.modeOngoing");
+  if (r.mode === "repeat") {
+    const mode = r.recurringMode ? recurLabel(r.recurringMode) : t("reminder.recurDay");
+    return t("reminders.modeRepeat", { mode });
+  }
+  return t("reminders.modeOnce");
+}
+
+/** Translate a recurring-mode enum value via the shared `reminder.recur*` keys. */
+function recurLabel(m: string): string {
+  if (m === "day") return t("reminder.recurDay");
+  if (m === "week") return t("reminder.recurWeek");
+  if (m === "month") return t("reminder.recurMonth");
+  if (m === "year") return t("reminder.recurYear");
+  return m;
 }
 
 /** Priority badge label. */
 function priorityLabel(p: Reminder["priority"]): string {
-  return p ?? "vibrate";
+  if (p === "silent") return t("reminder.prioritySilent");
+  if (p === "urgent") return t("reminder.priorityUrgent");
+  return t("reminder.priorityVibrate");
 }
 </script>
 
@@ -174,21 +191,21 @@ function priorityLabel(p: Reminder["priority"]): string {
   <div class="flex min-h-0 min-w-0 flex-1 flex-col backdrop-blur-xl">
     <!-- Header: title + active count + New reminder -->
     <div class="flex h-9 shrink-0 items-center gap-2 border-b border-glass-border px-3">
-      <span class="text-xs font-semibold text-text">Reminders</span>
-      <span class="text-[10px] text-text-muted">{{ reminders.activeItems.length }} active · {{ reminders.count }} total</span>
+      <span class="text-xs font-semibold text-text">{{ t("reminders.title") }}</span>
+      <span class="text-[10px] text-text-muted">{{ t("reminders.activeSummary", { n: reminders.activeItems.length, m: reminders.count }) }}</span>
       <button
         class="titlebar-no-drag ml-auto rounded-sm bg-glass-hover px-2 py-0.5 text-[10px] text-text transition-colors hover:bg-glass-active disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="reminders.busy"
-        title="New reminder"
+        :title="t('reminders.newReminder')"
         @click="createReminder()"
       >
-        + New reminder
+        + {{ t("reminders.newReminder") }}
       </button>
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto p-1">
       <div v-if="reminders.loading && reminders.items.length === 0" class="px-2 py-4 text-center text-[10px] text-text-muted">
-        Loading…
+        {{ t("reminders.loading") }}
       </div>
       <button
         v-for="r in sorted"
@@ -199,29 +216,29 @@ function priorityLabel(p: Reminder["priority"]): string {
       >
         <div class="flex items-center gap-1">
           <span class="truncate text-xs font-medium text-text">{{ r.title }}</span>
-          <span v-if="r.disabled" class="shrink-0 rounded-sm bg-glass-hover px-1 text-[9px] text-text-muted">disabled</span>
-          <span v-else-if="r.snoozeUntil && r.snoozeUntil > now" class="shrink-0 rounded-sm bg-amber-400/20 px-1 text-[9px] text-amber-200/80">snoozed</span>
+          <span v-if="r.disabled" class="shrink-0 rounded-sm bg-glass-hover px-1 text-[9px] text-text-muted">{{ t("reminders.statusDisabled") }}</span>
+          <span v-else-if="r.snoozeUntil && r.snoozeUntil > now" class="shrink-0 rounded-sm bg-amber-400/20 px-1 text-[9px] text-amber-200/80">{{ t("reminders.statusSnoozed") }}</span>
           <span class="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               class="titlebar-no-drag rounded-sm px-1 py-0.5 text-[9px] text-text-muted hover:bg-glass-active hover:text-text"
-              title="Edit"
+              :title="t('reminders.edit')"
               @click.stop="editReminder(r)"
-            >Edit</button>
+            >{{ t("reminders.edit") }}</button>
             <button
               class="titlebar-no-drag rounded-sm px-1 py-0.5 text-[9px] text-text-muted hover:bg-glass-active hover:text-text"
-              title="Snooze 1 hour"
+              :title="t('reminders.snooze1hTitle')"
               @click.stop="snooze(r, Date.now() + 3_600_000)"
-            >Snooze</button>
+            >{{ t("reminders.snooze") }}</button>
             <button
               class="titlebar-no-drag rounded-sm px-1 py-0.5 text-[9px] text-text-muted hover:bg-glass-active hover:text-text"
-              :title="r.disabled ? 'Enable' : 'Disable'"
+              :title="r.disabled ? t('reminders.enable') : t('reminders.disable')"
               @click.stop="toggle(r)"
-            >{{ r.disabled ? "On" : "Off" }}</button>
+            >{{ r.disabled ? t("common.on") : t("common.off") }}</button>
             <button
               class="titlebar-no-drag rounded-sm px-1 py-0.5 text-[9px] text-rose-300/80 hover:bg-glass-active"
-              title="Delete"
+              :title="t('common.delete')"
               @click.stop="deleteReminder(r)"
-            >Delete</button>
+            >{{ t("common.delete") }}</button>
           </span>
         </div>
         <div class="mt-0.5 flex items-center gap-1.5 text-[9px] text-text-muted">
@@ -234,7 +251,7 @@ function priorityLabel(p: Reminder["priority"]): string {
           v-if="linkedNote(r)"
           type="button"
           class="titlebar-no-drag mt-0.5 inline-flex max-w-full items-center gap-1 rounded-sm bg-glass-hover px-1 py-0.5 text-[9px] text-text-muted transition-colors hover:bg-glass-active hover:text-text"
-          :title="`Open ${linkedNote(r)!.title}`"
+          :title="t('reminders.openNoteTitle', { title: linkedNote(r)!.title })"
           @click.stop="openNote(linkedNote(r)!.noteId)"
         >
           <span class="shrink-0">📝</span>
@@ -242,7 +259,7 @@ function priorityLabel(p: Reminder["priority"]): string {
         </button>
       </button>
       <div v-if="!reminders.loading && reminders.items.length === 0" class="px-2 py-4 text-center text-[10px] text-text-muted">
-        No reminders — click “New reminder” to create one.
+        {{ t("reminders.empty") }}
       </div>
     </div>
   </div>

@@ -429,13 +429,17 @@ export default {
     applied: "Applied",
     installing: "Installing…",
     setAsDark: "Set as Dark theme",
-    setAsLight: "Set as Light theme"
+    setAsLight: "Set as Light theme",
+    installs: "{n} installs"
   },
   colorEditor: {
     title: "New color",
     name: "Name",
     namePlaceholder: "Color name",
     color: "Color"
+  },
+  themePreview: {
+    notesLabel: "Notes"
   },
   iconEditor: {
     searchPlaceholder: "Search icons…",
@@ -478,5 +482,103 @@ export default {
     unlocking: "Unlocking…",
     forceUnlockConfirmTitle: "Force unlock database?",
     forceUnlockConfirmMsg: "This closes the database and deletes its journal (-wal/-shm) to clear a stuck lock from a crash. Any notes written since the last checkpoint may be lost. Make sure no other Notesnook window is open, then continue."
+  },
+  archive: {
+    title: "Archive",
+    count: "{n} note(s)",
+    loading: "Loading…",
+    unarchive: "Unarchive",
+    moveToTrash: "Move to trash",
+    empty: "Archive is empty",
+    moveToTrashConfirm: "Move “{title}” to trash? You can restore it from the trash later."
+  },
+  trash: {
+    title: "Trash",
+    count: "{n} note(s)",
+    loading: "Loading…",
+    restore: "Restore",
+    deletePermanently: "Delete permanently",
+    emptyTrash: "Empty trash",
+    empty: "Trash is empty",
+    deleteConfirm: "Permanently delete “{title}”? This cannot be undone.",
+    emptyTrashConfirm: "Permanently delete all {n} item(s) in trash? This cannot be undone."
+  },
+  monographs: {
+    title: "Monographs",
+    count: "{n} published",
+    loading: "Loading…",
+    copyUrl: "Copy URL",
+    copyPublicUrlTitle: "Copy public URL",
+    openInBrowser: "Open in browser",
+    open: "Open",
+    unpublish: "Unpublish",
+    selfDestructTitle: "Self-destructs after first view",
+    totalViewsTitle: "Total views",
+    views: "{n} views",
+    published: "Published",
+    empty: "No published notes",
+    unpublishConfirm: "Unpublish “{title}”? It will no longer be public and the link will stop working."
+  },
+  reminders: {
+    title: "Reminders",
+    activeSummary: "{n} active · {m} total",
+    newReminder: "New reminder",
+    loading: "Loading…",
+    edit: "Edit",
+    editEllipsis: "Edit…",
+    snooze: "Snooze",
+    snooze1hTitle: "Snooze 1 hour",
+    enable: "Enable",
+    disable: "Disable",
+    delete: "Delete reminder",
+    openNote: "Open note",
+    openNoteTitle: "Open {title}",
+    empty: "No reminders — click “New reminder” to create one.",
+    deleteConfirm: "Delete “{title}”? This cannot be undone.",
+    statusDisabled: "disabled",
+    statusSnoozed: "snoozed",
+    modeOngoing: "ongoing",
+    modeOnce: "once",
+    modeRepeat: "repeat · {mode}",
+    snooze1h: "1 hour",
+    snooze1d: "1 day",
+    snoozeTomorrow: "Until tomorrow 9am"
+  },
+  routes: {
+    tasks: "Tasks",
+    notebooks: "Notebooks",
+    tags: "Tags",
+    monographs: "Monographs",
+    archive: "Archive",
+    reminders: "Reminders",
+    trash: "Trash",
+    notebooksHint: "Notebooks & subnotebooks — coming in Phase 3.2.",
+    tagsHint: "Tags & subtags — coming in Phase 3.2."
+  },
+  notesList: {
+    newNote: "New note",
+    newTask: "New task",
+    selected: "{n} selected",
+    clearSelection: "Clear selection",
+    clearCollectionFilter: "Clear collection filter",
+    tasks: "Tasks",
+    showCompletedTitle: "Also show notes whose tasks are all completed",
+    completed: "Completed",
+    leaveTasks: "Leave Tasks",
+    groupBy: "Group by",
+    sortBy: "Sort by",
+    ascending: "Ascending",
+    descending: "Descending",
+    sortModified: "Modified",
+    sortCreated: "Created",
+    sortTitle: "Title",
+    groupNone: "No grouping",
+    groupDate: "Date",
+    color: "Color",
+    pinned: "Pinned",
+    shortcut: "Shortcut",
+    published: "Published",
+    noMatch: "No notes match “{query}”",
+    empty: "No notes yet"
   }
 } as const;

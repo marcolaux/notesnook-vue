@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
@@ -53,6 +54,7 @@ const publishDialog = usePublishDialogStore();
 const auth = useAuthStore();
 const settings = useSettingsStore();
 const router = useRouter();
+const { t } = useI18n();
 
 /** Core's `DefaultColors` (name → hex) as title-cased preset entries for the
  *  Color submenu — picking one creates the color in the db + assigns it. */
@@ -78,7 +80,7 @@ const groups = computed(() => groupNotes(notes.visibleItems, notes.groupKey));
  *  color-agnostic. */
 const collectionLabel = computed(() => {
   const s = collections.selected;
-  if (s?.type === "color") return colors.items.find((c) => c.id === s.id)?.title ?? "Color";
+  if (s?.type === "color") return colors.items.find((c) => c.id === s.id)?.title ?? t("notesList.color");
   return collections.selectedLabel;
 });
 
@@ -550,16 +552,16 @@ async function buildMultiEntries(ids: string[]): Promise<MenuItem[]> {
   return buildMultiNoteMenu(sel, multiDeps);
 }
 
-const sortKeys: { value: SortKey; label: string }[] = [
-  { value: "dateEdited", label: "Modified" },
-  { value: "dateCreated", label: "Created" },
-  { value: "title", label: "Title" }
-];
+const sortKeys = computed<{ value: SortKey; label: string }[]>(() => [
+  { value: "dateEdited", label: t("notesList.sortModified") },
+  { value: "dateCreated", label: t("notesList.sortCreated") },
+  { value: "title", label: t("notesList.sortTitle") }
+]);
 
-const groupKeys: { value: GroupKey; label: string }[] = [
-  { value: "none", label: "No grouping" },
-  { value: "date", label: "Date" }
-];
+const groupKeys = computed<{ value: GroupKey; label: string }[]>(() => [
+  { value: "none", label: t("notesList.groupNone") },
+  { value: "date", label: t("notesList.groupDate") }
+]);
 
 function formatDate(ts: number): string {
   if (!ts) return "";
@@ -587,7 +589,7 @@ function formatDate(ts: number): string {
     <div class="flex min-h-7 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-glass-border px-3 text-[10px] text-text-muted">
       <button
         class="titlebar-no-drag grid h-5 w-5 shrink-0 place-items-center rounded-sm text-text-muted hover:bg-glass-hover"
-        :title="notes.tasksFilterActive ? 'New task' : 'New note'"
+        :title="notes.tasksFilterActive ? t('notesList.newTask') : t('notesList.newNote')"
         @click="notes.tasksFilterActive ? notes.create({ task: true }) : notes.create()"
       >
         <Icon name="plus" :size="14" />
@@ -599,10 +601,10 @@ function formatDate(ts: number): string {
         v-if="notes.selectedCount > 1"
         class="titlebar-no-drag flex shrink-0 items-center gap-1 rounded-full bg-glass-hover px-1.5 py-0.5 text-text-muted"
       >
-        <span>{{ notes.selectedCount }} selected</span>
+        <span>{{ t("notesList.selected", { n: notes.selectedCount }) }}</span>
         <button
           class="grid h-3.5 w-3.5 place-items-center rounded-full text-text-muted hover:bg-glass-active hover:text-text"
-          title="Clear selection"
+          :title="t('notesList.clearSelection')"
           @click="notes.clearSelection()"
         >
           <Icon name="x" :size="8" :stroke-width="3" />
@@ -621,7 +623,7 @@ function formatDate(ts: number): string {
         <span class="max-w-[10rem] truncate">{{ collectionLabel }}</span>
         <button
           class="grid h-3.5 w-3.5 place-items-center rounded-full text-text-muted hover:bg-glass-active hover:text-text"
-          title="Clear collection filter"
+          :title="t('notesList.clearCollectionFilter')"
           @click="clearCollectionFilter()"
         >
           <Icon name="x" :size="8" :stroke-width="3" />
@@ -634,10 +636,10 @@ function formatDate(ts: number): string {
         class="titlebar-no-drag flex shrink-0 items-center gap-1.5 rounded-full bg-glass-hover px-1.5 py-0.5 text-text-muted"
       >
         <Icon name="list-checks" :size="11" />
-        <span>Tasks</span>
+        <span>{{ t("notesList.tasks") }}</span>
         <label
           class="flex items-center gap-1"
-          title="Also show notes whose tasks are all completed"
+          :title="t('notesList.showCompletedTitle')"
         >
           <input
             type="checkbox"
@@ -645,11 +647,11 @@ function formatDate(ts: number): string {
             :checked="settings.tasksShowCompleted"
             @change="settings.setTasksShowCompleted(($event.target as HTMLInputElement).checked)"
           />
-          <span class="text-[0.7rem]">Completed</span>
+          <span class="text-[0.7rem]">{{ t("notesList.completed") }}</span>
         </label>
         <button
           class="grid h-3.5 w-3.5 place-items-center rounded-full text-text-muted hover:bg-glass-active hover:text-text"
-          title="Leave Tasks"
+          :title="t('notesList.leaveTasks')"
           @click="clearTasksFilter()"
         >
           <Icon name="x" :size="8" :stroke-width="3" />
@@ -659,7 +661,7 @@ function formatDate(ts: number): string {
         <select
           class="titlebar-no-drag rounded-sm border border-glass-border bg-glass-surface px-1 py-0.5 text-text-muted focus:outline-none"
           :value="notes.groupKey"
-          title="Group by"
+          :title="t('notesList.groupBy')"
           @change="notes.setGroupKey(($event.target as HTMLSelectElement).value as GroupKey)"
         >
           <option v-for="g in groupKeys" :key="g.value" :value="g.value">{{ g.label }}</option>
@@ -667,14 +669,14 @@ function formatDate(ts: number): string {
         <select
           class="titlebar-no-drag rounded-sm border border-glass-border bg-glass-surface px-1 py-0.5 text-text-muted focus:outline-none"
           :value="notes.sortKey"
-          title="Sort by"
+          :title="t('notesList.sortBy')"
           @change="notes.setSortKey(($event.target as HTMLSelectElement).value as SortKey)"
         >
           <option v-for="k in sortKeys" :key="k.value" :value="k.value">{{ k.label }}</option>
         </select>
         <button
           class="titlebar-no-drag grid h-5 w-5 place-items-center rounded-sm text-text-muted hover:bg-glass-hover"
-          :title="notes.sortDir === 'asc' ? 'Ascending' : 'Descending'"
+          :title="notes.sortDir === 'asc' ? t('notesList.ascending') : t('notesList.descending')"
           @click="notes.toggleSortDir()"
         >
           <Icon :name="notes.sortDir === 'asc' ? 'arrow-up' : 'arrow-down'" :size="10" />
@@ -716,11 +718,11 @@ function formatDate(ts: number): string {
               name="check"
               :size="10"
               class="text-accent"
-              title="Selected"
+              :title="t('common.selected')"
             />
-            <Icon v-if="note.pinned" name="pin" :size="10" class="text-amber-500 thin-outline" fill="currentColor" title="Pinned" />
-            <Icon v-if="note.favorite" name="star" :size="10" class="text-amber-500 thin-outline" fill="currentColor" title="Shortcut" />
-            <Icon v-if="notes.publishedIds.has(note.id)" name="globe" :size="10" class="text-text-muted" title="Published" />
+            <Icon v-if="note.pinned" name="pin" :size="10" class="text-amber-500 thin-outline" fill="currentColor" :title="t('notesList.pinned')" />
+            <Icon v-if="note.favorite" name="star" :size="10" class="text-amber-500 thin-outline" fill="currentColor" :title="t('notesList.shortcut')" />
+            <Icon v-if="notes.publishedIds.has(note.id)" name="globe" :size="10" class="text-text-muted" :title="t('notesList.published')" />
             <span class="truncate text-xs font-medium text-text">
               <template v-for="(seg, i) in segmentsOf(note.title)" :key="i">
                 <mark v-if="seg.match" class="rounded-sm bg-[color-mix(in_srgb,var(--accent)_30%,transparent)] px-0.5 text-text">{{ seg.text }}</mark>
@@ -745,7 +747,7 @@ function formatDate(ts: number): string {
                     <template v-else>{{ seg.text }}</template>
                   </template>
                 </template>
-                <template v-else>No additional text</template>
+                <template v-else>{{ t("common.noAdditionalText") }}</template>
               </div>
             </div>
           </div>
@@ -782,10 +784,10 @@ function formatDate(ts: number): string {
         </button>
       </template>
       <div v-if="notes.visibleItems.length === 0 && notes.query" class="px-2 py-4 text-center text-[10px] text-text-muted">
-        No notes match “{{ notes.query }}”
+        {{ t("notesList.noMatch", { query: notes.query }) }}
       </div>
       <div v-else-if="notes.items.length === 0" class="px-2 py-4 text-center text-[10px] text-text-muted">
-        No notes yet
+        {{ t("notesList.empty") }}
       </div>
     </div>
   </div>

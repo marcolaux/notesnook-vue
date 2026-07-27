@@ -6,9 +6,8 @@
  * the root assumes a `min-h-0 flex-1 min-w-0` flex context. Mirrors
  * `TrashView.vue`.
  *
- * Labels are English literals (the codebase is mid-i18n — TrashView /
- * NotesList hardcode the same way; migrating these is the Phase 7.1 sweep).
- * The sidebar archive *badge* lives in the collections store; after any
+ * Labels resolve via vue-i18n (`archive.*` / `common.*`); the sidebar archive
+ * *badge* lives in the collections store; after any
  * mutation here we call `collections.reloadArchiveCount()` so it stays in
  * sync, and `notes.load()` after an unarchive so the note reappears in All
  * Notes. Moving an archived note to trash also refreshes the trash badge.
@@ -18,6 +17,7 @@
  * uses the headless `useDialogStore.confirm` overlay for confirmation.
  */
 import { onMounted } from "vue";
+import { useI18n } from "vue-i18n";
 import { useArchiveStore, type ArchiveListItem } from "@/stores/archive";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
@@ -30,6 +30,7 @@ const notes = useNotesStore();
 const collections = useCollectionsStore();
 const dialog = useDialogStore();
 const contextMenu = useContextMenuStore();
+const { t } = useI18n();
 
 onMounted(() => {
   void archive.load();
@@ -63,9 +64,10 @@ async function unarchiveItem(item: ArchiveListItem): Promise<void> {
 /** Move an archived note to trash (confirm-gated), then refresh both badges. */
 async function moveToTrashItem(item: ArchiveListItem): Promise<void> {
   const ok = await dialog.confirm({
-    title: "Move to trash",
-    message: `Move “${item.title}” to trash? You can restore it from the trash later.`,
-    confirmLabel: "Move to trash",
+    title: t("archive.moveToTrash"),
+    message: t("archive.moveToTrashConfirm", { title: item.title }),
+    confirmLabel: t("archive.moveToTrash"),
+    cancelLabel: t("common.cancel"),
     danger: true
   });
   if (!ok) return;
@@ -78,11 +80,11 @@ async function moveToTrashItem(item: ArchiveListItem): Promise<void> {
 /** Right-click an archive row → a small Unarchive / Move-to-trash menu. */
 function onRowContext(item: ArchiveListItem, e: MouseEvent): void {
   const items: MenuItem[] = [
-    { id: "unarchive", label: "Unarchive", onSelect: () => void unarchiveItem(item) },
+    { id: "unarchive", label: t("archive.unarchive"), onSelect: () => void unarchiveItem(item) },
     separator("sep"),
     {
       id: "delete",
-      label: "Move to trash",
+      label: t("archive.moveToTrash"),
       danger: true,
       onSelect: () => void moveToTrashItem(item)
     }
@@ -95,13 +97,13 @@ function onRowContext(item: ArchiveListItem, e: MouseEvent): void {
   <div class="flex min-h-0 min-w-0 flex-1 flex-col backdrop-blur-xl">
     <!-- Header: title + count -->
     <div class="flex h-9 shrink-0 items-center gap-2 border-b border-glass-border px-3">
-      <span class="text-xs font-semibold text-text">Archive</span>
-      <span class="text-[10px] text-text-muted">{{ archive.count }} note(s)</span>
+      <span class="text-xs font-semibold text-text">{{ t("archive.title") }}</span>
+      <span class="text-[10px] text-text-muted">{{ t("archive.count", { n: archive.count }) }}</span>
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto p-1">
       <div v-if="archive.loading && archive.items.length === 0" class="px-2 py-4 text-center text-[10px] text-text-muted">
-        Loading…
+        {{ t("archive.loading") }}
       </div>
       <button
         v-for="item in archive.items"
@@ -114,28 +116,28 @@ function onRowContext(item: ArchiveListItem, e: MouseEvent): void {
           <span class="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               class="titlebar-no-drag rounded-sm px-1 py-0.5 text-[9px] text-text-muted hover:bg-glass-active hover:text-text"
-              title="Unarchive"
+              :title="t('archive.unarchive')"
               @click.stop="unarchiveItem(item)"
             >
-              Unarchive
+              {{ t("archive.unarchive") }}
             </button>
             <button
               class="titlebar-no-drag rounded-sm px-1 py-0.5 text-[9px] text-rose-300/80 hover:bg-glass-active"
-              title="Move to trash"
+              :title="t('archive.moveToTrash')"
               @click.stop="moveToTrashItem(item)"
             >
-              Delete
+              {{ t("common.delete") }}
             </button>
           </span>
         </div>
         <div class="mt-0.5 flex items-center gap-1.5 text-[9px] text-text-muted">
           <span v-if="item.headline" class="truncate">{{ item.headline }}</span>
-          <span v-else>No additional text</span>
+          <span v-else>{{ t("common.noAdditionalText") }}</span>
           <span class="ml-auto shrink-0">{{ formatDate(item.dateEdited) }}</span>
         </div>
       </button>
       <div v-if="!archive.loading && archive.items.length === 0" class="px-2 py-4 text-center text-[10px] text-text-muted">
-        Archive is empty
+        {{ t("archive.empty") }}
       </div>
     </div>
   </div>

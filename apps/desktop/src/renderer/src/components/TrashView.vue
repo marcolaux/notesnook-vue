@@ -5,8 +5,7 @@
  * (which wraps `db.trash`). Rendered directly by `<RouterView />` in
  * ShellLayout — the root assumes a `min-h-0 flex-1 min-w-0` flex context.
  *
- * Labels are English literals (the codebase is mid-i18n — NotesList hardcodes
- * the same way; migrating these is the Phase 7.1 sweep). The sidebar trash
+ * Labels resolve via vue-i18n (`trash.*` / `common.*`). The sidebar trash
  * *badge* lives in the collections store; after any mutation here we call
  * `collections.reloadTrashCount()` so it stays in sync, and `notes.load()`
  * after a restore so the note reappears in All Notes.
@@ -15,6 +14,7 @@
  * overlay (mounted once in App.vue) for destructive confirmation.
  */
 import { onMounted } from "vue";
+import { useI18n } from "vue-i18n";
 import { useTrashStore, type TrashListItem } from "@/stores/trash";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
@@ -27,6 +27,7 @@ const notes = useNotesStore();
 const collections = useCollectionsStore();
 const dialog = useDialogStore();
 const contextMenu = useContextMenuStore();
+const { t } = useI18n();
 
 onMounted(() => {
   void trash.load();
@@ -60,9 +61,10 @@ async function restoreItem(item: TrashListItem): Promise<void> {
 /** Permanently delete a trashed note (confirm-gated), then refresh the badge. */
 async function deleteItemPermanently(item: TrashListItem): Promise<void> {
   const ok = await dialog.confirm({
-    title: "Delete permanently",
-    message: `Permanently delete “${item.title}”? This cannot be undone.`,
-    confirmLabel: "Delete",
+    title: t("trash.deletePermanently"),
+    message: t("trash.deleteConfirm", { title: item.title }),
+    confirmLabel: t("common.delete"),
+    cancelLabel: t("common.cancel"),
     danger: true
   });
   if (!ok) return;
@@ -73,9 +75,10 @@ async function deleteItemPermanently(item: TrashListItem): Promise<void> {
 /** Empty the entire trash (confirm-gated), then refresh the badge. */
 async function emptyTrash(): Promise<void> {
   const ok = await dialog.confirm({
-    title: "Empty trash",
-    message: `Permanently delete all ${trash.count} item(s) in trash? This cannot be undone.`,
-    confirmLabel: "Empty trash",
+    title: t("trash.emptyTrash"),
+    message: t("trash.emptyTrashConfirm", { n: trash.count }),
+    confirmLabel: t("trash.emptyTrash"),
+    cancelLabel: t("common.cancel"),
     danger: true
   });
   if (!ok) return;
@@ -86,11 +89,11 @@ async function emptyTrash(): Promise<void> {
 /** Right-click a trash row → a small Restore / Delete-permanently menu. */
 function onRowContext(item: TrashListItem, e: MouseEvent): void {
   const items: MenuItem[] = [
-    { id: "restore", label: "Restore", onSelect: () => void restoreItem(item) },
+    { id: "restore", label: t("common.restore"), onSelect: () => void restoreItem(item) },
     separator("sep"),
     {
       id: "delete-perm",
-      label: "Delete permanently",
+      label: t("trash.deletePermanently"),
       danger: true,
       onSelect: () => void deleteItemPermanently(item)
     }
@@ -103,21 +106,21 @@ function onRowContext(item: TrashListItem, e: MouseEvent): void {
   <div class="flex min-h-0 min-w-0 flex-1 flex-col backdrop-blur-xl">
     <!-- Header: title + Empty trash -->
     <div class="flex h-9 shrink-0 items-center gap-2 border-b border-glass-border px-3">
-      <span class="text-xs font-semibold text-text">Trash</span>
-      <span class="text-[10px] text-text-muted">{{ trash.noteItems.length }} note(s)</span>
+      <span class="text-xs font-semibold text-text">{{ t("trash.title") }}</span>
+      <span class="text-[10px] text-text-muted">{{ t("trash.count", { n: trash.noteItems.length }) }}</span>
       <button
         class="titlebar-no-drag ml-auto rounded-sm px-2 py-0.5 text-[10px] text-text-muted transition-colors hover:bg-glass-hover disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="trash.count === 0"
-        title="Empty trash"
+        :title="t('trash.emptyTrash')"
         @click="emptyTrash()"
       >
-        Empty trash
+        {{ t("trash.emptyTrash") }}
       </button>
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto p-1">
       <div v-if="trash.loading && trash.noteItems.length === 0" class="px-2 py-4 text-center text-[10px] text-text-muted">
-        Loading…
+        {{ t("trash.loading") }}
       </div>
       <button
         v-for="item in trash.noteItems"
@@ -130,29 +133,29 @@ function onRowContext(item: TrashListItem, e: MouseEvent): void {
           <span class="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               class="titlebar-no-drag rounded-sm px-1 py-0.5 text-[9px] text-text-muted hover:bg-glass-active hover:text-text"
-              title="Restore"
+              :title="t('common.restore')"
               @click.stop="restoreItem(item)"
             >
-              Restore
+              {{ t("common.restore") }}
             </button>
             <button
               class="titlebar-no-drag rounded-sm px-1 py-0.5 text-[9px] text-rose-300/80 hover:bg-glass-active"
-              title="Delete permanently"
+              :title="t('trash.deletePermanently')"
               @click.stop="deleteItemPermanently(item)"
             >
-              Delete
+              {{ t("common.delete") }}
             </button>
           </span>
         </div>
         <div class="mt-0.5 flex items-center gap-1.5 text-[9px] text-text-muted">
           <span class="shrink-0 rounded-sm bg-glass-hover px-1">{{ item.type }}</span>
           <span v-if="item.headline" class="truncate">{{ item.headline }}</span>
-          <span v-else>No additional text</span>
+          <span v-else>{{ t("common.noAdditionalText") }}</span>
           <span class="ml-auto shrink-0">{{ formatDate(item.dateDeleted) }}</span>
         </div>
       </button>
       <div v-if="!trash.loading && trash.noteItems.length === 0" class="px-2 py-4 text-center text-[10px] text-text-muted">
-        Trash is empty
+        {{ t("trash.empty") }}
       </div>
     </div>
   </div>

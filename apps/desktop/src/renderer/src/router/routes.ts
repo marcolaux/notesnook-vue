@@ -121,43 +121,43 @@ export const routes: RouteRecordRaw[] = [
         path: "tasks",
         name: RouteName.tasks,
         component: () => import("@/components/TasksView.vue"),
-        meta: { title: "Tasks" }
+        meta: { title: "routes.tasks" }
       },
       {
         path: "notebooks",
         name: RouteName.notebooks,
         component: () => import("@/components/PlaceholderView.vue"),
-        meta: { title: "Notebooks", hint: "Notebooks & subnotebooks — coming in Phase 3.2." }
+        meta: { title: "routes.notebooks", hint: "routes.notebooksHint" }
       },
       {
         path: "tags",
         name: RouteName.tags,
         component: () => import("@/components/PlaceholderView.vue"),
-        meta: { title: "Tags", hint: "Tags & subtags — coming in Phase 3.2." }
+        meta: { title: "routes.tags", hint: "routes.tagsHint" }
       },
       {
         path: "monographs",
         name: RouteName.monographs,
         component: () => import("@/components/MonographsView.vue"),
-        meta: { title: "Monographs" }
+        meta: { title: "routes.monographs" }
       },
       {
         path: "archive",
         name: RouteName.archive,
         component: () => import("@/components/ArchiveView.vue"),
-        meta: { title: "Archive" }
+        meta: { title: "routes.archive" }
       },
       {
         path: "reminders",
         name: RouteName.reminders,
         component: () => import("@/components/RemindersView.vue"),
-        meta: { title: "Reminders" }
+        meta: { title: "routes.reminders" }
       },
       {
         path: "trash",
         name: RouteName.trash,
         component: () => import("@/components/TrashView.vue"),
-        meta: { title: "Trash" }
+        meta: { title: "routes.trash" }
       }
     ]
   },

@@ -5,6 +5,7 @@
   dialog; the button installs directly (like upstream's two paths).
 -->
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import ThemePreview from "./ThemePreview.vue";
 import type { ThemeGridItem } from "@/composables/use-themes-catalog";
 
@@ -16,6 +17,8 @@ defineEmits<{
   /** "Set as … theme" button — install directly. */
   (e: "set"): void;
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -33,12 +36,12 @@ defineEmits<{
           · {{ theme.authors[0]?.name }}
         </span>
       </div>
-      <div v-if="theme.totalInstalls" class="installs">{{ theme.totalInstalls }} installs</div>
+      <div v-if="theme.totalInstalls" class="installs">{{ t("themeDetails.installs", { n: theme.totalInstalls }) }}</div>
     </div>
     <div class="actions">
-      <span v-if="theme.isApplied" class="applied">✓ Applied</span>
+      <span v-if="theme.isApplied" class="applied">✓ {{ t("themeDetails.applied") }}</span>
       <button v-else type="button" class="set-btn" @click.stop="$emit('set')">
-        Set as {{ theme.colorScheme === "dark" ? "Dark" : "Light" }} theme
+        {{ theme.colorScheme === "dark" ? t("themeDetails.setAsDark") : t("themeDetails.setAsLight") }}
       </button>
     </div>
   </div>
