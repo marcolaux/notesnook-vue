@@ -28,6 +28,7 @@
  */
 import { computed, onMounted, onUnmounted } from "vue";
 import { Surface, Flex, Text, Button } from "@notesnook-vue/ui-vue";
+import { useI18n } from "vue-i18n";
 import { useSyncStore } from "@/stores/sync";
 import { useStatusStore } from "@/stores/status";
 import { useConfigStore } from "@/stores/config";
@@ -38,6 +39,7 @@ const sync = useSyncStore();
 const status = useStatusStore();
 const config = useConfigStore();
 const auth = useAuthStore();
+const { t } = useI18n();
 
 onMounted(() => {
   // The settings window doesn't bind sync events / clock on boot — do it here
@@ -58,9 +60,9 @@ const lastSyncedLabel = computed(() => formatSyncRelative(status.lastSynced, sta
 const stateLabel = computed(() => {
   switch (status.syncState) {
     case "syncing":
-      return "Syncing…";
+      return t("settings.sync.syncing");
     case "error":
-      return "Sync error";
+      return t("settings.sync.syncError");
     default:
       return lastSyncedLabel.value;
   }
@@ -100,29 +102,29 @@ function toggleFullOffline(e: Event): void {
 <template>
   <Surface class="rounded-xl border border-border p-5">
     <Flex direction="column" :gap="4">
-      <Text as="h2" variant="heading" size="md">Sync</Text>
+      <Text as="h2" variant="heading" size="md">{{ t("settings.sync.title") }}</Text>
 
       <!-- Status -->
       <Flex direction="column" :gap="1">
-        <Text variant="body" size="sm" class="text-text-muted">Last sync</Text>
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.sync.lastSync") }}</Text>
         <Text variant="body" size="sm" class="text-text">{{ stateLabel }}</Text>
       </Flex>
 
       <!-- Manual controls -->
       <Flex direction="row" :gap="2" class="flex-wrap">
-        <Button variant="primary" :disabled="!canSyncNow" @click="onSyncNow">Sync now</Button>
-        <Button variant="secondary" :disabled="!sync.busy" @click="onStop">Stop</Button>
-        <Button variant="ghost" :disabled="!sync.busy" @click="onCancel">Cancel</Button>
+        <Button variant="primary" :disabled="!canSyncNow" @click="onSyncNow">{{ t("settings.sync.syncNow") }}</Button>
+        <Button variant="secondary" :disabled="!sync.busy" @click="onStop">{{ t("settings.sync.stop") }}</Button>
+        <Button variant="ghost" :disabled="!sync.busy" @click="onCancel">{{ t("common.cancel") }}</Button>
       </Flex>
 
       <!-- Toggles -->
       <Flex direction="column" :gap="3">
         <label class="flex items-center gap-2 text-sm text-text">
           <input type="checkbox" :checked="config.syncEnabled" class="accent-accent" @change="toggleSyncEnabled" />
-          Enable sync
+          {{ t("settings.sync.enableSync") }}
         </label>
         <Text variant="body" size="xs" class="text-text-muted"
-          >When off, notes stay on this device and no sync runs (manual or automatic).</Text
+          >{{ t("settings.sync.enableSyncDesc") }}</Text
         >
 
         <label class="flex items-center gap-2 text-sm text-text">
@@ -132,10 +134,10 @@ function toggleFullOffline(e: Event): void {
             class="accent-accent"
             @change="toggleFullOffline"
           />
-          Full offline mode
+          {{ t("settings.sync.fullOffline") }}
         </label>
         <Text variant="body" size="xs" class="text-text-muted"
-          >Download all notes + attachments for offline access. Increases sync time + storage.</Text
+          >{{ t("settings.sync.fullOfflineDesc") }}</Text
         >
       </Flex>
 

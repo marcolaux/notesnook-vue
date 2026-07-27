@@ -17,11 +17,13 @@
  */
 import { computed, onMounted } from "vue";
 import { Surface, Flex, Text, Button } from "@notesnook-vue/ui-vue";
+import { useI18n } from "vue-i18n";
 import { useUpdaterStore } from "@/stores/updater";
 import { useSettingsStore } from "@/stores/settings";
 
 const updater = useUpdaterStore();
 const settings = useSettingsStore();
+const { t } = useI18n();
 
 const currentVersion = `v${__APP_VERSION__}`;
 const downloading = computed(() => updater.phase === "downloading");
@@ -44,9 +46,9 @@ onMounted(() => {
   <Surface class="rounded-xl border border-border p-5">
     <Flex direction="column" :gap="4">
       <Flex direction="column" :gap="1">
-        <Text as="h2" variant="heading" size="md">Updates</Text>
+        <Text as="h2" variant="heading" size="md">{{ t("settings.updates.title") }}</Text>
         <Text variant="body" size="xs" class="text-text-muted">
-          Current version: {{ currentVersion }}. Updates are checked automatically.
+          {{ t("settings.updates.versionLine", { version: currentVersion }) }}
         </Text>
       </Flex>
 
@@ -59,7 +61,7 @@ onMounted(() => {
           size="xs"
           class="text-accent"
         >
-          A new version v{{ updater.status.version }} is available.
+          {{ t("settings.updates.newVersion", { version: updater.status.version }) }}
         </Text>
       </Flex>
 
@@ -81,20 +83,20 @@ onMounted(() => {
           :disabled="updater.busy || downloading"
           @click="updater.checkForUpdates"
         >
-          Check for updates
+          {{ t("settings.updates.checkForUpdates") }}
         </Button>
         <Button
           variant="ghost"
           @click="updater.openChangelog"
         >
-          View Changelog
+          {{ t("settings.updates.viewChangelog") }}
         </Button>
         <Button
           v-if="isDev"
           variant="secondary"
           @click="updater.triggerTestChangelog"
         >
-          Test Changelog Dialog
+          {{ t("settings.updates.testChangelog") }}
         </Button>
         <Button
           v-if="updater.updateAvailable && !updater.readyToInstall"
@@ -102,7 +104,7 @@ onMounted(() => {
           :disabled="updater.busy"
           @click="updater.downloadUpdate"
         >
-          Download
+          {{ t("settings.updates.download") }}
         </Button>
         <Button
           v-if="updater.readyToInstall"
@@ -110,13 +112,13 @@ onMounted(() => {
           :disabled="updater.busy"
           @click="updater.installUpdate"
         >
-          Install and restart
+          {{ t("settings.updates.installRestart") }}
         </Button>
       </Flex>
 
       <Text v-if="updater.lastError" variant="body" size="xs" class="text-[var(--red-static)]">
         {{ updater.lastError }}
-        <button type="button" class="ml-1 underline" @click="updater.clearError">Dismiss</button>
+        <button type="button" class="ml-1 underline" @click="updater.clearError">{{ t("settings.updates.dismiss") }}</button>
       </Text>
     </Flex>
   </Surface>
@@ -125,19 +127,18 @@ onMounted(() => {
   <Surface class="mt-6 rounded-xl border border-border p-5">
     <Flex direction="column" :gap="4">
       <Flex direction="column" :gap="1">
-        <Text as="h2" variant="heading" size="md">Logging</Text>
+        <Text as="h2" variant="heading" size="md">{{ t("settings.updates.loggingTitle") }}</Text>
         <Text variant="body" size="xs" class="text-text-muted">
-          Toggle diagnostic console output (sync, vector-search indexing, search, etc.).
-          Errors always print regardless of this setting.
+          {{ t("settings.updates.loggingDesc") }}
         </Text>
       </Flex>
 
       <Flex direction="column" :gap="3" class="rounded-lg border border-border bg-surface-muted/30 p-4">
         <Flex align="center" justify="between">
           <Flex direction="column" :gap="1">
-            <Text variant="body" size="sm" class="font-medium text-text">Enable diagnostic logging</Text>
+            <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.updates.enableLogging") }}</Text>
             <Text variant="body" size="xs" class="text-text-muted max-w-md">
-              {{ loggingLocked ? "Forced on in development mode." : "Off by default in packaged builds." }}
+              {{ loggingLocked ? t("settings.updates.loggingForced") : t("settings.updates.loggingDefault") }}
             </Text>
           </Flex>
           <label class="relative inline-flex cursor-pointer items-center" :class="{ 'opacity-60': loggingLocked }">

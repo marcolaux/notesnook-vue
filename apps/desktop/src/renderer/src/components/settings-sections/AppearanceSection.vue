@@ -16,6 +16,7 @@
  * setting (there's nothing to enable).
  */
 import { Surface, Flex, Text } from "@notesnook-vue/ui-vue";
+import { useI18n } from "vue-i18n";
 import { useSettingsStore, type ThemeMode } from "@/stores/settings";
 import { useTitleBarStore } from "@/stores/titlebar";
 import { useDialogStore } from "@/stores/dialog";
@@ -25,12 +26,13 @@ import ThemesSection from "./ThemesSection.vue";
 const settings = useSettingsStore();
 const titlebar = useTitleBarStore();
 const dialog = useDialogStore();
+const { t } = useI18n();
 const { restoreStockThemes } = useThemesCatalog();
 
 const themeModes: { value: ThemeMode; label: string }[] = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" }
+  { value: "light", label: "settings.appearance.light" },
+  { value: "dark", label: "settings.appearance.dark" },
+  { value: "system", label: "settings.appearance.system" }
 ];
 
 function pickTheme(mode: ThemeMode): void {
@@ -43,10 +45,9 @@ function pickTransparency(enabled: boolean): void {
 
 async function restoreStock(): Promise<void> {
   const confirmed = await dialog.confirm({
-    title: "Restore stock themes",
-    message:
-      "Are you sure you want to restore the stock themes? This will reset your light and dark themes to default.",
-    confirmLabel: "Restore",
+    title: t("settings.appearance.restoreStockConfirmTitle"),
+    message: t("settings.appearance.restoreStockConfirmMsg"),
+    confirmLabel: t("common.restore"),
     danger: true
   });
   if (confirmed) {
@@ -58,9 +59,9 @@ async function restoreStock(): Promise<void> {
 <template>
   <Surface class="rounded-xl border border-border p-5">
     <Flex direction="column" :gap="3">
-      <Text as="h2" variant="heading" size="md">Appearance</Text>
+      <Text as="h2" variant="heading" size="md">{{ t("settings.appearance.title") }}</Text>
       <Flex direction="column" :gap="1">
-        <Text variant="body" size="sm" class="text-text-muted">Theme</Text>
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.appearance.theme") }}</Text>
         <div class="flex rounded-md border border-border p-0.5 text-sm">
           <button
             v-for="m in themeModes"
@@ -74,22 +75,22 @@ async function restoreStock(): Promise<void> {
             "
             @click="pickTheme(m.value)"
           >
-            {{ m.label }}
+            {{ t(m.label) }}
           </button>
         </div>
         <Text variant="body" size="xs" class="text-text-muted"
-          >System follows your OS light/dark preference.</Text
+          >{{ t("settings.appearance.systemHint") }}</Text
         >
       </Flex>
       <Flex v-if="!titlebar.isLinux" direction="column" :gap="1">
-        <Text variant="body" size="sm" class="text-text-muted">Transparency</Text>
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.appearance.transparency") }}</Text>
         <div class="flex rounded-md border border-border p-0.5 text-sm">
           <button
             v-for="opt in [
-              { value: true, label: 'On' },
-              { value: false, label: 'Off' }
+              { value: true, labelKey: 'common.on' },
+              { value: false, labelKey: 'common.off' }
             ]"
-            :key="opt.label"
+            :key="opt.labelKey"
             type="button"
             class="flex-1 rounded px-3 py-1 transition-colors"
             :class="
@@ -99,21 +100,20 @@ async function restoreStock(): Promise<void> {
             "
             @click="pickTransparency(opt.value)"
           >
-            {{ opt.label }}
+            {{ t(opt.labelKey) }}
           </button>
         </div>
         <Text variant="body" size="xs" class="text-text-muted"
-          >Off disables the translucent acrylic/glass look for a solid
-          window.</Text
+          >{{ t("settings.appearance.transparencyHint") }}</Text
         >
       </Flex>
 
       <Flex direction="column" :gap="1">
         <Flex direction="row" class="items-center justify-between gap-4">
           <div>
-            <Text variant="body" size="sm" class="font-medium text-text">Stock themes</Text>
+            <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.appearance.stockThemes") }}</Text>
             <Text variant="body" size="xs" class="text-text-muted"
-              >Reset installed light and dark themes back to default Notesnook themes.</Text
+              >{{ t("settings.appearance.stockThemesDesc") }}</Text
             >
           </div>
           <button
@@ -121,7 +121,7 @@ async function restoreStock(): Promise<void> {
             class="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs text-text hover:bg-hover transition-colors"
             @click="restoreStock"
           >
-            Restore stock themes
+            {{ t("settings.appearance.restoreStockThemes") }}
           </button>
         </Flex>
       </Flex>

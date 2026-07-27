@@ -24,6 +24,7 @@
  */
 import { ref, computed, onMounted } from "vue";
 import { Surface, Flex, Text, Button, Input } from "@notesnook-vue/ui-vue";
+import { useI18n } from "vue-i18n";
 import { useBackupsStore } from "@/stores/backup";
 import { useConfigStore } from "@/stores/config";
 import { desktop } from "@/platform/desktop-bridge";
@@ -32,6 +33,7 @@ import type { BackupFile, LegacyBackupFile } from "@notesnook-vue/contracts";
 
 const backups = useBackupsStore();
 const config = useConfigStore();
+const { t } = useI18n();
 
 onMounted(() => {
   // Seed the last-backup timestamp (the settings window doesn't on boot).
@@ -41,7 +43,7 @@ onMounted(() => {
 const formError = ref<string | null>(null);
 const info = ref<string | null>(null);
 const error = computed(() => formError.value ?? backups.lastError);
-const lastBackupLabel = computed(() => `Last backup: ${formatBackupTime(backups.lastBackup)}`);
+const lastBackupLabel = computed(() => t("settings.backup.lastBackup", { time: formatBackupTime(backups.lastBackup) }));
 
 /** Backup-now format picker ("-" = choose, "partial" / "full"). */
 const backupMode = ref<"-" | "partial" | "full">("-");
@@ -49,12 +51,12 @@ const backupMode = ref<"-" | "partial" | "full">("-");
 /** Optional password for restoring an encrypted backup. */
 const restorePassword = ref("");
 
-const reminderOptions: { value: number; label: string }[] = [
-  { value: 0, label: "Never" },
-  { value: 1, label: "Daily" },
-  { value: 2, label: "Weekly" },
-  { value: 3, label: "Monthly" }
-];
+const reminderOptions = computed<{ value: number; label: string }[]>(() => [
+  { value: 0, label: t("common.never") },
+  { value: 1, label: t("settings.backup.daily") },
+  { value: 2, label: t("settings.backup.weekly") },
+  { value: 3, label: t("settings.backup.monthly") }
+]);
 
 function pickBackupMode(e: Event): void {
   backupMode.value = (e.target as HTMLSelectElement).value as "-" | "partial" | "full";
@@ -83,13 +85,13 @@ async function onSelectBackupDirectory(): Promise<void> {
   const dir = await desktop.dialog.selectDirectory.mutate();
   if (dir) {
     config.setBackupDirectory(dir);
-    info.value = `Backup directory set to: ${dir}`;
+    info.value = t("settings.backup.dirSet", { dir });
   }
 }
 
 function onClearBackupDirectory(): void {
   config.setBackupDirectory(null);
-  info.value = "Backup directory cleared.";
+  info.value = t("settings.backup.dirCleared");
 }
 
 /** Export a backup and save it to a user-chosen `.nnbackup` file (or configured backup directory). Refuses
@@ -99,7 +101,7 @@ async function onBackupNow(): Promise<void> {
   info.value = null;
   const mode = backupMode.value;
   if (mode === "-") {
-    formError.value = "Choose a backup format first.";
+    formError.value = t("settings.backup.chooseFormatFirst");
     return;
   }
   // Build options conditionally — `exactOptionalPropertyTypes` rejects an
@@ -115,12 +117,11 @@ async function onBackupNow(): Promise<void> {
     (f) => f.path !== ".nnbackup" && !f.path.startsWith("attachments/")
   );
   if (dataChunks.length === 0) {
-    formError.value = "Backup produced no data.";
+    formError.value = t("settings.backup.noData");
     return;
   }
   if (dataChunks.length > 1) {
-    formError.value =
-      "This backup is too large for the single-file format (>10MB). Multi-file .nnbackupz support is coming; export a smaller range or wait for the zip format.";
+    formError.value = t("settings.backup.tooLarge");
     return;
   }
   let saved = false;
@@ -137,7 +138,7 @@ async function onBackupNow(): Promise<void> {
     });
   }
   if (!saved) return; // user cancelled
-  info.value = "Backup saved.";
+  info.value = t("settings.backup.backupSaved");
 }
 
 /** Restore a `.nnbackup` file (legacy single-JSON format). `.nnbackupz` (zip)
@@ -148,14 +149,14 @@ async function onRestore(): Promise<void> {
   const file = await desktop.dialog.openFile.mutate({ extensions: ["nnbackup", "nnbackupz"] });
   if (!file) return; // user cancelled
   if (file.name.endsWith(".nnbackupz")) {
-    formError.value = "Restoring .nnbackupz (zip) backups is not supported yet.";
+    formError.value = t("settings.backup.nnbackupzUnsupported");
     return;
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(file.data);
   } catch {
-    formError.value = "That file is not a valid backup.";
+    formError.value = t("settings.backup.invalidBackup");
     return;
   }
   // Build options conditionally (exactOptionalPropertyTypes — see export).
@@ -163,7 +164,7 @@ async function onRestore(): Promise<void> {
   if (restorePassword.value) importInput.password = restorePassword.value;
   const ok = await backups.importBackup(parsed as BackupFile | LegacyBackupFile, importInput);
   if (ok) {
-    info.value = "Backup restored.";
+    info.value = t("settings.backup.backupRestored");
     // Signal the main window to reload its notes/collections — the import
     // mutated the shared DB in this (settings) renderer, and core events are
     // per-process so the main window's stores won't see it otherwise.
@@ -177,42 +178,42 @@ async function onRestore(): Promise<void> {
 <template>
   <Surface class="rounded-xl border border-border p-5">
     <Flex direction="column" :gap="4">
-      <Text as="h2" variant="heading" size="md">Backup &amp; Export</Text>
+      <Text as="h2" variant="heading" size="md">{{ t("settings.backup.title") }}</Text>
       <Text variant="body" size="xs" class="text-text-muted">{{ lastBackupLabel }}</Text>
 
       <!-- Backup now -->
       <Flex direction="column" :gap="2">
-        <Text variant="body" size="sm" class="text-text">Backup now</Text>
+        <Text variant="body" size="sm" class="text-text">{{ t("settings.backup.backupNow") }}</Text>
         <Flex direction="row" :gap="2" class="flex-wrap items-center">
           <select
             :value="backupMode"
             class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
             @change="pickBackupMode"
           >
-            <option value="-">Choose format</option>
-            <option value="partial">Backup (notes only)</option>
-            <option value="full">Backup with attachments</option>
+            <option value="-">{{ t("settings.backup.chooseFormat") }}</option>
+            <option value="partial">{{ t("settings.backup.backupPartial") }}</option>
+            <option value="full">{{ t("settings.backup.backupFull") }}</option>
           </select>
-          <Button variant="primary" :disabled="backups.busy" @click="onBackupNow">Backup</Button>
+          <Button variant="primary" :disabled="backups.busy" @click="onBackupNow">{{ t("settings.backup.backup") }}</Button>
         </Flex>
         <Text variant="body" size="xs" class="text-text-muted"
-          >Saves a `.nnbackup` file to a location you choose. "Backup with attachments" requires login.</Text
+          >{{ t("settings.backup.backupHint") }}</Text
         >
       </Flex>
 
       <!-- Restore -->
       <Flex direction="column" :gap="2">
-        <Text variant="body" size="sm" class="text-text">Restore backup</Text>
+        <Text variant="body" size="sm" class="text-text">{{ t("settings.backup.restoreBackup") }}</Text>
         <Input
           v-model="restorePassword"
           type="password"
           block
-          placeholder="Password (optional — for encrypted backups)"
+          :placeholder="t('settings.backup.restorePasswordPlaceholder')"
           autocomplete="current-password"
         />
-        <Button variant="secondary" :disabled="backups.busy" @click="onRestore">Restore</Button>
+        <Button variant="secondary" :disabled="backups.busy" @click="onRestore">{{ t("settings.backup.restore") }}</Button>
         <Text variant="body" size="xs" class="text-text-muted"
-          >Imports a `.nnbackup` file. `.nnbackupz` (zip) restore is coming.</Text
+          >{{ t("settings.backup.restoreHint") }}</Text
         >
       </Flex>
 
@@ -220,14 +221,14 @@ async function onRestore(): Promise<void> {
       <Flex direction="column" :gap="3">
         <label class="flex items-center gap-2 text-sm text-text">
           <input type="checkbox" :checked="config.encryptBackups" class="accent-accent" @change="toggleEncrypt" />
-          Encrypt backups
+          {{ t("settings.backup.encryptBackups") }}
         </label>
         <Text variant="body" size="xs" class="text-text-muted"
-          >Encrypted backups require login (they use your account key).</Text
+          >{{ t("settings.backup.encryptBackupsDesc") }}</Text
         >
 
         <Flex direction="column" :gap="1">
-          <Text variant="body" size="sm" class="text-text-muted">Automatic backups</Text>
+          <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.backup.autoBackups") }}</Text>
           <select
             :value="config.backupReminderOffset"
             class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -238,7 +239,7 @@ async function onRestore(): Promise<void> {
         </Flex>
 
         <Flex direction="column" :gap="1">
-          <Text variant="body" size="sm" class="text-text-muted">Automatic backups with attachments</Text>
+          <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.backup.autoBackupsFull") }}</Text>
           <select
             :value="config.fullBackupReminderOffset"
             class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -249,20 +250,20 @@ async function onRestore(): Promise<void> {
         </Flex>
 
         <Flex direction="column" :gap="1">
-          <Text variant="body" size="sm" class="text-text-muted">Backup directory</Text>
+          <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.backup.backupDirectory") }}</Text>
           <Flex direction="row" :gap="2" class="flex-wrap items-center">
             <Input
               :model-value="config.backupDirectory ?? ''"
               readonly
               block
-              placeholder="Not set (prompts for location on backup)"
+              :placeholder="t('settings.backup.backupDirPlaceholder')"
               class="flex-1"
             />
-            <Button variant="secondary" @click="onSelectBackupDirectory">Choose directory</Button>
-            <Button v-if="config.backupDirectory" variant="ghost" @click="onClearBackupDirectory">Clear</Button>
+            <Button variant="secondary" @click="onSelectBackupDirectory">{{ t("settings.backup.chooseDirectory") }}</Button>
+            <Button v-if="config.backupDirectory" variant="ghost" @click="onClearBackupDirectory">{{ t("common.clear") }}</Button>
           </Flex>
           <Text variant="body" size="xs" class="text-text-muted"
-            >Select a directory to store automatic and manual backups without prompting.</Text
+            >{{ t("settings.backup.backupDirHint") }}</Text
           >
         </Flex>
       </Flex>

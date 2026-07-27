@@ -13,6 +13,7 @@
  */
 import { computed, onMounted } from "vue";
 import { Surface, Flex, Text, Input } from "@notesnook-vue/ui-vue";
+import { useI18n } from "vue-i18n";
 import { useSettingsStore } from "@/stores/settings";
 import { useCollectionsStore } from "@/stores/collections";
 import { useTemplatesStore } from "@/stores/templates";
@@ -22,6 +23,7 @@ const settings = useSettingsStore();
 const collections = useCollectionsStore();
 const templates = useTemplatesStore();
 const config = useConfigStore();
+const { t } = useI18n();
 
 onMounted(() => {
   // The settings window is its own Pinia app — load the collections so the
@@ -31,45 +33,47 @@ onMounted(() => {
   void templates.load();
 });
 
-const trashOptions: { value: number; label: string }[] = [
-  { value: 1, label: "1 day" },
-  { value: 7, label: "7 days" },
-  { value: 30, label: "30 days" },
-  { value: 365, label: "1 year" },
-  { value: -1, label: "Never" }
-];
+// Option labels are resolved via `t()` inside computeds so they re-evaluate on
+// a locale change (the `t` call tracks the reactive `i18n.global.locale`).
+const trashOptions = computed<{ value: number; label: string }[]>(() => [
+  { value: 1, label: t("settings.notes.trash1Day") },
+  { value: 7, label: t("settings.notes.trash7Days") },
+  { value: 30, label: t("settings.notes.trash30Days") },
+  { value: 365, label: t("settings.notes.trash1Year") },
+  { value: -1, label: t("common.never") }
+]);
 
-const timeOptions: { value: "12-hour" | "24-hour"; label: string }[] = [
-  { value: "12-hour", label: "12-hour" },
-  { value: "24-hour", label: "24-hour" }
-];
-const dayOptions: { value: "short" | "long"; label: string }[] = [
-  { value: "short", label: "Short" },
-  { value: "long", label: "Long" }
-];
-const weekOptions: { value: "Sun" | "Mon"; label: string }[] = [
-  { value: "Sun", label: "Sunday" },
-  { value: "Mon", label: "Monday" }
-];
+const timeOptions = computed<{ value: "12-hour" | "24-hour"; label: string }[]>(() => [
+  { value: "12-hour", label: t("settings.notes.time12") },
+  { value: "24-hour", label: t("settings.notes.time24") }
+]);
+const dayOptions = computed<{ value: "short" | "long"; label: string }[]>(() => [
+  { value: "short", label: t("settings.notes.dayShort") },
+  { value: "long", label: t("settings.notes.dayLong") }
+]);
+const weekOptions = computed<{ value: "Sun" | "Mon"; label: string }[]>(() => [
+  { value: "Sun", label: t("settings.notes.weekSun") },
+  { value: "Mon", label: t("settings.notes.weekMon") }
+]);
 
 /** Notebook/tag picker options: a leading "None" (clears the default) followed
  *  by the collections store's sorted lists. `""` represents None at the
  *  `<select>` level and is converted to `undefined` in the change handler. */
 const notebookOptions = computed(() => [
-  { value: "", label: "None" },
+  { value: "", label: t("common.none") },
   ...collections.sortedNotebooks.map((n) => ({ value: n.id, label: n.title }))
 ]);
 const tagOptions = computed(() => [
-  { value: "", label: "None" },
-  ...collections.sortedTags.map((t) => ({ value: t.id, label: t.title }))
+  { value: "", label: t("common.none") },
+  ...collections.sortedTags.map((tg) => ({ value: tg.id, label: tg.title }))
 ]);
 
 /** Template picker options: a leading "None" (clears the default) followed by
  *  the loaded template notes. `""` represents None at the `<select>` level and
  *  is converted to `null` in the change handler. */
 const templateOptions = computed(() => [
-  { value: "", label: "None" },
-  ...templates.templates.map((t) => ({ value: t.id, label: t.title }))
+  { value: "", label: t("common.none") },
+  ...templates.templates.map((tp) => ({ value: tp.id, label: tp.title }))
 ]);
 
 function pickTime(e: Event): void {
@@ -105,31 +109,31 @@ function pickDefaultTaskTemplate(e: Event): void {
 <template>
   <Surface class="rounded-xl border border-border p-5">
     <Flex direction="column" :gap="4">
-      <Text as="h2" variant="heading" size="md">Notes</Text>
+      <Text as="h2" variant="heading" size="md">{{ t("settings.notes.title") }}</Text>
 
       <Flex direction="column" :gap="1">
-        <Text variant="body" size="sm" class="text-text-muted">Title format</Text>
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.titleFormat") }}</Text>
         <Input
           :model-value="settings.titleFormat"
           block
-          placeholder="Note $date$ $time$"
+          :placeholder="t('settings.notes.titleFormatPlaceholder')"
           @update:model-value="settings.setTitleFormat($event)"
         />
       </Flex>
 
       <Flex direction="column" :gap="1">
-        <Text variant="body" size="sm" class="text-text-muted">Date format</Text>
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.dateFormat") }}</Text>
         <Input
           :model-value="settings.dateFormat"
           block
-          placeholder="DD-MM-YYYY"
+          :placeholder="t('settings.notes.dateFormatPlaceholder')"
           @update:model-value="settings.setDateFormat($event)"
         />
       </Flex>
 
       <div class="grid grid-cols-2 gap-4">
         <Flex direction="column" :gap="1">
-          <Text variant="body" size="sm" class="text-text-muted">Time format</Text>
+          <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.timeFormat") }}</Text>
           <select
             :value="settings.timeFormat"
             class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -139,7 +143,7 @@ function pickDefaultTaskTemplate(e: Event): void {
           </select>
         </Flex>
         <Flex direction="column" :gap="1">
-          <Text variant="body" size="sm" class="text-text-muted">Day format</Text>
+          <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.dayFormat") }}</Text>
           <select
             :value="settings.dayFormat"
             class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -149,7 +153,7 @@ function pickDefaultTaskTemplate(e: Event): void {
           </select>
         </Flex>
         <Flex direction="column" :gap="1">
-          <Text variant="body" size="sm" class="text-text-muted">First day of week</Text>
+          <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.firstDayOfWeek") }}</Text>
           <select
             :value="settings.weekFormat"
             class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -159,7 +163,7 @@ function pickDefaultTaskTemplate(e: Event): void {
           </select>
         </Flex>
         <Flex direction="column" :gap="1">
-          <Text variant="body" size="sm" class="text-text-muted">Empty trash after</Text>
+          <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.emptyTrashAfter") }}</Text>
           <select
             :value="settings.trashCleanupInterval"
             class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -169,7 +173,7 @@ function pickDefaultTaskTemplate(e: Event): void {
           </select>
         </Flex>
         <Flex direction="column" :gap="1">
-          <Text variant="body" size="sm" class="text-text-muted">Default notebook</Text>
+          <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.defaultNotebook") }}</Text>
           <select
             :value="settings.defaultNotebook ?? ''"
             class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -179,7 +183,7 @@ function pickDefaultTaskTemplate(e: Event): void {
           </select>
         </Flex>
         <Flex direction="column" :gap="1">
-          <Text variant="body" size="sm" class="text-text-muted">Default tag</Text>
+          <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.defaultTag") }}</Text>
           <select
             :value="settings.defaultTag ?? ''"
             class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -191,13 +195,13 @@ function pickDefaultTaskTemplate(e: Event): void {
       </div>
 
       <Flex direction="column" :gap="2">
-        <Text variant="body" size="sm" class="text-text-muted">Templates</Text>
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.templates") }}</Text>
         <Text v-if="templates.templates.length === 0" variant="body" size="sm" class="text-text-muted">
-          No templates yet — run “New template” from the command palette, or tag a note with “template”.
+          {{ t("settings.notes.noTemplates") }}
         </Text>
         <div class="grid grid-cols-2 gap-4">
           <Flex direction="column" :gap="1">
-            <Text variant="body" size="sm" class="text-text-muted">Default template for notes</Text>
+            <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.defaultTemplateNotes") }}</Text>
             <select
               :value="config.defaultNoteTemplate ?? ''"
               class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -207,7 +211,7 @@ function pickDefaultTaskTemplate(e: Event): void {
             </select>
           </Flex>
           <Flex direction="column" :gap="1">
-            <Text variant="body" size="sm" class="text-text-muted">Default template for tasks</Text>
+            <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.defaultTemplateTasks") }}</Text>
             <select
               :value="config.defaultTaskTemplate ?? ''"
               class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"

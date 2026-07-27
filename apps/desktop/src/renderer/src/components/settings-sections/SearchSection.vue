@@ -6,16 +6,18 @@
  */
 import { ref } from "vue";
 import { Surface, Flex, Text } from "@notesnook-vue/ui-vue";
+import { useI18n } from "vue-i18n";
 import { useSettingsStore } from "@/stores/settings";
 import { purgeVectorIndex } from "@/utils/vector-search";
 
 const settings = useSettingsStore();
+const { t } = useI18n();
 const purgeStatus = ref<string | null>(null);
 
 async function handlePurgeIndex(): Promise<void> {
-  purgeStatus.value = "Purging vector index...";
+  purgeStatus.value = t("settings.search.purging");
   await purgeVectorIndex();
-  purgeStatus.value = "Vector storage purged successfully.";
+  purgeStatus.value = t("settings.search.purged");
   setTimeout(() => {
     purgeStatus.value = null;
   }, 3000);
@@ -26,9 +28,9 @@ async function handlePurgeIndex(): Promise<void> {
   <Surface class="rounded-xl border border-border p-5">
     <Flex direction="column" :gap="4">
       <Flex direction="column" :gap="1">
-        <Text as="h2" variant="heading" size="md">Search & Retrieval</Text>
+        <Text as="h2" variant="heading" size="md">{{ t("settings.search.title") }}</Text>
         <Text variant="body" size="xs" class="text-text-muted">
-          Configure on-device hybrid vector search, index management, and fallback controls.
+          {{ t("settings.search.subtitle") }}
         </Text>
       </Flex>
 
@@ -36,9 +38,9 @@ async function handlePurgeIndex(): Promise<void> {
       <Flex direction="column" :gap="3" class="rounded-lg border border-border bg-surface-muted/30 p-4">
         <Flex align="center" justify="between">
           <Flex direction="column" :gap="1">
-            <Text variant="body" size="sm" class="font-medium text-text">Semantic Search (Vector Embeddings)</Text>
+            <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.search.semanticTitle") }}</Text>
             <Text variant="body" size="xs" class="text-text-muted max-w-md">
-              Finds notes by context and semantic similarity using local vector embeddings blended with FTS5 lexical search (Reciprocal Rank Fusion).
+              {{ t("settings.search.semanticDesc") }}
             </Text>
           </Flex>
           <label class="relative inline-flex cursor-pointer items-center">
@@ -53,51 +55,51 @@ async function handlePurgeIndex(): Promise<void> {
         </Flex>
 
         <Flex align="center" :gap="2" class="pt-2 border-t border-border/50 text-xs">
-          <span class="font-medium text-text-muted">Active Engine Mode:</span>
+          <span class="font-medium text-text-muted">{{ t("settings.search.activeMode") }}</span>
           <span
             class="px-2 py-0.5 rounded-full font-mono text-[11px]"
             :class="settings.semanticSearchEnabled ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'"
           >
-            {{ settings.semanticSearchEnabled ? "Hybrid RRF (FTS5 + Vector Embeddings)" : "Pure FTS5 Lexical Search (Opted Out)" }}
+            {{ settings.semanticSearchEnabled ? t("settings.search.modeHybrid") : t("settings.search.modeLexical") }}
           </span>
         </Flex>
       </Flex>
 
       <!-- Technical Architecture Overview -->
       <Flex direction="column" :gap="2">
-        <Text variant="body" size="sm" class="font-medium text-text">Local Architecture & Specifications</Text>
+        <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.search.archTitle") }}</Text>
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div class="rounded-lg border border-border p-3 bg-surface">
-            <Text variant="body" size="xs" class="font-medium text-text-muted">Embedding Model</Text>
-            <div class="mt-1 font-semibold text-text">snowflake-arctic-embed-s (INT8)</div>
-            <div class="mt-0.5 text-text-muted">384 dimensions • ~33 MB model</div>
+            <Text variant="body" size="xs" class="font-medium text-text-muted">{{ t("settings.search.embeddingModel") }}</Text>
+            <div class="mt-1 font-semibold text-text">{{ t("settings.search.embeddingModelValue") }}</div>
+            <div class="mt-0.5 text-text-muted">{{ t("settings.search.embeddingModelSpec") }}</div>
           </div>
           <div class="rounded-lg border border-border p-3 bg-surface">
-            <Text variant="body" size="xs" class="font-medium text-text-muted">Storage Engine</Text>
-            <div class="mt-1 font-semibold text-text">sqlite-vec (vec0 virtual table)</div>
-            <div class="mt-0.5 text-text-muted">Encrypted inside user database file</div>
+            <Text variant="body" size="xs" class="font-medium text-text-muted">{{ t("settings.search.storageEngine") }}</Text>
+            <div class="mt-1 font-semibold text-text">{{ t("settings.search.storageEngineValue") }}</div>
+            <div class="mt-0.5 text-text-muted">{{ t("settings.search.storageEngineSpec") }}</div>
           </div>
           <div class="rounded-lg border border-border p-3 bg-surface">
-            <Text variant="body" size="xs" class="font-medium text-text-muted">Inference Runtime</Text>
-            <div class="mt-1 font-semibold text-text">Transformers.js Web Worker</div>
-            <div class="mt-0.5 text-text-muted">WebGPU accelerated (WASM SIMD fallback)</div>
+            <Text variant="body" size="xs" class="font-medium text-text-muted">{{ t("settings.search.inferenceRuntime") }}</Text>
+            <div class="mt-1 font-semibold text-text">{{ t("settings.search.inferenceRuntimeValue") }}</div>
+            <div class="mt-0.5 text-text-muted">{{ t("settings.search.inferenceRuntimeSpec") }}</div>
           </div>
           <div class="rounded-lg border border-border p-3 bg-surface">
-            <Text variant="body" size="xs" class="font-medium text-text-muted">Privacy & E2EE</Text>
-            <div class="mt-1 font-semibold text-emerald-600 dark:text-emerald-400">100% On-Device & Offline</div>
-            <div class="mt-0.5 text-text-muted">Zero cloud dependencies</div>
+            <Text variant="body" size="xs" class="font-medium text-text-muted">{{ t("settings.search.privacyE2ee") }}</Text>
+            <div class="mt-1 font-semibold text-emerald-600 dark:text-emerald-400">{{ t("settings.search.privacyValue") }}</div>
+            <div class="mt-0.5 text-text-muted">{{ t("settings.search.privacySpec") }}</div>
           </div>
         </div>
       </Flex>
 
       <!-- Storage Maintenance & Reclaim -->
       <Flex direction="column" :gap="2" class="pt-2 border-t border-border">
-        <Text variant="body" size="sm" class="font-medium text-text">Storage Maintenance</Text>
+        <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.search.purgeTitle") }}</Text>
         <Flex align="center" justify="between" class="rounded-lg border border-border p-3 bg-surface">
           <Flex direction="column" :gap="1">
-            <Text variant="body" size="sm" class="font-medium text-text">Purge Vector Storage</Text>
+            <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.search.purgeVectorStorage") }}</Text>
             <Text variant="body" size="xs" class="text-text-muted">
-              Clear all stored vector embeddings from `vec_notes` table to reclaim disk space.
+              {{ t("settings.search.purgeDesc") }}
             </Text>
           </Flex>
           <button
@@ -105,7 +107,7 @@ async function handlePurgeIndex(): Promise<void> {
             class="px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-surface hover:bg-surface-hover text-text transition-colors"
             @click="handlePurgeIndex"
           >
-            Purge Vector Storage
+            {{ t("settings.search.purgeVectorStorage") }}
           </button>
         </Flex>
         <div v-if="purgeStatus" class="text-xs text-accent font-medium pt-1">

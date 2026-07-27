@@ -21,6 +21,7 @@
  */
 import { ref, computed, onMounted } from "vue";
 import { Surface, Flex, Text, Button, Input, Icon } from "@notesnook-vue/ui-vue";
+import { useI18n } from "vue-i18n";
 import { useAttachmentsStore } from "@/stores/attachments";
 import {
   ATTACHMENT_FILTERS,
@@ -30,6 +31,7 @@ import {
 import type { Attachment, Note } from "@notesnook-vue/contracts";
 
 const attachments = useAttachmentsStore();
+const { t } = useI18n();
 
 onMounted(() => {
   void attachments.load();
@@ -64,22 +66,15 @@ function toggle(a: Attachment): void {
 }
 
 async function onDelete(a: Attachment): Promise<void> {
-  const name = a.filename || "this attachment";
-  if (
-    !window.confirm(
-      `Delete "${name}"? It will be removed from any notes that use it. This cannot be undone.`
-    )
-  )
-    return;
+  const name = a.filename || t("settings.attachments.deleteThis");
+  if (!window.confirm(t("settings.attachments.deleteConfirm", { name }))) return;
   await attachments.remove(a);
 }
 
 async function onRemoveOrphaned(): Promise<void> {
   if (attachments.counts.orphaned === 0) return;
   if (
-    !window.confirm(
-      `Delete ${attachments.counts.orphaned} orphaned attachment(s)? This cannot be undone.`
-    )
+    !window.confirm(t("settings.attachments.deleteOrphanedConfirm", { n: attachments.counts.orphaned }))
   )
     return;
   await attachments.removeOrphaned();
@@ -94,11 +89,11 @@ async function onOpen(n: Note): Promise<void> {
   <Surface class="rounded-xl border border-border p-5">
     <Flex direction="column" :gap="4">
       <Flex direction="row" align="center" justify="between">
-        <Text as="h2" variant="heading" size="md">Attachments</Text>
+        <Text as="h2" variant="heading" size="md">{{ t("settings.attachments.title") }}</Text>
         <Text variant="body" size="xs" class="text-text-muted">
-          {{ attachments.counts.all }} items · {{ formatBytes(attachments.totalBytes) }}
+          {{ t("settings.attachments.summary", { all: attachments.counts.all, bytes: formatBytes(attachments.totalBytes) }) }}
           <template v-if="attachments.counts.orphaned > 0">
-            · {{ attachments.counts.orphaned }} orphaned ({{ formatBytes(attachments.orphanedBytes) }})
+            {{ t("settings.attachments.orphanedSummary", { n: attachments.counts.orphaned, bytes: formatBytes(attachments.orphanedBytes) }) }}
           </template>
         </Text>
       </Flex>
@@ -117,7 +112,7 @@ async function onOpen(n: Note): Promise<void> {
           "
           @click="attachments.setFilter(f.id)"
         >
-          {{ f.label }}
+          {{ t(f.label) }}
           <span
             class="rounded px-1 text-[10px] tabular-nums"
             :class="
@@ -138,7 +133,7 @@ async function onOpen(n: Note): Promise<void> {
             :size="14"
             class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-text-muted"
           />
-          <Input v-model="search" block placeholder="Search attachments" class="pl-7" />
+          <Input v-model="search" block :placeholder="t('settings.attachments.searchPlaceholder')" class="pl-7" />
         </div>
         <Button
           v-if="attachments.counts.orphaned > 0"
@@ -146,7 +141,7 @@ async function onOpen(n: Note): Promise<void> {
           size="sm"
           @click="onRemoveOrphaned"
         >
-          Remove orphaned ({{ attachments.counts.orphaned }})
+          {{ t("settings.attachments.removeOrphanedCount", { n: attachments.counts.orphaned }) }}
         </Button>
       </Flex>
 
@@ -164,7 +159,7 @@ async function onOpen(n: Note): Promise<void> {
         class="py-10 text-text-muted"
       >
         <Icon name="loader-circle" :size="16" spin />
-        <Text variant="body" size="sm">Loading…</Text>
+        <Text variant="body" size="sm">{{ t("settings.attachments.loading") }}</Text>
       </Flex>
 
       <!-- Empty -->
@@ -178,7 +173,7 @@ async function onOpen(n: Note): Promise<void> {
       >
         <Icon name="file-text" :size="28" :stroke-width="1.5" class="text-text-muted" />
         <Text variant="body" size="sm">
-          {{ attachments.filter === "orphaned" ? "No orphaned attachments" : "No attachments" }}
+          {{ attachments.filter === "orphaned" ? t("settings.attachments.noOrphaned") : t("settings.attachments.noAttachments") }}
         </Text>
       </Flex>
 
@@ -218,7 +213,7 @@ async function onOpen(n: Note): Promise<void> {
             <Icon v-else name="file" :size="18" class="shrink-0 text-text-muted" />
 
             <Flex direction="column" class="min-w-0 flex-1">
-              <Text variant="body" size="sm" class="truncate">{{ a.filename || "Untitled" }}</Text>
+              <Text variant="body" size="sm" class="truncate">{{ a.filename || t("common.untitled") }}</Text>
               <Text variant="body" size="xs" class="text-text-muted">
                 {{ a.mimeType }} · {{ formatBytes(a.size) }}
               </Text>
@@ -227,15 +222,15 @@ async function onOpen(n: Note): Promise<void> {
             <span
               v-if="isOrphaned(a)"
               class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-500"
-              >Orphaned</span
+              >{{ t("settings.attachments.orphaned") }}</span
             >
 
             <Button
               iconOnly
               variant="ghost"
               size="sm"
-              :aria-label="expanded.has(a.hash) ? 'Hide usage' : 'Show usage'"
-              :title="expanded.has(a.hash) ? 'Hide usage' : 'Show usage'"
+              :aria-label="expanded.has(a.hash) ? t('settings.attachments.hideUsage') : t('settings.attachments.showUsage')"
+              :title="expanded.has(a.hash) ? t('settings.attachments.hideUsage') : t('settings.attachments.showUsage')"
               @click="toggle(a)"
             >
               <Icon
@@ -250,8 +245,8 @@ async function onOpen(n: Note): Promise<void> {
               iconOnly
               variant="ghost"
               size="sm"
-              aria-label="Delete"
-              title="Delete"
+              :aria-label="t('common.delete')"
+              :title="t('common.delete')"
               @click="onDelete(a)"
             >
               <Icon name="trash-2" :size="14" />
@@ -268,17 +263,17 @@ async function onOpen(n: Note): Promise<void> {
               class="text-text-muted"
             >
               <Icon name="loader-circle" :size="12" spin />
-              <Text variant="body" size="xs">Loading usage…</Text>
+              <Text variant="body" size="xs">{{ t("settings.attachments.loadingUsage") }}</Text>
             </Flex>
             <template v-else>
               <Flex v-if="notesFor(a).length === 0" direction="row" :gap="2">
                 <Text variant="body" size="xs" class="text-text-muted"
-                  >Not used by any note.</Text
+                  >{{ t("settings.attachments.notUsedByNote") }}</Text
                 >
               </Flex>
               <Flex v-else direction="column" :gap="1">
                 <Text variant="body" size="xs" class="text-text-muted">
-                  Used by {{ notesFor(a).length }} note(s):
+                  {{ t("settings.attachments.usedBy", { n: notesFor(a).length }) }}
                 </Text>
                 <Flex
                   v-for="n in notesFor(a)"
@@ -289,13 +284,13 @@ async function onOpen(n: Note): Promise<void> {
                   :gap="2"
                   class="rounded px-2 py-1 hover:bg-hover"
                 >
-                  <Text variant="body" size="xs" class="truncate">{{ n.title || "Untitled" }}</Text>
+                  <Text variant="body" size="xs" class="truncate">{{ n.title || t("common.untitled") }}</Text>
                   <Button
                     iconOnly
                     variant="ghost"
                     size="sm"
-                    aria-label="Open in new window"
-                    title="Open in new window"
+                    :aria-label="t('settings.attachments.openInNewWindow')"
+                    :title="t('settings.attachments.openInNewWindow')"
                     @click="onOpen(n)"
                   >
                     <Icon name="external-link" :size="14" />

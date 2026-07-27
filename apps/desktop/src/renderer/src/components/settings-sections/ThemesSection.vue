@@ -13,8 +13,9 @@
   auto-unwrap nested refs in templates, unlike a Pinia store).
 -->
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { Flex, Text } from "@notesnook-vue/ui-vue";
+import { useI18n } from "vue-i18n";
 import {
   useThemesCatalog,
   toGridItem,
@@ -40,6 +41,13 @@ const {
   isApplied
 } = useThemesCatalog();
 const dialog = useDialogStore();
+const { t } = useI18n();
+
+const filters = computed<{ id: "all" | "dark" | "light"; label: string }[]>(() => [
+  { id: "all", label: t("settings.themes.filterAll") },
+  { id: "dark", label: t("settings.themes.filterDark") },
+  { id: "light", label: t("settings.themes.filterLight") }
+]);
 
 // Details-dialog state. `confirmAction` runs on the confirm button — either a
 // catalog install (fetches the full theme) or a direct file-import apply.
@@ -48,12 +56,6 @@ const applying = ref(false);
 const confirmAction = ref<() => Promise<void> | void>(() => {});
 
 const fileInput = ref<HTMLInputElement | null>(null);
-
-const filters: { id: "all" | "dark" | "light"; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "dark", label: "Dark" },
-  { id: "light", label: "Light" }
-];
 
 function openDetails(item: ThemeGridItem, onConfirm: () => Promise<void> | void): void {
   details.value = item;
@@ -71,7 +73,7 @@ async function install(item: ThemeGridItem): Promise<void> {
   if (res.ok) {
     details.value = null;
   } else {
-    void dialog.confirm({ title: "Install failed", message: res.error, confirmLabel: "OK" });
+    void dialog.confirm({ title: t("settings.themes.installFailed"), message: res.error, confirmLabel: t("common.ok") });
   }
 }
 
@@ -88,10 +90,9 @@ function onCardSet(item: ThemeGridItem): void {
 // ── Restore stock themes ──────────────────────────────────────────────────
 async function restoreStock(): Promise<void> {
   const confirmed = await dialog.confirm({
-    title: "Restore stock themes",
-    message:
-      "Are you sure you want to restore the stock themes? This will reset your light and dark themes to default.",
-    confirmLabel: "Restore",
+    title: t("settings.themes.restoreStockConfirmTitle"),
+    message: t("settings.themes.restoreStockConfirmMsg"),
+    confirmLabel: t("common.restore"),
     danger: true
   });
   if (confirmed) {
@@ -114,7 +115,7 @@ async function onFileChosen(e: Event): Promise<void> {
     const json: unknown = JSON.parse(text);
     const res = validateImport(json);
     if (!res.ok) {
-      void dialog.confirm({ title: "Invalid theme", message: res.error, confirmLabel: "OK" });
+      void dialog.confirm({ title: t("settings.themes.invalidTheme"), message: res.error, confirmLabel: t("common.ok") });
       return;
     }
     const theme = res.theme as VueTheme;
@@ -124,9 +125,9 @@ async function onFileChosen(e: Event): Promise<void> {
     });
   } catch {
     void dialog.confirm({
-      title: "Invalid theme",
-      message: "Could not read the theme file.",
-      confirmLabel: "OK"
+      title: t("settings.themes.invalidTheme"),
+      message: t("settings.themes.invalidThemeFile"),
+      confirmLabel: t("common.ok")
     });
   }
 }
@@ -145,14 +146,13 @@ function cancelDetails(): void {
 
 <template>
   <Flex direction="column" :gap="2">
-    <Text variant="body" size="sm" class="text-text-muted">Themes</Text>
+    <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.themes.label") }}</Text>
     <Text variant="body" size="xs" class="text-text-muted"
-      >Browse and install themes from the Notesnook catalog, or load one from a file. Installing a
-      theme fills its slot without changing your light/dark/system mode.</Text
+      >{{ t("settings.themes.desc") }}</Text
     >
 
     <Flex direction="row" :gap="2" class="flex-wrap items-center">
-      <input v-model="searchQuery" type="search" placeholder="Search themes" class="search-input" />
+      <input v-model="searchQuery" type="search" :placeholder="t('settings.themes.searchPlaceholder')" class="search-input" />
       <div class="filter-pills">
         <button
           v-for="f in filters"
@@ -165,8 +165,8 @@ function cancelDetails(): void {
           {{ f.label }}
         </button>
       </div>
-      <button type="button" class="import-btn" @click="pickFile">Load from file…</button>
-      <button type="button" class="restore-btn" @click="restoreStock">Restore stock themes</button>
+      <button type="button" class="import-btn" @click="pickFile">{{ t("settings.themes.loadFromFile") }}</button>
+      <button type="button" class="restore-btn" @click="restoreStock">{{ t("settings.themes.restoreStockThemes") }}</button>
       <input
         ref="fileInput"
         type="file"
@@ -179,8 +179,8 @@ function cancelDetails(): void {
     <div v-if="error" class="error">{{ error }}</div>
 
     <div class="grid-scroll" @scroll="onScroll">
-      <div v-if="loading && !items.length" class="placeholder">Loading themes…</div>
-      <div v-else-if="!items.length" class="placeholder">No themes found.</div>
+      <div v-if="loading && !items.length" class="placeholder">{{ t("settings.themes.loadingThemes") }}</div>
+      <div v-else-if="!items.length" class="placeholder">{{ t("settings.themes.noThemes") }}</div>
       <div v-else class="grid">
         <ThemeCard
           v-for="item in items"
@@ -190,7 +190,7 @@ function cancelDetails(): void {
           @set="onCardSet(item)"
         />
       </div>
-      <div v-if="loadingMore" class="placeholder">Loading more…</div>
+      <div v-if="loadingMore" class="placeholder">{{ t("settings.themes.loadingMore") }}</div>
     </div>
   </Flex>
 

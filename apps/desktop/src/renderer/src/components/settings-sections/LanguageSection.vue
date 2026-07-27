@@ -8,10 +8,12 @@
  */
 import { computed, onMounted } from "vue";
 import { Surface, Flex, Text } from "@notesnook-vue/ui-vue";
+import { useI18n } from "vue-i18n";
 import { setLocale, LOCALES, locale, type Locale } from "@/i18n";
 import { useSpellCheckerStore } from "@/stores/spell-checker";
 
 const spellChecker = useSpellCheckerStore();
+const { t } = useI18n();
 
 onMounted(() => {
   // The store is seeded on boot, but make sure the snapshot is current in case
@@ -20,10 +22,12 @@ onMounted(() => {
 });
 
 const spellStatus = computed(() => {
-  if (spellChecker.lastError) return `Error: ${spellChecker.lastError}`;
-  if (!spellChecker.enabled) return "Off";
+  if (spellChecker.lastError) return t("settings.language.spellError", { error: spellChecker.lastError });
+  if (!spellChecker.enabled) return t("settings.language.spellOff");
   const n = spellChecker.enabledLanguages.length;
-  return n > 0 ? `On — ${n} language${n === 1 ? "" : "s"}` : "On";
+  if (n === 1) return t("settings.language.spellOnOne");
+  if (n > 1) return t("settings.language.spellOnMany", { n });
+  return t("settings.language.spellOn");
 });
 
 function pickLocale(e: Event): void {
@@ -40,21 +44,21 @@ async function toggleSpell(e: Event): Promise<void> {
 <template>
   <Surface class="rounded-xl border border-border p-5">
     <Flex direction="column" :gap="3">
-      <Text as="h2" variant="heading" size="md">Language</Text>
+      <Text as="h2" variant="heading" size="md">{{ t("settings.language.title") }}</Text>
       <Flex direction="column" :gap="1">
-        <Text variant="body" size="sm" class="text-text-muted">Interface language</Text>
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.language.interface") }}</Text>
         <select
           :value="locale"
           class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
           @change="pickLocale"
         >
           <option v-for="l in LOCALES" :key="l" :value="l">
-            {{ l === "pseudo" ? "Pseudo (dev)" : "English" }}
+            {{ l === "pseudo" ? t("settings.language.pseudoDev") : t("settings.language.english") }}
           </option>
         </select>
       </Flex>
       <Flex direction="column" :gap="1">
-        <Text variant="body" size="sm" class="text-text-muted">Spell check</Text>
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.language.spellCheck") }}</Text>
         <label class="flex items-center gap-2 text-sm text-text">
           <input
             type="checkbox"
@@ -62,7 +66,7 @@ async function toggleSpell(e: Event): Promise<void> {
             class="accent-accent"
             @change="toggleSpell"
           />
-          Enable spell checking
+          {{ t("settings.language.enableSpellCheck") }}
         </label>
         <Text variant="body" size="xs" class="text-text-muted">{{ spellStatus }}</Text>
       </Flex>

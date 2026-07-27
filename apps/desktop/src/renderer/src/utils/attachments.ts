@@ -30,20 +30,22 @@ export type AttachmentFilter =
 
 export interface AttachmentFilterDef {
   id: AttachmentFilter;
+  /** i18n key under `settings.attachments.filter*`. */
   label: string;
   /** Resolve this filter's core selector against a `Database` (real or fake). */
   selector: (db: Database) => FilteredSelector<Attachment>;
 }
 
 /** The ordered filter tabs (All / Images / Videos / Audio / Documents /
- *  Orphaned), each backed by a core `db.attachments.*` selector. */
+ *  Orphaned), each backed by a core `db.attachments.*` selector. `label` is an
+ *  i18n key resolved by the Attachments settings section (`t(f.label)`). */
 export const ATTACHMENT_FILTERS: AttachmentFilterDef[] = [
-  { id: "all", label: "All", selector: (db) => db.attachments.all },
-  { id: "images", label: "Images", selector: (db) => db.attachments.images },
-  { id: "videos", label: "Videos", selector: (db) => db.attachments.videos },
-  { id: "audios", label: "Audio", selector: (db) => db.attachments.audios },
-  { id: "documents", label: "Documents", selector: (db) => db.attachments.documents },
-  { id: "orphaned", label: "Orphaned", selector: (db) => db.attachments.orphaned }
+  { id: "all", label: "settings.attachments.filterAll", selector: (db) => db.attachments.all },
+  { id: "images", label: "settings.attachments.filterImages", selector: (db) => db.attachments.images },
+  { id: "videos", label: "settings.attachments.filterVideos", selector: (db) => db.attachments.videos },
+  { id: "audios", label: "settings.attachments.filterAudio", selector: (db) => db.attachments.audios },
+  { id: "documents", label: "settings.attachments.filterDocuments", selector: (db) => db.attachments.documents },
+  { id: "orphaned", label: "settings.attachments.filterOrphaned", selector: (db) => db.attachments.orphaned }
 ];
 
 /** Coarse media category for the row icon. Matches core's prefix-based

@@ -21,6 +21,7 @@
  * user with no vault can create one (Phase 2 added create-vault + management).
  */
 import { ref, computed, onMounted, type Component } from "vue";
+import { useI18n } from "vue-i18n";
 import { useTitleBarStore } from "@/stores/titlebar";
 import AppearanceSection from "./settings-sections/AppearanceSection.vue";
 import LanguageSection from "./settings-sections/LanguageSection.vue";
@@ -33,44 +34,47 @@ import AttachmentsSection from "./settings-sections/AttachmentsSection.vue";
 import UpdatesSection from "./settings-sections/UpdatesSection.vue";
 
 const titlebar = useTitleBarStore();
+const { t } = useI18n();
 
 interface SectionItem {
   id: string;
+  /** i18n key under `settings.sections.*`. */
   label: string;
   component: Component;
   /** Optional visibility gate (rarely used now that Vault is always shown). */
   visible?: () => boolean;
 }
 interface SectionGroup {
+  /** i18n key under `settings.groups.*`. */
   group: string;
   items: SectionItem[];
 }
 
 const groups: SectionGroup[] = [
   {
-    group: "Customization",
+    group: "settings.groups.customization",
     items: [
-      { id: "appearance", label: "Appearance", component: AppearanceSection },
-      { id: "language", label: "Language", component: LanguageSection },
-      { id: "notes", label: "Notes", component: NotesSection },
-      { id: "search", label: "Search", component: SearchSection }
+      { id: "appearance", label: "settings.sections.appearance", component: AppearanceSection },
+      { id: "language", label: "settings.sections.language", component: LanguageSection },
+      { id: "notes", label: "settings.sections.notes", component: NotesSection },
+      { id: "search", label: "settings.sections.search", component: SearchSection }
     ]
   },
   {
-    group: "Security",
-    items: [{ id: "vault", label: "Vault", component: VaultSection }]
+    group: "settings.groups.security",
+    items: [{ id: "vault", label: "settings.sections.vault", component: VaultSection }]
   },
   {
-    group: "Sync & backup",
+    group: "settings.groups.syncBackup",
     items: [
-      { id: "sync", label: "Sync", component: SyncSection },
-      { id: "backup", label: "Backup & Export", component: BackupSection },
-      { id: "attachments", label: "Attachments", component: AttachmentsSection }
+      { id: "sync", label: "settings.sections.sync", component: SyncSection },
+      { id: "backup", label: "settings.sections.backup", component: BackupSection },
+      { id: "attachments", label: "settings.sections.attachments", component: AttachmentsSection }
     ]
   },
   {
-    group: "About",
-    items: [{ id: "updates", label: "Updates", component: UpdatesSection }]
+    group: "settings.groups.about",
+    items: [{ id: "updates", label: "settings.sections.updates", component: UpdatesSection }]
   }
 ];
 
@@ -118,14 +122,14 @@ function selectSection(id: string): void {
       class="titlebar-drag flex h-10 shrink-0 items-center border-b border-glass-border bg-glass-surface backdrop-blur-2xl"
       :style="{ paddingLeft: titlebar.padding.left + 'px', paddingRight: titlebar.padding.right + 'px' }"
     >
-      <div class="px-2 text-xs font-medium text-text">Settings</div>
+      <div class="px-2 text-xs font-medium text-text">{{ t("settings.title") }}</div>
     </div>
 
     <div class="flex min-h-0 flex-1">
       <nav class="w-56 shrink-0 overflow-y-auto border-r border-glass-border bg-glass-surface px-2 py-3 backdrop-blur-2xl">
         <div v-for="g in visibleGroups" :key="g.group" class="mb-4">
           <div class="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-            {{ g.group }}
+            {{ t(g.group) }}
           </div>
           <button
             v-for="it in g.items"
@@ -137,7 +141,7 @@ function selectSection(id: string): void {
             "
             @click="selectSection(it.id)"
           >
-            {{ it.label }}
+            {{ t(it.label) }}
           </button>
         </div>
       </nav>
