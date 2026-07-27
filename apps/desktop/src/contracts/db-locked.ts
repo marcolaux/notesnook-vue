@@ -22,7 +22,3 @@ export const DB_LOCKED_MARKER = "DATABASE_LOCKED_BY_ANOTHER_INSTANCE";
 export function isDatabaseLockedMessage(message: string): boolean {
   return message.includes(DB_LOCKED_MARKER);
 }
-
-export const DB_LOCKED_HEADLINE = "Another instance is using this database";
-export const DB_LOCKED_BODY =
-  "Notesnook is already running and holds the database lock. Close the other Notesnook window, then click Retry.";

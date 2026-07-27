@@ -19,6 +19,7 @@ import { dialog, BrowserWindow } from "electron";
 import { writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { registerDialogServer, type DialogServer } from "../contracts/router";
+import { tMain } from "./i18n";
 
 /** The focused window to parent dialogs to, or `undefined` for app-modal. */
 let parentWindow: (() => BrowserWindow | undefined) | undefined;
@@ -34,11 +35,11 @@ export function createDialogServer(
       const result = win
         ? await dialog.showSaveDialog(win, {
             defaultPath: defaultName,
-            filters: [{ name: "Notesnook backup", extensions: ["nnbackup"] }]
+            filters: [{ name: tMain("dialog.notesnookBackup"), extensions: ["nnbackup"] }]
           })
         : await dialog.showSaveDialog({
             defaultPath: defaultName,
-            filters: [{ name: "Notesnook backup", extensions: ["nnbackup"] }]
+            filters: [{ name: tMain("dialog.notesnookBackup"), extensions: ["nnbackup"] }]
           });
       if (result.canceled || !result.filePath) return false;
       await writeFile(result.filePath, data, "utf-8");
@@ -49,11 +50,11 @@ export function createDialogServer(
       const result = win
         ? await dialog.showOpenDialog(win, {
             properties: ["openFile"],
-            filters: [{ name: "Notesnook backup", extensions }]
+            filters: [{ name: tMain("dialog.notesnookBackup"), extensions }]
         })
         : await dialog.showOpenDialog({
             properties: ["openFile"],
-            filters: [{ name: "Notesnook backup", extensions }]
+            filters: [{ name: tMain("dialog.notesnookBackup"), extensions }]
           });
       if (result.canceled || result.filePaths.length === 0) return undefined;
       const filePath = result.filePaths[0] as string;

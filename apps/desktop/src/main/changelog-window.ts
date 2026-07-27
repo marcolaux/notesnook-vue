@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import { buildBrowserWindowOptionsForOS } from "./titlebar";
 import { attachTRPC } from "./ipc";
 import { setupExternalNavigation } from "./navigation";
+import { tMain } from "./i18n";
 
 let changelogWindow: BrowserWindow | null = null;
 
@@ -29,7 +30,7 @@ export function openChangelogWindow(preloadPath: string): void {
     height: 720,
     minWidth: 460,
     minHeight: 400,
-    title: "What's New"
+    title: tMain("window.whatsNew")
   });
 
   attachTRPC(changelogWindow);

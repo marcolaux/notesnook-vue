@@ -38,6 +38,7 @@ import { attachTRPC } from "./ipc";
 import { setupExternalNavigation } from "./navigation";
 import { sanitizeBounds, type LayoutSnapshot, type WindowBounds } from "../contracts/session-state";
 import { addPaneWindow, trackPaneWindow } from "./session-state";
+import { tMain } from "./i18n";
 
 /** One window per detached pane id. */
 const paneWindows = new Map<string, BrowserWindow>();
@@ -87,7 +88,7 @@ export function openPaneWindow(
   const paneId = randomUUID();
   const clean = sanitizeBounds(bounds);
   const base = buildBrowserWindowOptionsForOS(process.platform, preloadPath, clean);
-  const win = new BrowserWindow({ ...base, title: "Note" });
+  const win = new BrowserWindow({ ...base, title: tMain("window.note") });
   if (clean?.maximized) {
     win.once("ready-to-show", () => win.maximize());
   }

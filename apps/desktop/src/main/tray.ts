@@ -15,6 +15,7 @@ import {
   type TrayActionId,
   type TrayMenuItemSpec
 } from "../contracts/tray";
+import { tMain, registerLocaleChangeCallback } from "./i18n";
 
 /** 16x16 dark "note" square with a transparent margin (generated). */
 const TRAY_ICON_PNG_BASE64 =
@@ -29,6 +30,14 @@ export interface TrayActions {
 }
 
 let tray: Tray | undefined;
+let trayActions: TrayActions | undefined;
+
+/** Build the tray context menu from the pure spec, resolving each item's i18n
+ *  key via `tMain` to the active-locale label. */
+function buildTrayMenu(actions: TrayActions): Menu {
+  const template = buildTrayMenuSpec().map((spec) => toMenuItem(spec, actions));
+  return Menu.buildFromTemplate(template);
+}
 
 /**
  * Build the tray + menu for `window`. The renderer-side actions
@@ -46,9 +55,7 @@ export function registerTray(window: BrowserWindow): Tray {
     },
     quit: () => app.quit()
   };
-
-  const template = buildTrayMenuSpec().map((spec) => toMenuItem(spec, actions));
-  const menu = Menu.buildFromTemplate(template);
+  trayActions = actions;
 
   const icon = nativeImage.createFromBuffer(Buffer.from(TRAY_ICON_PNG_BASE64, "base64"));
   // Mark as a template image on macOS so it adapts to the menu-bar light/dark.
@@ -56,7 +63,7 @@ export function registerTray(window: BrowserWindow): Tray {
 
   tray = new Tray(icon);
   tray.setToolTip("Notesnook");
-  tray.setContextMenu(menu);
+  tray.setContextMenu(buildTrayMenu(actions));
 
   // Clicking the tray icon (macOS single-click, others left-click) shows the
   // window — the same as the "Show" menu item.
@@ -65,14 +72,25 @@ export function registerTray(window: BrowserWindow): Tray {
   return tray;
 }
 
-/** Map a pure spec item to an Electron menu-item constructor. */
+/** Rebuild the tray context menu in the active locale (best-effort). Registered
+ *  as a `main/i18n.ts` locale-change callback so a live language switch updates
+ *  the tray menu without a restart. */
+function rebuildTrayMenu(): void {
+  if (!tray || tray.isDestroyed() || !trayActions) return;
+  tray.setContextMenu(buildTrayMenu(trayActions));
+}
+
+registerLocaleChangeCallback(rebuildTrayMenu);
+
+/** Map a pure spec item to an Electron menu-item constructor. The spec
+ *  `label` is an i18n key resolved here via `tMain` to the active-locale text. */
 function toMenuItem(spec: TrayMenuItemSpec, actions: TrayActions): Electron.MenuItemConstructorOptions {
   if (spec.separator) {
     return { type: "separator" };
   }
   const id = spec.id;
   return {
-    label: spec.label ?? "",
+    label: spec.label ? tMain(spec.label) : "",
     enabled: spec.enabled !== false,
     click: () => {
       switch (id) {

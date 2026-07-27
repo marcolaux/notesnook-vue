@@ -15,7 +15,10 @@ export type TrayActionId = "new-note" | "new-notebook" | "show" | "quit";
 export interface TrayMenuItemSpec {
   /** Action id for clickable items; omitted for separators. */
   id?: TrayActionId;
-  /** Display label for clickable items; omitted for separators. */
+  /** i18n key (under `tray.*` in the shared catalog) the main process resolves
+   *  via `tMain` to the active-locale label. Storing the key (not the literal)
+   *  keeps the spec pure + locale-independent; the resolved label is a main-
+   *  process concern. Omitted for separators. */
   label?: string;
   /** Render a separator (divider) instead of a clickable item. */
   separator?: boolean;
@@ -27,13 +30,14 @@ export interface TrayMenuItemSpec {
  * The tray menu: New Note, New Notebook, a divider, then Show + Quit. Order is
  * fixed so the contract test can assert it; `show`/`quit` are grouped after the
  * separator to mirror the roadmap's "New Note / New Notebook / Show / Quit".
+ * `label` is an i18n key the main process resolves via `tMain(label)`.
  */
 export function buildTrayMenuSpec(): TrayMenuItemSpec[] {
   return [
-    { id: "new-note", label: "New Note" },
-    { id: "new-notebook", label: "New Notebook" },
+    { id: "new-note", label: "tray.newNote" },
+    { id: "new-notebook", label: "tray.newNotebook" },
     { separator: true },
-    { id: "show", label: "Show" },
-    { id: "quit", label: "Quit" }
+    { id: "show", label: "tray.show" },
+    { id: "quit", label: "tray.quit" }
   ];
 }

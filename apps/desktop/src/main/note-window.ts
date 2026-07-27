@@ -27,6 +27,7 @@ import { attachTRPC } from "./ipc";
 import { setupExternalNavigation } from "./navigation";
 import { sanitizeBounds, type WindowBounds } from "../contracts/session-state";
 import { addNoteWindow, trackNoteWindow } from "./session-state";
+import { tMain } from "./i18n";
 
 /** One window per note. Focused (not duplicated) if a window for the note
  *  already exists. */
@@ -63,7 +64,7 @@ export function openNoteWindow(
 
   const clean = sanitizeBounds(bounds);
   const base = buildBrowserWindowOptionsForOS(process.platform, preloadPath, clean);
-  const win = new BrowserWindow({ ...base, title: "Note" });
+  const win = new BrowserWindow({ ...base, title: tMain("window.note") });
   // Re-apply maximize after construction (saved size is the unmaximized restore
   // size; a maximized window should open maximized regardless).
   if (clean?.maximized) {

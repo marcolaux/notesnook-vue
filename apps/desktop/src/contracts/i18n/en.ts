@@ -356,7 +356,33 @@ export default {
   },
   dialog: {
     confirm: "Confirm",
-    cancel: "Cancel"
+    cancel: "Cancel",
+    notesnookBackup: "Notesnook backup"
+  },
+  // OS-level application menu (main process, `menu.ts`). Electron role menus
+  // (appMenu/editMenu/viewMenu/windowMenu) keep their native labels — these
+  // are the custom File-submenu items + the top-level "File" label.
+  menu: {
+    file: "File",
+    newNote: "New Note",
+    settings: "Settings…",
+    closeTab: "Close Tab",
+    closeWindow: "Close Window"
+  },
+  // System-tray context menu (main process, `contracts/tray.ts` + `tray.ts`).
+  // The spec stores i18n keys; main resolves them via `tMain`.
+  tray: {
+    newNote: "New Note",
+    newNotebook: "New Notebook",
+    show: "Show",
+    quit: "Quit"
+  },
+  // BrowserWindow titles created by the main process. The brand "Notesnook" +
+  // the app name are untranslated.
+  window: {
+    note: "Note",
+    settings: "Settings",
+    whatsNew: "What's New"
   },
   publish: {
     titleCreate: "Publish note",

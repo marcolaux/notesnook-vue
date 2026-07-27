@@ -1,8 +1,9 @@
 import { BrowserWindow, Menu, type MenuItemConstructorOptions } from "electron";
 import { openSettingsWindow, isSettingsWindow } from "./settings-window";
+import { tMain, registerLocaleChangeCallback } from "./i18n";
 
 /**
- * Application menu (Phase 4.2 on-site).
+ * Application menu (Phase 4.2 on-site / Phase 7.2 i18n).
  *
  * Replaces Electron's default menu so `Cmd/Ctrl+W` closes the active editor
  * tab (signalled to the renderer via the `app:close-tab` channel exposed by
@@ -22,6 +23,11 @@ import { openSettingsWindow, isSettingsWindow } from "./settings-window";
  * The `editMenu`/`viewMenu`/`windowMenu`/`appMenu` roles are kept so the
  * standard clipboard/navigation/devtools/menu-bar behaviours (critical on
  * macOS, where menu accelerators drive copy/paste/undo) stay intact.
+ *
+ * Phase 7.2: labels come from the shared catalog via `tMain` so they localize
+ * with the interface locale. The menu is rebuilt on a live locale change
+ * (`rebuildAppMenu`, registered as a locale-change callback) so switching
+ * language updates it without a restart.
  */
 
 function focusedWindow(): BrowserWindow | undefined {
@@ -33,26 +39,28 @@ function sendToRenderer(channel: "app:close-tab" | "app:tray-action", payload: u
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
-export function registerAppMenu(preloadPath: string): void {
+let preloadPathCache: string | undefined;
+
+function buildAppMenu(preloadPath: string): Menu {
   const template: MenuItemConstructorOptions[] = [
     { role: "appMenu" },
     {
-      label: "File",
+      label: tMain("menu.file"),
       submenu: [
         {
-          label: "New Note",
+          label: tMain("menu.newNote"),
           accelerator: "CmdOrCtrl+N",
           click: () => sendToRenderer("app:tray-action", "new-note")
         },
         { type: "separator" },
         {
-          label: "Settings…",
+          label: tMain("menu.settings"),
           accelerator: "CmdOrCtrl+,",
           click: () => openSettingsWindow(preloadPath)
         },
         { type: "separator" },
         {
-          label: "Close Tab",
+          label: tMain("menu.closeTab"),
           accelerator: "CmdOrCtrl+W",
           click: () => {
             // The Settings window has no editor tabs — `Cmd/Ctrl+W` closes the
@@ -67,7 +75,7 @@ export function registerAppMenu(preloadPath: string): void {
           }
         },
         {
-          label: "Close Window",
+          label: tMain("menu.closeWindow"),
           accelerator: "CmdOrCtrl+Shift+W",
           click: () => focusedWindow()?.close()
         }
@@ -78,5 +86,24 @@ export function registerAppMenu(preloadPath: string): void {
     { role: "windowMenu" }
   ];
 
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  return Menu.buildFromTemplate(template);
 }
+
+/** Register the application menu. Call once on main boot. The preload path
+ *  is cached so the menu can be rebuilt on a locale change without re-passing
+ *  it. */
+export function registerAppMenu(preloadPath: string): void {
+  preloadPathCache = preloadPath;
+  Menu.setApplicationMenu(buildAppMenu(preloadPath));
+}
+
+/** Rebuild the application menu in the active locale (best-effort). Registered
+ *  as a `main/i18n.ts` locale-change callback so a live language switch updates
+ *  the menu without a restart. */
+export function rebuildAppMenu(): void {
+  if (!preloadPathCache) return;
+  Menu.setApplicationMenu(buildAppMenu(preloadPathCache));
+}
+
+// Rebuild the menu when the interface locale changes at runtime.
+registerLocaleChangeCallback(rebuildAppMenu);

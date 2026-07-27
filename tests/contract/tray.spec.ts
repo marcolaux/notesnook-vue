@@ -37,14 +37,14 @@ describe("buildTrayMenuSpec", () => {
     }
   });
 
-  it("labels match the roadmap wording", () => {
+  it("labels are i18n keys (the main process resolves them via tMain)", () => {
     const byId = Object.fromEntries(
       spec.filter((i) => i.id).map((i) => [i.id, i.label])
     );
-    expect(byId["new-note"]).toBe("New Note");
-    expect(byId["new-notebook"]).toBe("New Notebook");
-    expect(byId["show"]).toBe("Show");
-    expect(byId["quit"]).toBe("Quit");
+    expect(byId["new-note"]).toBe("tray.newNote");
+    expect(byId["new-notebook"]).toBe("tray.newNotebook");
+    expect(byId["show"]).toBe("tray.show");
+    expect(byId["quit"]).toBe("tray.quit");
   });
 
   it("is referentially stable per call (fresh array, same shape)", () => {

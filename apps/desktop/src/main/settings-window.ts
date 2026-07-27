@@ -26,6 +26,7 @@ import { resolve } from "node:path";
 import { buildBrowserWindowOptionsForOS } from "./titlebar";
 import { attachTRPC } from "./ipc";
 import { setupExternalNavigation } from "./navigation";
+import { tMain } from "./i18n";
 
 let settingsWindow: BrowserWindow | null = null;
 
@@ -70,7 +71,7 @@ export function openSettingsWindow(preloadPath: string, section?: string): void 
     height: 680,
     minWidth: 480,
     minHeight: 400,
-    title: "Settings"
+    title: tMain("window.settings")
   });
 
   // Same bridge as the main window so the settings renderer can call
