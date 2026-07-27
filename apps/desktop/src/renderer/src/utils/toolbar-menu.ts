@@ -22,6 +22,22 @@ import type { Editor } from "@tiptap/vue-3";
 import type { EditorAction, ToolbarMenuItem } from "@notesnook-vue/editor-vue";
 import type { MenuItem, SubmenuSpec } from "@/utils/context-menu";
 import { DefaultColors } from "@notesnook-vue/contracts";
+import i18n from "@/i18n";
+import { editorToolTitle } from "@/composables/use-editor-labels";
+
+/**
+ * Resolve an editor-vue toolbar submenu `label`. editor-vue emits i18n KEY
+ * strings (`tools.submenu.*`) as the item `label` so it stays free of any i18n
+ * dependency; the host resolves them here, at the editor-vue→renderer menu
+ * boundary. Proper-name labels (font-family preset names like "Arial", colour
+ * preset names like "Red") have no `tools.submenu.*` entry → `te` returns false
+ * → the literal passes through untranslated (no vue-i18n missing-key warning).
+ * Reads `i18n.global` so the resolution is reactive on locale change.
+ */
+function resolveLabel(label: string): string {
+  const { te, t } = i18n.global;
+  return te(label) ? (t(label) as string) : label;
+}
 
 /** Preset swatches from core's `DefaultColors` (name → hex), title-cased — the
  *  one-click colour entries in the text-colour / highlight submenus. */
@@ -47,7 +63,7 @@ const chain = (editor: Editor): Chain => editor.chain().focus() as unknown as Ch
 export function toMenuItem(t: ToolbarMenuItem): MenuItem {
   const item: MenuItem = {
     id: t.id,
-    label: t.label,
+    label: resolveLabel(t.label),
     ...(t.separator ? { separator: true } : {}),
     ...(t.checked !== undefined ? { checked: t.checked } : {}),
     ...(t.disabled !== undefined ? { disabled: t.disabled } : {}),
@@ -77,7 +93,7 @@ export function mapToolbarItems(items: readonly ToolbarMenuItem[]): MenuItem[] {
 function toggleLeaf(editor: Editor, action: EditorAction): MenuItem {
   return {
     id: action.id,
-    label: action.title,
+    label: editorToolTitle(action),
     ...(action.glyph !== undefined ? { icon: action.glyph } : {}),
     checked: action.isActive?.(editor) ?? false,
     disabled: action.isDisabled?.(editor) ?? !editor.isEditable,
@@ -123,7 +139,7 @@ export function actionToRootItem(editor: Editor, action: EditorAction): MenuItem
   };
   return {
     id: action.id,
-    label: action.title,
+    label: editorToolTitle(action),
     ...(action.glyph !== undefined ? { icon: action.glyph } : {}),
     submenu: { build: () => build() }
   };
@@ -150,7 +166,7 @@ export function colorSubmenuItems(editor: Editor, action: EditorAction): MenuIte
   const items: MenuItem[] = [
     {
       id: `color-unset-${target}`,
-      label: target === "highlight" ? "No highlight" : "No color",
+      label: resolveLabel(target === "highlight" ? "tools.submenu.noHighlight" : "tools.submenu.noColor"),
       checked: !active,
       onSelect: unset
     }
@@ -170,7 +186,7 @@ export function colorSubmenuItems(editor: Editor, action: EditorAction): MenuIte
   items.push({ id: `color-custom-sep-${target}`, label: "", separator: true });
   items.push({
     id: `color-custom-${target}`,
-    label: "Custom…",
+    label: resolveLabel("tools.submenu.customColor"),
     onSelect: () => {
       (
         editor.storage as {

@@ -24,6 +24,7 @@ import { EDITOR_ACTION_BY_ID, type EditorAction } from "@notesnook-vue/editor-vu
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useContextMenuStore } from "@/stores/context-menu";
 import { actionToMenuItems } from "@/utils/toolbar-menu";
+import { editorToolTitle } from "@/composables/use-editor-labels";
 import MoreToolsButton from "./MoreToolsButton.vue";
 
 const props = defineProps<{
@@ -107,11 +108,11 @@ function onClick(action: EditorAction, e: MouseEvent): void {
       class="grid h-6 shrink-0 place-items-center rounded px-1.5 text-xs text-text-muted hover:bg-glass-hover hover:text-text disabled:opacity-40"
       :class="{ 'bg-glass-active text-text': item.active }"
       :disabled="item.disabled"
-      :title="item.action.title"
+      :title="editorToolTitle(item.action)"
       @click="onClick(item.action, $event)"
     >
       <Icon v-if="getGlyph(item.action)" :name="getGlyph(item.action)!" :size="16" />
-      <template v-else>{{ item.action.title }}</template>
+      <template v-else>{{ editorToolTitle(item.action) }}</template>
     </button>
   </template>
 </template>

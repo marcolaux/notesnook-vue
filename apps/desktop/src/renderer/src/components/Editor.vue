@@ -24,6 +24,7 @@
  * here would grab the nested 2.6.6 copy and split the schema.
  */
 import { ref, watch, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, nextTick } from "vue";
+import { useI18n } from "vue-i18n";
 import { useEditor, EditorContent, type Editor } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -106,6 +107,7 @@ const editorStore = useEditorStore();
 const status = useStatusStore();
 const properties = usePropertiesStore();
 const collections = useCollectionsStore();
+const { t } = useI18n();
 
 // --- This editor's tab / note (from the layout store, NOT the global active) -
 // `tabId` → bound to that tab; `groupId` → draft mode (no tab yet). Exactly one
@@ -1413,17 +1415,17 @@ function onEditorAreaClick(e: MouseEvent): void {
       @scroll.passive="onScroll"
     >
       <div v-if="myContentState === 'locked'" class="text-sm text-amber-300/80">
-        This note is vault-locked. Unlock arrives in Phase 6.
+        {{ t("editor.vaultLocked") }}
       </div>
       <div v-else-if="myContentState === 'error'" class="text-sm text-[var(--paragraph-error)]">
-        Failed to load note content.
+        {{ t("editor.loadFailed") }}
       </div>
       <template v-else-if="editor">
         <input
           ref="titleInputEl"
           v-model="titleModel"
           class="editor-title titlebar-no-drag mb-2 w-full bg-transparent text-2xl font-semibold text-text placeholder:text-text-muted focus:outline-none"
-          :placeholder="isDraft ? 'Type here to create a new note...' : 'Title'"
+          :placeholder="isDraft ? t('editor.titlePlaceholderDraft') : t('editor.titlePlaceholder')"
           @keydown.enter.prevent="onTitleEnter"
         />
         <EditorContent :editor="editor" class="prose max-w-none text-sm text-text" />
@@ -1440,12 +1442,12 @@ function onEditorAreaClick(e: MouseEvent): void {
             <button
               type="button"
               class="max-w-40 cursor-pointer truncate hover:underline"
-              :title="`Show notes in notebook ${nb.title}`"
+              :title="t('editor.showNotesInNotebook', { title: nb.title })"
               @click="goToNotebook(nb.id)"
             >{{ nb.title }}</button>
             <button
               class="text-text-muted hover:text-text"
-              title="Remove notebook"
+              :title="t('editor.removeNotebook')"
               @click="removeAssignedNotebook(nb.id)"
             >
               ×
@@ -1456,7 +1458,7 @@ function onEditorAreaClick(e: MouseEvent): void {
               ref="notebookInputEl"
               v-model="notebookQuery"
               class="titlebar-no-drag w-36 rounded-full border border-glass-border bg-glass-surface px-2.5 py-1 text-xs text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
-              placeholder="Add notebook…"
+              :placeholder="t('editor.addNotebookPlaceholder')"
               @focus="notebookMenuOpen = true; notebookActiveIndex = 0"
               @blur="onNotebookInputBlur"
               @keydown="onNotebookKeyDown"
@@ -1490,12 +1492,12 @@ function onEditorAreaClick(e: MouseEvent): void {
             <button
               type="button"
               class="max-w-40 cursor-pointer truncate hover:underline"
-              :title="`Show notes tagged #${tag.title}`"
+              :title="t('editor.showNotesTagged', { title: tag.title })"
               @click="goToTag(tag.id)"
             >{{ tag.title }}</button>
             <button
               class="text-text-muted hover:text-text"
-              title="Remove tag"
+              :title="t('editor.removeTag')"
               @click="removeAssignedTag(tag.id)"
             >
               ×
@@ -1506,7 +1508,7 @@ function onEditorAreaClick(e: MouseEvent): void {
               ref="tagInputEl"
               v-model="tagQuery"
               class="titlebar-no-drag w-32 rounded-full border border-glass-border bg-glass-surface px-2.5 py-1 text-xs text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
-              placeholder="Add tag…"
+              :placeholder="t('editor.addTagPlaceholder')"
               @focus="tagMenuOpen = true; tagActiveIndex = 0"
               @blur="onTagInputBlur"
               @keydown="onTagKeyDown"
@@ -1532,37 +1534,37 @@ function onEditorAreaClick(e: MouseEvent): void {
                caret concept → shown only for the focused pane (the status store
                is focused-only). Right-aligned in the tags footer. -->
           <span class="ml-auto shrink-0 text-[10px] text-text-muted">
-            {{ wordCount }} words<template v-if="isPaneFocused"> · Ln {{ status.cursorLine }}, Col {{ status.cursorColumn }}</template>
+            {{ wordCount }} {{ t("editor.words") }}<template v-if="isPaneFocused"> · Ln {{ status.cursorLine }}, Col {{ status.cursorColumn }}</template>
           </span>
         </div>
         <div v-if="!isDraft" class="editor-links mt-4 border-t border-glass-border pt-3 text-xs text-text-muted">
-          <div class="mb-1 font-medium text-text">Links</div>
+          <div class="mb-1 font-medium text-text">{{ t("editor.links") }}</div>
           <div class="mb-2 flex flex-wrap items-center gap-2">
-            <span class="text-text-muted">Outgoing:</span>
+            <span class="text-text-muted">{{ t("editor.outgoing") }}</span>
             <button
               v-for="l in outgoing"
               :key="'out-' + l.id"
               class="group inline-flex items-center gap-1 rounded-full bg-glass-active px-2.5 py-1 text-xs text-text hover:bg-glass-hover"
-              :title="'Open ' + l.title"
+              :title="t('editor.openTitle', { title: l.title })"
               @click="openLinkedNote(l.id)"
             >
               <span class="max-w-40 truncate">{{ l.title }}</span>
               <span
                 class="text-text-muted hover:text-text"
                 role="button"
-                title="Remove link"
+                :title="t('editor.removeLink')"
                 @click.stop="removeOutgoingLink(l.id)"
               >
                 ×
               </span>
             </button>
-            <span v-if="outgoing.length === 0" class="text-text-muted">None</span>
+            <span v-if="outgoing.length === 0" class="text-text-muted">{{ t("common.none") }}</span>
             <div class="relative inline-flex items-center">
               <input
                 ref="linkInputEl"
                 v-model="linkQuery"
                 class="titlebar-no-drag w-40 rounded-full border border-glass-border bg-glass-surface px-2.5 py-1 text-xs text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
-                placeholder="Link to note…"
+                :placeholder="t('editor.linkToNotePlaceholder')"
                 @focus="linkMenuOpen = true; linkActiveIndex = 0"
                 @blur="onLinkInputBlur"
                 @keydown="onLinkKeyDown"
@@ -1585,22 +1587,22 @@ function onEditorAreaClick(e: MouseEvent): void {
             </div>
           </div>
           <div class="flex flex-wrap items-center gap-2">
-            <span class="text-text-muted">Incoming:</span>
+            <span class="text-text-muted">{{ t("editor.incoming") }}</span>
             <button
               v-for="l in incoming"
               :key="'in-' + l.id"
               class="inline-flex items-center rounded-full bg-glass-surface px-2.5 py-1 text-xs text-text hover:bg-glass-hover"
-              :title="'Open ' + l.title"
+              :title="t('editor.openTitle', { title: l.title })"
               @click="openLinkedNote(l.id)"
             >
               <span class="max-w-40 truncate">{{ l.title }}</span>
             </button>
-            <span v-if="incoming.length === 0" class="text-text-muted">None</span>
+            <span v-if="incoming.length === 0" class="text-text-muted">{{ t("common.none") }}</span>
           </div>
         </div>
         <div v-if="!isDraft" class="editor-attachments mt-4 border-t border-glass-border pt-3 text-xs text-text-muted">
-          <div class="mb-1 font-medium text-text">Files</div>
-          <div v-if="attachments.length === 0" class="text-text-muted">None</div>
+          <div class="mb-1 font-medium text-text">{{ t("editor.files") }}</div>
+          <div v-if="attachments.length === 0" class="text-text-muted">{{ t("common.none") }}</div>
           <template v-else>
             <template v-for="cat in ATTACHMENT_CATEGORY_ORDER" :key="cat">
               <div v-if="categorizedAttachments[cat].length" class="mb-2 flex flex-wrap items-center gap-2">
@@ -1612,7 +1614,7 @@ function onEditorAreaClick(e: MouseEvent): void {
                   v-for="att in categorizedAttachments[cat]"
                   :key="'att-' + att.id"
                   class="group inline-flex items-center gap-1.5 rounded-full bg-glass-surface px-2.5 py-1 text-xs text-text hover:bg-glass-hover"
-                  :title="'Preview ' + (att.filename || att.hash)"
+                  :title="t('editor.previewAttachment', { file: att.filename || att.hash })"
                   @click="openAttachmentPreview(att)"
                 >
                   <Icon :name="mimeCategoryIcon(cat)" :size="12" class="shrink-0 text-text-muted group-hover:text-text" />

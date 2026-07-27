@@ -186,11 +186,14 @@ const FONT_FAMILIES: { label: string; value: string | null }[] = [
   { label: "Verdana", value: "Verdana, sans-serif" }
 ];
 
+// `label` is an i18n key string (`tools.submenu.*`) the host resolves via
+// `te`/`t` (editor-vue stays i18n-free); the English source lives in the host
+// catalog. See `tool-definitions.ts` header + host `toolbar-menu.ts`.
 const ALIGNMENTS: { label: string; value: "left" | "center" | "right" | "justify"; glyph: string }[] = [
-  { label: "Align left", value: "left", glyph: "align-left" },
-  { label: "Align center", value: "center", glyph: "align-center" },
-  { label: "Align right", value: "right", glyph: "align-right" },
-  { label: "Justify", value: "justify", glyph: "align-justify" }
+  { label: "tools.submenu.alignLeft", value: "left", glyph: "align-left" },
+  { label: "tools.submenu.alignCenter", value: "center", glyph: "align-center" },
+  { label: "tools.submenu.alignRight", value: "right", glyph: "align-right" },
+  { label: "tools.submenu.justify", value: "justify", glyph: "align-justify" }
 ];
 
 /** A separator inline (kept here so `menu` builders read tidily). */
@@ -336,7 +339,7 @@ export const EDITOR_ACTIONS: EditorAction[] = [
       const items: ToolbarMenuItem[] = [
         {
           id: "paragraph",
-          label: "Text",
+          label: "tools.submenu.text",
           checked: e.isActive("paragraph"),
           onSelect: () => chain(e).setParagraph().run()
         }
@@ -344,7 +347,7 @@ export const EDITOR_ACTIONS: EditorAction[] = [
       for (let level = 1; level <= 6; level++) {
         items.push({
           id: `heading-${level}`,
-          label: `Heading ${level}`,
+          label: `tools.submenu.heading${level}`,
           checked: e.isActive("heading", { level }),
           onSelect: () => chain(e).setHeading({ level }).run()
         });
@@ -469,7 +472,7 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     menu: (e) => [
       {
         id: "list-bullet",
-        label: "Bullet list",
+        label: "tools.submenu.bulletList",
         icon: "list",
         checked: e.isActive("bulletList"),
         onSelect: () => {
@@ -479,7 +482,7 @@ export const EDITOR_ACTIONS: EditorAction[] = [
       },
       {
         id: "list-numbered",
-        label: "Numbered list",
+        label: "tools.submenu.numberedList",
         icon: "list-ordered",
         checked: e.isActive("orderedList"),
         onSelect: () => {
@@ -489,7 +492,7 @@ export const EDITOR_ACTIONS: EditorAction[] = [
       },
       {
         id: "list-task",
-        label: "Task list",
+        label: "tools.submenu.taskList",
         icon: "list-checks",
         checked: e.isActive("taskList"),
         onSelect: () => {
@@ -499,7 +502,7 @@ export const EDITOR_ACTIONS: EditorAction[] = [
       },
       {
         id: "list-outline",
-        label: "Outline list",
+        label: "tools.submenu.outlineList",
         icon: "list-tree",
         checked: e.isActive("outlineList"),
         onSelect: () => {
@@ -622,22 +625,22 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     kind: "conditional",
     available: (e) => e.isActive("table"),
     menu: (e) => [
-      { id: "tbl-insert-row-above", label: "Insert row above", onSelect: () => chain(e).addRowBefore().run() },
-      { id: "tbl-insert-row-below", label: "Insert row below", onSelect: () => chain(e).addRowAfter().run() },
-      { id: "tbl-delete-row", label: "Delete row", onSelect: () => chain(e).deleteRow().run() },
+      { id: "tbl-insert-row-above", label: "tools.submenu.tblInsertRowAbove", onSelect: () => chain(e).addRowBefore().run() },
+      { id: "tbl-insert-row-below", label: "tools.submenu.tblInsertRowBelow", onSelect: () => chain(e).addRowAfter().run() },
+      { id: "tbl-delete-row", label: "tools.submenu.tblDeleteRow", onSelect: () => chain(e).deleteRow().run() },
       sep("tbl-sep-row"),
-      { id: "tbl-insert-col-before", label: "Insert column before", onSelect: () => chain(e).addColumnBefore().run() },
-      { id: "tbl-insert-col-after", label: "Insert column after", onSelect: () => chain(e).addColumnAfter().run() },
-      { id: "tbl-delete-col", label: "Delete column", onSelect: () => chain(e).deleteColumn().run() },
+      { id: "tbl-insert-col-before", label: "tools.submenu.tblInsertColBefore", onSelect: () => chain(e).addColumnBefore().run() },
+      { id: "tbl-insert-col-after", label: "tools.submenu.tblInsertColAfter", onSelect: () => chain(e).addColumnAfter().run() },
+      { id: "tbl-delete-col", label: "tools.submenu.tblDeleteCol", onSelect: () => chain(e).deleteColumn().run() },
       sep("tbl-sep-col"),
-      { id: "tbl-merge-cells", label: "Merge cells", onSelect: () => chain(e).mergeCells().run() },
-      { id: "tbl-split-cell", label: "Split cell", onSelect: () => chain(e).splitCell().run() },
+      { id: "tbl-merge-cells", label: "tools.submenu.tblMergeCells", onSelect: () => chain(e).mergeCells().run() },
+      { id: "tbl-split-cell", label: "tools.submenu.tblSplitCell", onSelect: () => chain(e).splitCell().run() },
       sep("tbl-sep-merge"),
-      { id: "tbl-header-row", label: "Toggle header row", checked: e.isActive("tableHeader"), onSelect: () => chain(e).toggleHeaderRow().run() },
-      { id: "tbl-header-col", label: "Toggle header column", checked: e.isActive("tableHeader"), onSelect: () => chain(e).toggleHeaderColumn().run() },
-      { id: "tbl-header-cell", label: "Toggle header cell", onSelect: () => chain(e).toggleHeaderCell().run() },
+      { id: "tbl-header-row", label: "tools.submenu.tblHeaderRow", checked: e.isActive("tableHeader"), onSelect: () => chain(e).toggleHeaderRow().run() },
+      { id: "tbl-header-col", label: "tools.submenu.tblHeaderCol", checked: e.isActive("tableHeader"), onSelect: () => chain(e).toggleHeaderColumn().run() },
+      { id: "tbl-header-cell", label: "tools.submenu.tblHeaderCell", onSelect: () => chain(e).toggleHeaderCell().run() },
       sep("tbl-sep-delete"),
-      { id: "tbl-delete", label: "Delete table", danger: true, onSelect: () => chain(e).deleteTable().run() }
+      { id: "tbl-delete", label: "tools.submenu.tblDelete", danger: true, onSelect: () => chain(e).deleteTable().run() }
     ],
     run: () => {
       /* conditional dropdown */
@@ -652,13 +655,13 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     menu: (e) => {
       const align = (e.getAttributes("image").align as string | undefined) ?? "left";
       return [
-        { id: "img-left", label: "Align left", checked: align === "left", onSelect: () => chain(e).updateAttributes("image", { align: "left" }).run() },
-        { id: "img-center", label: "Align center", checked: align === "center", onSelect: () => chain(e).updateAttributes("image", { align: "center" }).run() },
-        { id: "img-right", label: "Align right", checked: align === "right", onSelect: () => chain(e).updateAttributes("image", { align: "right" }).run() },
+        { id: "img-left", label: "tools.submenu.alignLeft", checked: align === "left", onSelect: () => chain(e).updateAttributes("image", { align: "left" }).run() },
+        { id: "img-center", label: "tools.submenu.alignCenter", checked: align === "center", onSelect: () => chain(e).updateAttributes("image", { align: "center" }).run() },
+        { id: "img-right", label: "tools.submenu.alignRight", checked: align === "right", onSelect: () => chain(e).updateAttributes("image", { align: "right" }).run() },
         sep("img-sep"),
-        { id: "img-reset-size", label: "Reset size", onSelect: () => chain(e).setImageSize({ width: null, height: null }).run() },
+        { id: "img-reset-size", label: "tools.submenu.resetSize", onSelect: () => chain(e).setImageSize({ width: null, height: null }).run() },
         sep("img-sep2"),
-        { id: "img-remove", label: "Remove image", danger: true, onSelect: () => e.chain().focus().deleteSelection().run() }
+        { id: "img-remove", label: "tools.submenu.imgRemove", danger: true, onSelect: () => e.chain().focus().deleteSelection().run() }
       ];
     },
     run: () => {
@@ -674,13 +677,13 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     menu: (e) => {
       const align = (e.getAttributes("embed").align as string | undefined) ?? "left";
       return [
-        { id: "emb-left", label: "Align left", checked: align === "left", onSelect: () => chain(e).setEmbedAlignment({ align: "left" }).run() },
-        { id: "emb-center", label: "Align center", checked: align === "center", onSelect: () => chain(e).setEmbedAlignment({ align: "center" }).run() },
-        { id: "emb-right", label: "Align right", checked: align === "right", onSelect: () => chain(e).setEmbedAlignment({ align: "right" }).run() },
+        { id: "emb-left", label: "tools.submenu.alignLeft", checked: align === "left", onSelect: () => chain(e).setEmbedAlignment({ align: "left" }).run() },
+        { id: "emb-center", label: "tools.submenu.alignCenter", checked: align === "center", onSelect: () => chain(e).setEmbedAlignment({ align: "center" }).run() },
+        { id: "emb-right", label: "tools.submenu.alignRight", checked: align === "right", onSelect: () => chain(e).setEmbedAlignment({ align: "right" }).run() },
         sep("emb-sep"),
-        { id: "emb-reset-size", label: "Reset size", onSelect: () => chain(e).setEmbedSize({ width: null, height: null }).run() },
+        { id: "emb-reset-size", label: "tools.submenu.resetSize", onSelect: () => chain(e).setEmbedSize({ width: null, height: null }).run() },
         sep("emb-sep2"),
-        { id: "emb-remove", label: "Remove embed", danger: true, onSelect: () => e.chain().focus().deleteSelection().run() }
+        { id: "emb-remove", label: "tools.submenu.embRemove", danger: true, onSelect: () => e.chain().focus().deleteSelection().run() }
       ];
     },
     run: () => {

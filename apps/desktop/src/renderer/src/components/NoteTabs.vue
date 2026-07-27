@@ -46,6 +46,7 @@
  * scroll.
  */
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useContextMenuStore } from "@/stores/context-menu";
@@ -76,6 +77,7 @@ import {
 const props = defineProps<{ groupId: string }>();
 const notes = useNotesStore();
 const layout = useEditorLayoutStore();
+const { t: $t } = useI18n();
 
 /** This group's tabs, joined with titles for the strip. Attachment tabs use
  *  their filename as the title (no note lookup). */
@@ -86,10 +88,10 @@ const tabs = computed(() =>
     noteId: t.noteId ?? "",
     title:
       t.kind === "attachment"
-        ? (t.attachment?.filename ?? "Attachment")
+        ? (t.attachment?.filename ?? $t("tabs.attachment"))
         : t.kind === "search"
-          ? "Search: " + (t.searchQuery ?? "")
-          : (notes.items.find((n) => n.id === t.noteId)?.title ?? "Untitled")
+          ? $t("tabs.searchTitle", { query: t.searchQuery ?? "" })
+          : (notes.items.find((n) => n.id === t.noteId)?.title ?? $t("common.untitled"))
   }))
 );
 const activeTabId = computed<string | null>(
@@ -219,22 +221,22 @@ function onTabContextMenu(e: MouseEvent, tab: { id: string; kind: string; noteId
   const idx = list.findIndex((t) => t.id === tab.id);
   const isNote = tab.kind === "note" && !!tab.noteId;
   const items: MenuItem[] = [
-    { id: "close", label: "Close tab", icon: "x", onSelect: () => notes.closeTab(tab.id) },
+    { id: "close", label: $t("tabs.closeTab"), icon: "x", onSelect: () => notes.closeTab(tab.id) },
     {
       id: "close-others",
-      label: "Close others",
+      label: $t("tabs.closeOthers"),
       disabled: list.length <= 1,
       onSelect: () => closeOtherTabs(tab.id)
     },
     {
       id: "close-right",
-      label: "Close tabs to the right",
+      label: $t("tabs.closeRight"),
       disabled: idx < 0 || idx >= list.length - 1,
       onSelect: () => closeTabsToRight(tab.id)
     },
     {
       id: "close-all",
-      label: "Close all tabs in pane",
+      label: $t("tabs.closeAll"),
       disabled: list.length === 0,
       onSelect: () => closeAllTabsInPane()
     }
@@ -243,13 +245,13 @@ function onTabContextMenu(e: MouseEvent, tab: { id: string; kind: string; noteId
     items.push(separator("sep-link"));
     items.push({
       id: "copy-link",
-      label: "Copy link to note",
+      label: $t("tabs.copyLink"),
       icon: "link",
       onSelect: () => copyNoteLink(tab)
     });
     items.push({
       id: "open-new-window",
-      label: "Open in new window",
+      label: $t("tabs.openInNewWindow"),
       icon: "external-link",
       onSelect: () => openTabInNewWindow(tab)
     });
@@ -258,7 +260,7 @@ function onTabContextMenu(e: MouseEvent, tab: { id: string; kind: string; noteId
     items.push(separator("sep-pane"));
     items.push({
       id: "detach-pane",
-      label: "Detach pane to new window",
+      label: $t("tabs.detachPane"),
       icon: "external-link",
       onSelect: () => detachPane()
     });
@@ -274,7 +276,7 @@ function onStripContextMenu(e: MouseEvent): void {
   const items: MenuItem[] = [
     {
       id: "new-note",
-      label: "New note here",
+      label: $t("tabs.newNoteHere"),
       icon: "plus",
       onSelect: () => {
         layout.setActiveGroup(props.groupId);
@@ -283,7 +285,7 @@ function onStripContextMenu(e: MouseEvent): void {
     },
     {
       id: "split-right",
-      label: "Split pane right",
+      label: $t("tabs.splitRight"),
       icon: "panel-right",
       onSelect: () => {
         layout.setActiveGroup(props.groupId);
@@ -292,7 +294,7 @@ function onStripContextMenu(e: MouseEvent): void {
     },
     {
       id: "split-down",
-      label: "Split pane down",
+      label: $t("tabs.splitDown"),
       icon: "panel-left",
       onSelect: () => {
         layout.setActiveGroup(props.groupId);
@@ -304,7 +306,7 @@ function onStripContextMenu(e: MouseEvent): void {
     items.push(separator("sep-detach"));
     items.push({
       id: "detach-pane",
-      label: "Detach pane to new window",
+      label: $t("tabs.detachPane"),
       icon: "external-link",
       onSelect: () => detachPane()
     });
@@ -313,7 +315,7 @@ function onStripContextMenu(e: MouseEvent): void {
     items.push(separator("sep-close"));
     items.push({
       id: "close-pane",
-      label: "Close pane",
+      label: $t("tabs.closePane"),
       icon: "x",
       onSelect: () => layout.closeGroup(props.groupId)
     });
@@ -553,7 +555,7 @@ async function onTabDragEnd(e: DragEvent): Promise<void> {
       type="button"
       draggable="true"
       class="titlebar-no-drag flex shrink-0 cursor-grab items-center self-center px-1 text-text-muted opacity-60 hover:text-text hover:opacity-100"
-      title="Drag outside the window to detach this pane into a new window"
+      :title="$t('tabs.detachGripTitle')"
       @dragstart="onGripDragStart($event)"
       @dragend="onGripDragEnd($event)"
       @click.stop
@@ -573,7 +575,7 @@ async function onTabDragEnd(e: DragEvent): Promise<void> {
             : 'editor-tab-inactive bg-glass-active text-text'
           : 'bg-glass-surface text-text-muted hover:bg-glass-hover hover:text-text'
       "
-      title="Drag to reorder or move to another pane; drag outside the window to open in a new window"
+      :title="$t('tabs.dragHint')"
       @click="layout.activateTab(tab.id)"
       @mousedown="onTabMouseDown($event, tab)"
       @contextmenu.stop="onTabContextMenu($event, tab)"
@@ -593,7 +595,7 @@ async function onTabDragEnd(e: DragEvent): Promise<void> {
       <button
         class="opacity-0 group-hover:opacity-100 hover:text-text"
         @click.stop="notes.closeTab(tab.id)"
-        title="Close tab"
+        :title="$t('tabs.closeTab')"
       >
         ×
       </button>

@@ -26,6 +26,7 @@
  */
 import { ref, computed, watch, onBeforeUnmount } from "vue";
 import type { Editor } from "@tiptap/vue-3";
+import { useI18n } from "vue-i18n";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useShellStore } from "@/stores/shell";
 import { useNotesStore } from "@/stores/notes";
@@ -64,6 +65,7 @@ const publishDialog = usePublishDialogStore();
 const dialog = useDialogStore();
 const contextMenu = useContextMenuStore();
 const auth = useAuthStore();
+const { t } = useI18n();
 
 /** The publish button — template ref for positioning its submenu. */
 const publishBtn = ref<HTMLButtonElement | null>(null);
@@ -160,14 +162,14 @@ function openPublishedMenu(): void {
   const items: MenuItem[] = [
     {
       id: "unpublish",
-      label: "Unpublish note",
+      label: t("editorToolbar.unpublishNote"),
       icon: "trash-2",
       danger: true,
       onSelect: async () => {
         const ok = await dialog.confirm({
-          title: "Unpublish note",
-          message: "This note will no longer be public. The link will stop working.",
-          confirmLabel: "Unpublish",
+          title: t("editorToolbar.unpublishConfirmTitle"),
+          message: t("editorToolbar.unpublishConfirmMsg"),
+          confirmLabel: t("editorToolbar.unpublishConfirmLabel"),
           danger: true
         });
         if (ok) void publish.unpublishById(n.id);
@@ -175,7 +177,7 @@ function openPublishedMenu(): void {
     },
     {
       id: "copy-url",
-      label: "Copy monograph URL",
+      label: t("editorToolbar.copyMonographUrl"),
       icon: "link",
       onSelect: () => {
         if (publish.publishUrl) void navigator.clipboard.writeText(publish.publishUrl);
@@ -183,7 +185,7 @@ function openPublishedMenu(): void {
     },
     {
       id: "open",
-      label: "Open in browser",
+      label: t("monographs.openInBrowser"),
       icon: "external-link",
       onSelect: () => {
         // `window.open` is intercepted by `setWindowOpenHandler` →
@@ -244,7 +246,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
-      title="Find in note (⌘F)"
+      :title="t('editorToolbar.findInNote')"
       :disabled="!props.editor"
       @click="editorStore.requestFindToggle()"
     >
@@ -253,7 +255,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
-      title="Remind me about this note"
+      :title="t('editorToolbar.remindMe')"
       :disabled="!notes.activeNote"
       @click="remindMe()"
     >
@@ -265,7 +267,7 @@ onBeforeUnmount(() => {
       data-note-link-trigger
       class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
       :class="{ 'bg-glass-active text-text': linkNoteOpen }"
-      title="Link to note"
+      :title="t('editorToolbar.linkToNote')"
       :disabled="!props.editor"
       @click="linkNoteOpen = !linkNoteOpen"
     >
@@ -290,7 +292,7 @@ onBeforeUnmount(() => {
       type="button"
       class="ml-auto grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
       :class="{ 'bg-glass-active text-text': !!layout.activeTab?.tocVisible }"
-      title="Table of contents"
+      :title="t('toc.title')"
       :disabled="!notes.activeNote"
       @click="toggleToc()"
     >
@@ -300,7 +302,7 @@ onBeforeUnmount(() => {
       type="button"
       class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
       :class="{ 'bg-glass-active text-text': !!layout.activeTab?.historyVisible }"
-      title="Note history"
+      :title="t('history.title')"
       :disabled="!notes.activeNote"
       @click="toggleHistory()"
     >
@@ -311,7 +313,7 @@ onBeforeUnmount(() => {
          toolbar reflects its own note's save — not a shared global slot.
          The empty-string idle state keeps the layout stable. -->
     <span class="shrink-0 px-1 text-[10px] text-text-muted">
-      {{ props.saving ? "Saving…" : props.savedAt ? "Saved" : "" }}
+      {{ props.saving ? t("editorToolbar.saving") : props.savedAt ? t("editorToolbar.saved") : "" }}
     </span>
     <!-- Publish button — a single affordance that reflects publish state:
          - Not published: a "Publish" text button → opens the publish dialog.
@@ -326,18 +328,18 @@ onBeforeUnmount(() => {
         ref="publishBtn"
         type="button"
         class="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
-        title="Publish note"
+        :title="t('publish.titleCreate')"
         :disabled="!notes.activeNote"
         @click="openPublishDialog()"
       >
-        Publish
+        {{ t("editorToolbar.publish") }}
       </button>
       <button
         v-else
         ref="publishBtn"
         type="button"
         class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
-        title="Published"
+        :title="t('editorToolbar.published')"
         @click="openPublishedMenu()"
       >
         <Icon name="globe" :size="16" />

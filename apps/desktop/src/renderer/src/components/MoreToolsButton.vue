@@ -13,10 +13,13 @@
 -->
 <script setup lang="ts">
 import type { Editor } from "@tiptap/vue-3";
+import { useI18n } from "vue-i18n";
 import { EDITOR_ACTION_BY_ID } from "@notesnook-vue/editor-vue";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useContextMenuStore } from "@/stores/context-menu";
 import { actionToRootItem } from "@/utils/toolbar-menu";
+
+const { t } = useI18n();
 
 const props = defineProps<{
   actionIds: string[];
@@ -44,7 +47,7 @@ function open(e: MouseEvent): void {
   <button
     type="button"
     class="grid h-6 shrink-0 place-items-center rounded px-1.5 text-xs text-text-muted hover:bg-glass-hover hover:text-text disabled:opacity-40"
-    title="More formatting"
+    :title="t('editorToolbar.moreFormatting')"
     :disabled="!props.editor"
     @click="open"
   >

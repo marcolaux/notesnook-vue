@@ -16,11 +16,13 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import type { Editor } from "@tiptap/vue-3";
+import { useI18n } from "vue-i18n";
 import { findReplacePluginKey } from "@notesnook-vue/editor-vue";
 import { Icon } from "@notesnook-vue/ui-vue";
 
 const props = defineProps<{ editor: Editor | undefined }>();
 const emit = defineEmits<{ close: [] }>();
+const { t } = useI18n();
 
 const query = ref("");
 const replaceQuery = ref("");
@@ -137,44 +139,44 @@ function onKeydown(e: KeyboardEvent): void {
         ref="findInput"
         v-model="query"
         class="min-w-0 flex-1 rounded border border-glass-border bg-glass-hover px-2 py-1 text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
-        placeholder="Find"
+        :placeholder="t('findBar.findPlaceholder')"
         @keydown="onKeydown"
       />
       <button
         class="rounded px-1.5 py-1 text-text-muted hover:bg-glass-hover hover:text-text"
         :class="{ 'bg-glass-active text-text': caseSensitive }"
-        title="Match case"
+        :title="t('findBar.matchCase')"
         @click="caseSensitive = !caseSensitive"
       >Aa</button>
       <button
         class="rounded px-1.5 py-1 font-mono text-text-muted hover:bg-glass-hover hover:text-text"
         :class="{ 'bg-glass-active text-text': regexp }"
-        title="Regular expression"
+        :title="t('findBar.regexp')"
         @click="regexp = !regexp"
       >.*</button>
       <button
         class="rounded px-1.5 py-1 text-text-muted hover:bg-glass-hover hover:text-text"
-        title="Toggle replace"
+        :title="t('findBar.toggleReplace')"
         @click="showReplace = !showReplace"
       ><Icon name="arrow-up-down" :size="14" /></button>
       <span class="w-16 shrink-0 text-center text-text-muted">
-        {{ count === 0 ? "No results" : `${index < 0 ? 0 : index + 1}/${count}` }}
+        {{ count === 0 ? t("findBar.noResults") : t("findBar.count", { index: index < 0 ? 0 : index + 1, count }) }}
       </span>
       <button
         class="rounded px-1.5 py-1 text-text-muted hover:bg-glass-hover hover:text-text disabled:opacity-30"
-        title="Previous (Shift+Enter)"
+        :title="t('findBar.previous')"
         :disabled="count === 0"
         @click="findPrev"
       ><Icon name="chevron-up" :size="14" /></button>
       <button
         class="rounded px-1.5 py-1 text-text-muted hover:bg-glass-hover hover:text-text disabled:opacity-30"
-        title="Next (Enter)"
+        :title="t('findBar.next')"
         :disabled="count === 0"
         @click="findNext"
       ><Icon name="chevron-down" :size="14" /></button>
       <button
         class="rounded px-1.5 py-1 text-text-muted hover:bg-glass-hover hover:text-text"
-        title="Close (Escape)"
+        :title="t('findBar.closeTitle')"
         @click="close"
       ><Icon name="x" :size="14" /></button>
     </div>
@@ -182,21 +184,21 @@ function onKeydown(e: KeyboardEvent): void {
       <input
         v-model="replaceQuery"
         class="min-w-0 flex-1 rounded border border-glass-border bg-glass-hover px-2 py-1 text-text placeholder:text-text-muted focus:border-glass-active focus:outline-none"
-        placeholder="Replace"
+        :placeholder="t('findBar.replacePlaceholder')"
         @keydown.escape.prevent="close"
       />
       <button
         class="rounded border border-glass-border px-2 py-1 text-text hover:bg-glass-hover disabled:opacity-30"
         :disabled="count === 0"
-        title="Replace current"
+        :title="t('findBar.replaceTitle')"
         @click="replace"
-      >Replace</button>
+      >{{ t("findBar.replace") }}</button>
       <button
         class="rounded border border-glass-border px-2 py-1 text-text hover:bg-glass-hover disabled:opacity-30"
         :disabled="count === 0"
-        title="Replace all"
+        :title="t('findBar.replaceAllTitle')"
         @click="replaceAll"
-      >All</button>
+      >{{ t("findBar.all") }}</button>
     </div>
   </div>
 </template>
