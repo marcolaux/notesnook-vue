@@ -4,6 +4,10 @@ import { mount } from "@vue/test-utils";
 import { defineComponent, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import i18n, { setLocale, LOCALES, PSEUDO_LOCALE, toPseudo } from "@/i18n";
+import { translate, type Messages } from "@contracts/i18n";
+import en from "@contracts/i18n/en";
+import de from "@contracts/i18n/de";
+import { appStateSetInput } from "@contracts/router";
 
 // ---------------------------------------------------------------------------
 // Catalog (pure)
@@ -30,8 +34,8 @@ describe("toPseudo (pure)", () => {
 // ---------------------------------------------------------------------------
 
 describe("locale constants", () => {
-  it("ships en + pseudo", () => {
-    expect(LOCALES).toEqual(["en", "pseudo"]);
+  it("ships en + de + pseudo", () => {
+    expect(LOCALES).toEqual(["en", "de", "pseudo"]);
     expect(PSEUDO_LOCALE).toBe("pseudo");
   });
 });
@@ -218,5 +222,95 @@ describe("component integration", () => {
     setLocale("en");
     await nextTick();
     expect(wrapper.text()).toBe("Notesnook Vue");
+  });
+});
+// ---------------------------------------------------------------------------
+// Phase 7.2 — shared translator (main-process path) + German catalog
+// ---------------------------------------------------------------------------
+
+/** Flatten a nested catalog to `dotted.key → leaf` for completeness checks. */
+function flatten(obj: unknown, prefix = ""): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (obj && typeof obj === "object") {
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      const key = prefix ? `${prefix}.${k}` : k;
+      if (v && typeof v === "object" && !Array.isArray(v)) Object.assign(out, flatten(v, key));
+      else out[key] = v;
+    }
+  }
+  return out;
+}
+
+describe("translate (shared, main-process path)", () => {
+  const messages: Partial<Record<string, Messages>> = { en, de, pseudo: toPseudo(en) };
+
+  it("resolves an English main-process key", () => {
+    expect(translate(messages, "en", "menu.file")).toBe("File");
+  });
+
+  it("resolves a German main-process key", () => {
+    expect(translate(messages, "de", "menu.file")).toBe("Datei");
+    expect(translate(messages, "de", "tray.quit")).toBe("Beenden");
+    expect(translate(messages, "de", "window.whatsNew")).toBe("Was ist neu");
+    expect(translate(messages, "de", "dialog.notesnookBackup")).toBe("Notesnook-Backup");
+  });
+
+  it("interpolates {param}", () => {
+    expect(translate(messages, "de", "titlebar.version", { version: "1.2.3" })).toBe("v1.2.3");
+  });
+
+  it("selects the `|`-plural form by a numeric n", () => {
+    expect(translate(messages, "de", "contextMenu.moveToTrashConfirm", { n: 1 })).toContain(
+      "1 Notiz in den Papierkorb"
+    );
+    expect(translate(messages, "de", "contextMenu.moveToTrashConfirm", { n: 3 })).toContain(
+      "3 Notizen in den Papierkorb"
+    );
+  });
+
+  it("falls back to en for a missing key in the active locale", () => {
+    // 'de' has no 'sidebar.notebooks'-style gap by construction, but a synthetic
+    // sparse locale proves the fallback path.
+    const sparse: Partial<Record<string, Messages>> = { en, de: {} as Messages };
+    expect(translate(sparse, "de", "menu.file")).toBe("File");
+  });
+
+  it("returns the key path when nothing resolves (visible miss)", () => {
+    expect(translate(messages, "de", "menu.doesNotExist")).toBe("menu.doesNotExist");
+  });
+});
+
+describe("German catalog (de)", () => {
+  it("is a full translation — every en key is present in de", () => {
+    const enKeys = Object.keys(flatten(en));
+    const deKeys = Object.keys(flatten(de));
+    const missing = enKeys.filter((k) => !deKeys.includes(k));
+    expect(missing).toEqual([]);
+  });
+
+  it("weekdays array translates to German abbreviations", () => {
+    expect(de.reminder.weekdays).toEqual(["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"]);
+  });
+
+  it("resolves a German key through vue-i18n", () => {
+    i18n.global.locale.value = "de";
+    expect(i18n.global.t("menu.file")).toBe("Datei");
+    expect(i18n.global.t("command.newNote")).toBe("Neue Notiz");
+    expect(i18n.global.t("command.goTo", { label: "Archiv" })).toBe("Zu Archiv");
+    setLocale("en");
+  });
+});
+
+describe("appState.set input (zod)", () => {
+  it("accepts { locale: 'de' }", () => {
+    expect(appStateSetInput.parse({ locale: "de" })).toEqual({ locale: "de" });
+    expect(appStateSetInput.parse({ skippedLogin: true, locale: "pseudo" })).toEqual({
+      skippedLogin: true,
+      locale: "pseudo"
+    });
+  });
+
+  it("rejects an unknown locale", () => {
+    expect(() => appStateSetInput.parse({ locale: "fr" })).toThrow();
   });
 });

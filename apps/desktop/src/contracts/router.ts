@@ -557,6 +557,15 @@ export interface AppStateServer {
   set(patch: Partial<AppState>): Promise<AppState>;
 }
 
+/** Zod input for the `appState.set` mutation. Exported so tests + the renderer
+ *  can validate a patch (e.g. the `locale` enum) without re-running the tRPC
+ *  input parser. Mirrors `AppState` minus the `| undefined`-on-optional
+ *  distinction zod's `.optional()` collapses. */
+export const appStateSetInput = z.object({
+  skippedLogin: z.boolean().optional(),
+  locale: z.enum(["en", "de", "pseudo"]).optional()
+});
+
 let appStateServer: AppStateServer | undefined;
 export function registerAppStateServer(server: AppStateServer): void {
   appStateServer = server;
@@ -1030,16 +1039,11 @@ export const appRouter = t.router({
   // in `userData/app-state.json` by `src/main/app-state.ts`. `get` is read at
   // boot by `stores/auth.ts` `init()` to reconcile the local-mode login gate;
   // `set` mirrors `writeSkipped`. See the `AppStateServer` contract above.
+  // `locale` (Phase 7.2) is mirrored here so the main process can read it
+  // synchronously at boot to build a localized app menu / tray / window titles.
   appState: t.router({
     get: t.procedure.query(() => requireAppStateServer().get()),
-    set: t.procedure
-      .input(
-        z.object({
-          skippedLogin: z.boolean().optional(),
-          locale: z.enum(["en", "pseudo"]).optional()
-        })
-      )
-      .mutation(({ input }) => requireAppStateServer().set(input))
+    set: t.procedure.input(appStateSetInput).mutation(({ input }) => requireAppStateServer().set(input))
   })
 });
 

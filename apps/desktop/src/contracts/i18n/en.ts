@@ -150,6 +150,7 @@ export default {
       interface: "Interface language",
       pseudoDev: "Pseudo (dev)",
       english: "English",
+      german: "German",
       spellCheck: "Spell check",
       enableSpellCheck: "Enable spell checking",
       spellOff: "Off",

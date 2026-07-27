@@ -30,10 +30,11 @@
  * `.po` round-trip land in Phase 7.2.
  */
 import { createI18n } from "vue-i18n";
-import { en, LOCALES, DEFAULT_LOCALE, PSEUDO_LOCALE, type Locale } from "@contracts/i18n";
+import { en, de, LOCALES, DEFAULT_LOCALE, PSEUDO_LOCALE, type Locale } from "@contracts/i18n";
 import pseudo, { toPseudo } from "./locales/pseudo";
 
 export { default as en } from "@contracts/i18n/en";
+export { default as de } from "@contracts/i18n/de";
 export { default as pseudo, toPseudo } from "./locales/pseudo";
 export { LOCALES, DEFAULT_LOCALE, PSEUDO_LOCALE, type Locale } from "@contracts/i18n";
 
@@ -86,7 +87,7 @@ const i18n = createI18n({
   legacy: false,
   locale: readLocale(),
   fallbackLocale: DEFAULT_LOCALE,
-  messages: { en, pseudo }
+  messages: { en, de, pseudo }
 });
 
 export default i18n;

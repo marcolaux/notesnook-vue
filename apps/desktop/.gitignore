@@ -6,3 +6,9 @@ out
 *.tsbuildinfo
 *.mjs
 !src/preload/*.ts
+# Phase 7.2: committed dev tool (the `*.mjs` rule above would otherwise ignore it).
+!scripts/i18n-po.mjs
+# Phase 7.2: generated `.po` working files for translator round-trips
+# (`npm run i18n:po export <locale>`). Edit + commit translations as the
+# `.ts` catalog (`contracts/i18n/<locale>.ts`), not these.
+src/contracts/i18n/po/

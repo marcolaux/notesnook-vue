@@ -23,6 +23,7 @@
  * messages map as their catalog files land (German in Batch 3).
  */
 import en from "../contracts/i18n/en";
+import de from "../contracts/i18n/de";
 import {
   translate,
   translateMessage,
@@ -33,9 +34,11 @@ import {
 } from "../contracts/i18n";
 import { readAppStateSync, appStateServer } from "./app-state";
 
-/** Locale catalogs available to the main process. `de` is appended in Batch 3. */
+/** Locale catalogs available to the main process. The pseudo dev locale is
+ *  built with the shared `toPseudo(en)` so a dev sweep covers OS-level chrome. */
 const messages: Partial<Record<Locale, Messages>> = {
   en,
+  de,
   pseudo: toPseudo(en)
 };
 

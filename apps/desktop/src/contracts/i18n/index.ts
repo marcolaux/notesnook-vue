@@ -24,14 +24,25 @@ export { default as en } from "./en";
 
 /** Locales shipped with the app. `pseudo` is a dev affordance, not a real one.
  *  Real locales are appended here as their catalog files land. */
-export const LOCALES = ["en", "pseudo"] as const;
+export const LOCALES = ["en", "de", "pseudo"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 export const PSEUDO_LOCALE: Locale = "pseudo";
 
-/** A locale catalog is the shape of `en` (possibly sparse — missing keys fall
- *  back to `en` per-key, mirroring vue-i18n `fallbackLocale`). */
-export type Messages = typeof en;
+export { default as de } from "./de";
+
+/** A locale catalog is the shape of `en` with its literal leaves loosened to
+ *  `string` / `string[]` (each locale's `as const` catalog has its own literal
+ *  types — e.g. `"Schließen"` ≠ `"Close"` — so the shared type must be
+ *  structural, not `typeof en`). A sparse catalog (only translated keys) is
+ *  fine: `translate` falls back to `en` per-key, mirroring vue-i18n's
+ *  `fallbackLocale`. */
+type Loose<T> = T extends string
+  ? string
+  : T extends readonly unknown[]
+    ? readonly string[]
+    : { [K in keyof T]: Loose<T[K]> };
+export type Messages = Loose<typeof en>;
 
 /** Recursively wrap every string leaf of a message catalog in guillemets.
  *  The renderer's `pseudo` locale is `toPseudo(en)` so untranslated strings are

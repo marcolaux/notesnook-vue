@@ -19,7 +19,8 @@
     "package:linux": "npm run rebuild:electron && electron-builder --config electron-builder.yml --linux --publish never",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web"
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "i18n:po": "node scripts/i18n-po.mjs"
   },
   "dependencies": {
     "@microsoft/fetch-event-source": "^2.0.1",

@@ -53,7 +53,13 @@ async function toggleSpell(e: Event): Promise<void> {
           @change="pickLocale"
         >
           <option v-for="l in LOCALES" :key="l" :value="l">
-            {{ l === "pseudo" ? t("settings.language.pseudoDev") : t("settings.language.english") }}
+            {{
+              l === "pseudo"
+                ? t("settings.language.pseudoDev")
+                : l === "de"
+                  ? t("settings.language.german")
+                  : t("settings.language.english")
+            }}
           </option>
         </select>
       </Flex>
