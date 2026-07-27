@@ -31,6 +31,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `npm run test:contract` — **1515/1515 tests pass** across 104 files (new `sqlite-engine` `db.transaction` atomicity + rollback case; `bridge-router` `sqlite.runBatch` shape pin).
 - On-site gates pending: packaged-build runtime confirm that a multi-chunk re-index shows one `sqlite.runBatch` flush in the renderer console (Logging is forced ON in dev).
 
+### 🌐 Live Cross-Window Locale Propagation + OS-Native Window Re-Title (Phase 7.2 tail)
+- **Cross-window live locale sync**: changing the interface language in the Settings window now updates every other open renderer window (main, note, pane) **live**, without a reload. Mirrors the existing cross-window theme `storage`-event pattern: `setLocale` writes `notesnook.locale` to `localStorage`; other windows' `storage` listener applies it via a new `syncLocale()` that sets the local vue-i18n locale ref only (no re-persist, no re-notify-main → no loop, no redundant main menu/tray rebuild).
+- **OS-native window re-title**: the auxiliary Settings and Changelog windows now show localized titles (`window.settings` / `window.whatsNew`) that flip on locale switch. The renderer's static `<title>Notesnook</title>` clobbers the `BrowserWindow` `title:` option once the page parses, so titles are applied via main-process `win.setTitle(tMain(...))` after `did-finish-load` and on locale change through `registerLocaleChangeCallback`. Content (main/note/pane) windows are intentionally untouched.
+
+### 📝 Spellcheck: Multi-Language Picker, Decoupled from App Language
+- **Multi-language spellcheck picker** (Settings → Language → Spell check): a scrollable checkbox list of `session.availableSpellCheckerLanguages`, toggled via a new store `toggleLanguage(code)`. Spellcheck now supports several languages at once and is **independent of the interface locale** — run the app in English while spell-checking German + French. The Language section is restructured into two clearly-labeled groups (Interface language / Spell check) with a `spellLanguagesHint`. The backend already supported multi-language (`setLanguages(codes[])` + `resolveEnabledCodes`); only the UI was missing.
+- **⚠️ macOS fix — hide the picker**: Electron's `session.setSpellCheckerLanguages` is a **no-op on macOS** (Electron 21+; the native `NSSpellChecker` auto-detects language from macOS system/keyboard languages — you cannot set or persist spellcheck languages via the API). On macOS the non-functional picker is replaced with an explanatory note; the enable toggle still works. The picker only functions on Windows/Linux (Hunspell). Sources: electron/electron #30215, #35508, PR #35514.
+
+### 🎨 Vector Visualizer Theme Adaptation
+- **The vector & cluster visualizer canvas now follows the active theme.** Previously the 2D canvas hard-coded dark colors (`#090d16` backdrop, `#f8fafc` near-white labels, `#ffffff` node strokes, `#6366f1` indigo), so the graph was always dark regardless of theme — and on a light theme the white labels/rings were invisible. The chrome (control bar + inspector) already used theme tokens, but a 2D `<canvas>` context can't resolve `var(…)`.
+- **New `utils/canvas-theme.ts`** reads the resolved `--background`/`--paragraph`/`--paragraph-secondary`/`--border`/`--accent` from `getComputedStyle(document.documentElement)` (injected by `@notesnook-vue/theme-vue`'s `injectTheme`) into concrete hex strings for `ctx.fillStyle`/`strokeStyle`, with `withAlpha()` for faded strokes and `onThemeChange()` (a `MutationObserver` on `<html data-theme>`) so the graph re-renders **live** on theme switch. Backdrop → `--background`; default note node + selection ring → `--accent`; label text → `--paragraph`/`-secondary`; similarity edges → accent. Cluster titles get a backdrop-colored `strokeText` halo so they stay readable on both backdrops.
+- **Categorical palette kept** (legitimate data-encoding, like a chart series palette): `CLUSTER_COLORS` for cluster-identity hulls/labels and the tag/notebook/color type colors (only used for DBSCAN-noise nodes outside a cluster) — vivid mid-tones readable in both themes. Establishes the canvas-theming pattern for any future canvas surface (`NoteMinimap` renders via DOM/CSS and already inherits tokens).
+
+#### Verification
+- `npm run typecheck` (node + web) — clean.
+- `npm run test:contract` — **1546/1546 tests pass** across 105 files (+10 new `canvas-theme` spec; +5 i18n `syncLocale`; +3 `spell-checker` `toggleLanguage`).
+- `npm run build` — clean (6.61s).
+- On-site gates pending: cross-window live locale switch; live OS-native window re-title on locale change; spellcheck multi-picker on Windows/Linux + hidden-with-note on macOS; visualizer flips live when switching theme with it open (dark↔light, darkTheme/lightTheme swap, catalog install, cross-window).
+
 ## [0.9.1] - 2026-07-27
 
 ### 🧠 Vector Search Inference Offloaded to a Web Worker (Phase A)
