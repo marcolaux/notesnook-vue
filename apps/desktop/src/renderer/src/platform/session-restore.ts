@@ -71,4 +71,25 @@ export async function restoreSession(contextId: string): Promise<void> {
       // Best-effort: a failed reopen must not abort the rest.
     }
   }
+
+  // Reopen detached pane windows (Phase 4.6) — each carries its own layout
+  // snapshot. Filter the snapshot to notes still valid in this account before
+  // handing it to main (so a pane window never opens to trashed/deleted/foreign
+  // notes). An all-invalid snapshot filters to `layout: null`; skip it (the
+  // pane window would open to an empty root pane otherwise). `contextId` is
+  // forwarded so main tracks each pane window under this account (it reopens
+  // next run too).
+  for (const w of session.paneWindows ?? []) {
+    const filteredPane = filterLayoutSnapshot(w.layout, validNoteIds);
+    if (filteredPane.layout === null) continue;
+    try {
+      await desktop.window.openPaneWindow.mutate({
+        snapshot: filteredPane,
+        bounds: w.bounds satisfies WindowBounds,
+        contextId
+      });
+    } catch {
+      // Best-effort: a failed reopen must not abort the rest.
+    }
+  }
 }

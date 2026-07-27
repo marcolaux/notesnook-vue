@@ -34,6 +34,8 @@ import {
   setPersistenceSuppressed
 } from "@/composables/use-session-persistence";
 import { dropZoneFromPoint } from "@/utils/tab-dnd";
+import type { LayoutSnapshot } from "@contracts/session-state";
+import { filterLayoutSnapshot } from "@contracts/session-state";
 import { autoUpdateInstalledThemes } from "@/composables/use-themes-catalog";
 import {
   isDatabaseLockedMessage,
@@ -123,6 +125,17 @@ const isNoteWindow = windowType === "note";
 const noteWindowNoteId = isNoteWindow
   ? new URLSearchParams(location.search).get("noteId")
   : null;
+// A detached *pane* window (Phase 4.6): a whole editor pane (a group leaf +
+// all its tabs) torn off into its own window. Boots the full shell like the
+// main window but hydrates its own `LayoutSnapshot` (fetched from main via the
+// `paneId` it was opened with) instead of `mainWindowOpenTabs`. Owns its layout
+// (saves to its own session slot) but defers sync / upstream / reminder
+// scheduling / session restore to the main window, like a note window.
+const isPaneWindow = windowType === "pane";
+const paneWindowId = isPaneWindow ? new URLSearchParams(location.search).get("paneId") : null;
+/** Any torn-off editor window (note or pane) — these defer main-window-only
+ *  boot steps (sync, upstream notifier, reminder scheduling, session restore). */
+const isTornOffWindow = isNoteWindow || isPaneWindow;
 
 
 const auth = useAuthStore();
@@ -248,14 +261,21 @@ function bindCrossWindowThemeListener(): void {
   storageCleanup = () => window.removeEventListener("storage", onStorage);
 }
 
-// Reminder OS-notification scheduling (main window only — settings / note
-// windows don't own reminders, and only one window should push the schedule
+// Reminder OS-notification scheduling (main window only — settings / note /
+// pane windows don't own reminders, and only one window should push the schedule
 // to main to avoid double-scheduling across windows). Wires the reminders
 // store's `items` to `desktop.reminders.schedule` + listens for
 // `app:reminder-fired` to reschedule. Called synchronously at setup so its
 // `onUnmounted` cleanup registers against this component instance.
-if (!isSettingsWindow && !isChangelogWindow && !isNoteWindow) {
+if (!isSettingsWindow && !isChangelogWindow && !isTornOffWindow) {
   useReminderNotifications();
+}
+// Tab keyboard shortcuts (Cmd/Ctrl+W, Cmd/Ctrl+1-9, …) — mounted in every
+// editor-bearing window (main + pane; a pane window has its own tab strip).
+// Skipped in the minimal-boot settings / changelog windows and in single-tab
+// note windows (focus mode). Called synchronously at setup so its
+// `onUnmounted` cleanup registers against this component instance.
+if (!isSettingsWindow && !isChangelogWindow && !isNoteWindow) {
   useTabShortcuts();
 }
 
@@ -313,6 +333,40 @@ function openNoteAt(payload: { noteId: string; x: number; y: number }): void {
     // not over an editor body (tab strip / sidebar / list) → open as a tab in
     // the active group (no pane to target).
     useNotesStore().selectNote(payload.noteId);
+  });
+}
+
+/**
+ * Open a *pane* (a group leaf + all its tabs) dragged from ANOTHER window onto
+ * this window — the cross-window inbound counterpart to the pane-grip tear-off
+ * (Phase 4.6). HTML5 `dataTransfer` doesn't cross Electron windows, so this
+ * window's drop handlers never fired; main forwards the pane's
+ * {@link LayoutSnapshot} + the release point as client coords (cursor − this
+ * window's origin) so we can run the SAME edge-zone split logic our in-window
+ * `EditorPane` uses, against the editor body under the cursor:
+ *  - edge → split that pane in the zone direction + import the pane's tabs into
+ *    the new sibling (`importPaneSnapshot`);
+ *  - centre of the body → import the tabs into THAT pane (no split);
+ *  - not over an editor body → import into the active group (no pane to target).
+ * The source window closes its pane after the move (its `dragend` calls
+ * `closeGroup` on a `"moved"` result); this window just creates new tabs for the
+ * notes/attachments (one tab per note is preserved by `openTab`'s reuse).
+ */
+function openPaneAt(payload: { snapshot: LayoutSnapshot; x: number; y: number }): void {
+  if (!auth.showShell) return;
+  void router.push("/all").then(() => {
+    const layout = editorLayout;
+    const el = document.elementFromPoint(payload.x, payload.y) as HTMLElement | null;
+    const body = el?.closest?.("[data-editor-body]") as HTMLElement | null;
+    if (body) {
+      const pane = body.closest("[data-pane-group]") as HTMLElement | null;
+      const groupId = pane?.dataset.paneGroup ?? layout.activeGroupId;
+      const zone = dropZoneFromPoint(payload.x, payload.y, body.getBoundingClientRect());
+      layout.importPaneSnapshot(payload.snapshot, groupId, zone);
+      return;
+    }
+    // not over an editor body → import into the active group (centre semantics).
+    layout.importPaneSnapshot(payload.snapshot, layout.activeGroupId, "center");
   });
 }
 
@@ -396,6 +450,12 @@ onMounted(async () => {
   // move from the cursor position over our editor body (HTML5 `dataTransfer`
   // doesn't cross windows, so our drop handlers never fired).
   window.appEvents?.onOpenNoteAt((payload) => openNoteAt(payload));
+  // Cross-window pane drop (Phase 4.6): main forwards a dragged pane's
+  // snapshot + release point (client coords) when a pane grip drag from
+  // another window lands on this window. Imports the pane's tabs as a new
+  // split sibling (edge) or into the targeted pane (centre), mirroring
+  // `openNoteAt`'s zone logic.
+  window.appEvents?.onOpenPaneAt((payload) => openPaneAt(payload));
 
   // System-tray actions (Phase 6.4): the tray forwards new-note/new-notebook
   // here. Only act once the shell is visible (creating notes/notebooks pre-login
@@ -476,11 +536,14 @@ onMounted(async () => {
     // editor has a group to open tabs in. Idempotent. Multi-pane splits are
     // Phase 4.2/4.3 (on-site).
     editorLayout.init();
-    // Session persistence (main window only): bind this window to its account
-    // context so main-side geometry writes land under the right account, mount
-    // the debounced layout-snapshot watcher, and flush on quit. Settings /
-    // note windows don't own the layout (note windows are single-tab focus mode).
-    if (!isSettingsWindow && !isNoteWindow) {
+    // Session persistence (main + pane windows — both own a layout): bind the
+    // MAIN window to its account context so main-side geometry writes land under
+    // the right account, mount the debounced layout-snapshot watcher, and flush
+    // on quit. A PANE window owns its own layout too but saves to its own
+    // session slot (keyed by paneId) and main tracks its geometry itself, so it
+    // skips `bindContextToSession`. Settings / note windows don't own a layout
+    // (note windows are single-tab focus mode).
+    if (!isSettingsWindow && !isTornOffWindow) {
       bindContextToSession();
       useSessionPersistence();
       window.appEvents?.onBeforeQuit(() => {
@@ -489,6 +552,14 @@ onMounted(async () => {
       // macOS lets the user close the main window without quitting (the app
       // stays alive). Flush the layout there too so the last edits land on disk
       // before the window's renderer unloads. Best-effort (async IPC).
+      window.addEventListener("beforeunload", () => {
+        void flushNow();
+      });
+    } else if (isPaneWindow) {
+      useSessionPersistence({ paneId: paneWindowId ?? undefined });
+      window.appEvents?.onBeforeQuit(() => {
+        void flushNow();
+      });
       window.addEventListener("beforeunload", () => {
         void flushNow();
       });
@@ -503,7 +574,7 @@ onMounted(async () => {
     void status.refreshSync();
     // Best-effort: silently upgrade any catalog-installed themes to their
     // newest server version (main window only; never throws on boot).
-    if (!isSettingsWindow && !isNoteWindow) void autoUpdateInstalledThemes();
+    if (!isSettingsWindow && !isTornOffWindow) void autoUpdateInstalledThemes();
     // Bind the SSE-driven auto-pull once (idempotent): when the server pushes
     // `triggerSync` (another device synced), core publishes
     // `databaseSyncRequested` and this triggers a `db.sync()` so the change
@@ -524,7 +595,7 @@ onMounted(async () => {
     // `lastError` and is ignored). Skipped in a torn-off note window — the
     // main window owns sync to avoid double-sync across windows; the note
     // window still binds sync events above for status display.
-    if (auth.isLoggedIn && config.syncEnabled && !isNoteWindow) void sync.startSync();
+    if (auth.isLoggedIn && config.syncEnabled && !isTornOffWindow) void sync.startSync();
     // TEMP-DIAG sync-pull: did the boot-sync gate pass, and with what inputs?
     // eslint-disable-next-line no-console
     console.log("[sync] boot gate:", { isLoggedIn: auth.isLoggedIn, syncEnabled: config.syncEnabled, isNoteWindow });
@@ -542,7 +613,7 @@ onMounted(async () => {
     // indicator lives here, and the shared localStorage throttle prevents a
     // note window from re-checking). Fire-and-forget: a GitHub outage never
     // blocks boot. Privacy-toggle-gated + once-per-24h inside the store.
-    if (!isNoteWindow) void upstreamNotifier.maybeCheck();
+    if (!isTornOffWindow) void upstreamNotifier.maybeCheck();
     if (auth.showShell) {
       // Await shortcuts BEFORE notes.load. SQLite is a single serialized mutex
       // (`sqlite-dialect.ts`) and `notes.load()` fires 3 fire-and-forget queries
@@ -575,10 +646,12 @@ onMounted(async () => {
       // Fire-and-forget like the neighboring fan-out calls.
       void useTemplatesStore().load();
       // Restore the saved editor session for this account (open tabs + split
-      // layout + torn-off note windows). After `notes.load()` so the list is
-      // the source of valid note ids for filtering. Main window only — note /
-      // settings windows don't restore a multi-tab session.
-      if (!isSettingsWindow && !isNoteWindow) {
+      // layout + torn-off note + pane windows). After `notes.load()` so the
+      // list is the source of valid note ids for filtering. Main window only —
+      // note / pane / settings windows don't restore a multi-tab session (a
+      // pane window hydrates its own snapshot below; a note window opens its
+      // single note).
+      if (!isSettingsWindow && !isTornOffWindow) {
         await restoreSession(readCurrentContext());
       }
     }
@@ -594,6 +667,22 @@ onMounted(async () => {
     if (isNoteWindow && noteWindowNoteId && auth.showShell) {
       useShellStore().setFocusMode(true);
       void router.push("/all").then(() => useNotesStore().selectNote(noteWindowNoteId));
+    }
+    // Detached pane window (Phase 4.6): hydrate this window's layout from the
+    // snapshot main opened it with (fetched by `paneId`), filtered to notes
+    // still valid in this account's DB. The pane keeps the full shell (no focus
+    // mode) so it's a fully functional editing window with its own tabs.
+    if (isPaneWindow && paneWindowId && auth.showShell) {
+      void router.push("/all").then(async () => {
+        try {
+          const snapshot = await desktop.window.getPaneSnapshot.query({ paneId: paneWindowId });
+          if (!snapshot) return; // unknown id (post-restart) → empty root pane
+          const validNoteIds = useNotesStore().items.map((n) => n.id);
+          editorLayout.hydrate(filterLayoutSnapshot(snapshot, validNoteIds));
+        } catch {
+          // Main unreachable → leave the empty root pane.
+        }
+      });
     }
     // eslint-disable-next-line no-console
     console.info(`[boot] ready — auth:${auth.status}`);
@@ -664,7 +753,7 @@ if (!isSettingsWindow) {
         // window only. `restoreSession` guards against re-restoring the same
         // context, so a redundant call here (when onMounted already restored)
         // is a no-op.
-        if (!isNoteWindow) {
+        if (!isTornOffWindow) {
           await restoreSession(readCurrentContext());
         }
       }

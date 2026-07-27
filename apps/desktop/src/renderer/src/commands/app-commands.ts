@@ -8,6 +8,7 @@ import { registerCommands } from "./registry";
 import type { Command } from "./registry";
 import { VIEWS } from "@/router/routes";
 import { desktop } from "@/platform/desktop-bridge";
+import { readCurrentContext } from "@/platform/account-context";
 import { usePublishDialogStore } from "@/stores/publish-dialog";
 import { useDialogStore } from "@/stores/dialog";
 import { useTemplatesStore } from "@/stores/templates";
@@ -132,6 +133,31 @@ const appCommands: Command[] = [
     when: (ctx) => ctx.auth.showShell && ctx.layout.groupCount > 1,
     run: (ctx) => {
       ctx.layout.closeGroup(ctx.layout.activeGroupId);
+    }
+  },
+  // Detach the focused pane into its own window (Phase 4.6). Captures the pane's
+  // snapshot, asks main to open a pane window for it, then closes the pane here
+  // (the snapshot carries the tabs; `closeGroup` drops them from the source +
+  // collapses the split). Also exposed via the pane tab-strip grip + context
+  // menu (`NoteTabs.vue`); this is the palette + keyboard entry point
+  // (`Cmd/Ctrl+Shift+K`, wired in `use-tab-shortcuts`). Shown only when the
+  // focused pane has portable (note/attachment) tabs — an empty or search-only
+  // pane has nothing to detach.
+  {
+    id: "app:detach-pane",
+    title: "Detach pane to new window",
+    keywords: ["detach", "pane", "window", "tear", "off", "split", "pop", "out"],
+    group: "app",
+    when: (ctx) =>
+      ctx.auth.showShell &&
+      ctx.layout.tabsOf(ctx.layout.activeGroupId).some((t) => t.kind !== "search"),
+    run: (ctx) => {
+      const groupId = ctx.layout.activeGroupId;
+      const snapshot = ctx.layout.detachGroupSnapshot(groupId);
+      if (!snapshot) return;
+      const contextId = readCurrentContext();
+      void desktop.window.openPaneWindow.mutate({ snapshot, contextId });
+      ctx.layout.closeGroup(groupId, true);
     }
   },
   {

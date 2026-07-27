@@ -98,7 +98,9 @@ import {
   Network,
   // ToC/Minimap right-sidebar header toggle — chrome, must render at first paint.
   Map,
-  Rows3
+  Rows3,
+  // Pane detach grip (Phase 4.6) — tab-strip drag handle, chrome, first paint.
+  GripVertical
 } from "@lucide/vue";
 
 
@@ -179,7 +181,9 @@ export const ICONS: Record<string, Component> = {
   network: Network,
   // ToC/Minimap right-sidebar header toggle.
   map: Map,
-  "rows-3": Rows3
+  "rows-3": Rows3,
+  // Pane detach grip (Phase 4.6) — tab-strip drag handle.
+  "grip-vertical": GripVertical
 };
 
 /**

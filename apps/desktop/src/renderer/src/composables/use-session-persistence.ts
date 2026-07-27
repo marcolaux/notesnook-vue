@@ -1,10 +1,17 @@
 /**
  * Session persistence (renderer) — debounced deep watcher over the
- * editor-layout store's five refs that pushes a `LayoutSnapshot` to main
- * (`desktop.session.saveLayout`) so the open tabs + split layout survive a
- * restart. Sash sizes are captured automatically (`resizeSplitChildren` writes
- * `LayoutNode.size`). Mounted in the MAIN window only (settings / note windows
- * don't own the layout).
+ * editor-layout store's five refs that pushes a `LayoutSnapshot` to main so the
+ * open tabs + split layout survive a restart. Sash sizes are captured
+ * automatically (`resizeSplitChildren` writes `LayoutNode.size`).
+ *
+ * Two save targets, decided by the `paneId` option passed to
+ * {@link useSessionPersistence}:
+ *  - **Main window** (`paneId` unset) → `desktop.session.saveLayout` (the
+ *    `mainWindowOpenTabs` slot). Mounted in the main window only (settings /
+ *    note windows don't own the layout).
+ *  - **Pane window** (`paneId` set) → `desktop.session.savePaneWindowLayout`
+ *    (the pane's own slot, keyed by `paneId`). Mounted in a detached pane
+ *    window so its live tabs reopen next run.
  *
  * `setPersistenceSuppressed(true)` pauses writes during a context switch +
  * restore so the transient empty state (after `closeAllTabs`) is never written
@@ -29,6 +36,11 @@ const DEBOUNCE_MS = 400;
 let suppressed = false;
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 let mounted = false;
+/** When set, saves route to the pane-window slot (`savePaneWindowLayout`)
+ *  instead of the main-window slot. Set once per window by
+ *  `useSessionPersistence({ paneId })`. One window per renderer process → a
+ *  module-level var is safe. */
+let paneId: string | undefined;
 
 function capture(): LayoutSnapshot {
   const l = useEditorLayoutStore();
@@ -48,7 +60,11 @@ async function doSave(): Promise<void> {
   const snapshot = JSON.parse(JSON.stringify(capture())) as LayoutSnapshot;
   const contextId = readCurrentContext();
   try {
-    await desktop.session.saveLayout.mutate({ contextId, snapshot });
+    if (paneId) {
+      await desktop.session.savePaneWindowLayout.mutate({ contextId, paneId, snapshot });
+    } else {
+      await desktop.session.saveLayout.mutate({ contextId, snapshot });
+    }
   } catch {
     // Main unreachable (tests / not booted) — no-op.
   }
@@ -83,11 +99,13 @@ export function flushNow(): Promise<void> {
   return doSave();
 }
 
-/** Mount the debounced deep watcher. Idempotent — safe to call once per
- *  window; only call in the main window. */
-export function useSessionPersistence(): void {
+/** Mount the debounced deep watcher. Idempotent — safe to call once per window.
+ *  Pass `{ paneId }` in a detached pane window so saves route to its own
+ *  session slot instead of the main window's. */
+export function useSessionPersistence(opts?: { paneId?: string | undefined }): void {
   if (mounted) return;
   mounted = true;
+  if (opts?.paneId) paneId = opts.paneId;
   const l = useEditorLayoutStore();
   watch(
     () => [l.layout, l.groups, l.tabs, l.sessions, l.activeGroupId],

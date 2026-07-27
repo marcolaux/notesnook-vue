@@ -304,12 +304,105 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
   }
 
   /**
-   * Close a group: drop its tabs + their sessions, remove the leaf, and
-   * collapse any single-child split left behind. Refuses the last group.
+   * Capture a standalone {@link LayoutSnapshot} for one group leaf + all its
+   * tabs, so it can be detached into its own window (Phase 4.6). The snapshot
+   * has a fresh root `group` leaf referencing the SAME `groupId`, and carries
+   * the group's note + attachment tabs (search tabs are skipped — they're
+   * window-local query caches, not portable) and their sessions. Tab/group/
+   * session ids are preserved verbatim (the source {@link closeGroup}s the
+   * group afterwards, and the new window is a separate process, so there's no
+   * id collision).
+   *
+   * Returns `null` when the group is unknown or has no portable tabs (an empty
+   * or search-only pane is not detachable — there's nothing to show).
    */
-  function closeGroup(groupId: string): void {
+  function detachGroupSnapshot(groupId: string): LayoutSnapshot | null {
+    if (layout.value === null || !groups.value[groupId]) return null;
+    const groupTabs = tabsOf(groupId).filter((t) => t.kind !== "search");
+    if (groupTabs.length === 0) return null;
+    // Locals named `outTabs`/`outSessions` to avoid shadowing the store's
+    // `tabs`/`sessions` refs (which hold the source window's full registries).
+    const outTabs: Record<string, EditorTab> = {};
+    const outSessions: Record<string, EditorSession> = {};
+    for (const t of groupTabs) {
+      outTabs[t.id] = t;
+      const sess = sessions.value[t.sessionId];
+      if (sess) outSessions[sess.id] = sess;
+    }
+    const snapshot: LayoutSnapshot = {
+      layout: { id: genId(), type: "group", groupId },
+      groups: { [groupId]: groups.value[groupId]! },
+      tabs: outTabs,
+      sessions: outSessions,
+      activeGroupId: groupId
+    };
+    // Strip Vue reactive proxies so the snapshot structured-clones across the
+    // Electron IPC boundary (the pane-window open + cross-window move paths send
+    // it to main). Reactive proxies throw "An object could not be cloned." —
+    // mirror `use-session-persistence.ts`'s JSON round-trip. Plain-data result
+    // also keeps `importPaneSnapshot` (which only reads it) unaffected.
+    return JSON.parse(JSON.stringify(snapshot)) as LayoutSnapshot;
+  }
+
+  /**
+   * Import a detached pane's {@link LayoutSnapshot} into THIS window by
+   * splitting `targetGroupId` in `zone`'s direction (new sibling on the zone's
+   * side) and re-creating the snapshot's tabs in the new sibling — the
+   * cross-window inbound counterpart to {@link detachGroupSnapshot}. The
+   * snapshot's own group/tab ids are NOT reused (they belong to the source
+   * window); each note/attachment becomes a fresh tab via {@link openTab} /
+   * {@link openAttachmentTab}, preserving the snapshot's tab order (tree order
+   * across the snapshot's groups). Search tabs are skipped (not portable).
+   *
+   * `zone === "center"` (or a split failure) opens the tabs directly into
+   * `targetGroupId` instead of a new sibling. Returns the group id the tabs
+   * landed in (the new sibling, or `targetGroupId` / the active group on
+   * fallback). Reuses {@link openNoteSplit}'s zone→direction/position logic.
+   */
+  function importPaneSnapshot(
+    snapshot: LayoutSnapshot,
+    targetGroupId: string,
+    zone: "left" | "right" | "top" | "bottom" | "center"
+  ): string {
+    if (layout.value === null) init();
+    if (!groups.value[targetGroupId]) targetGroupId = activeGroupId.value;
+    if (!groups.value[targetGroupId]) return "";
+    // Collect the snapshot's tabs in tree order across its groups (a detached
+    // pane is normally a single group, but iterate generally).
+    const orderedGroupIds = snapshot.layout ? allGroupIds(snapshot.layout) : Object.keys(snapshot.groups);
+    const tabsInOrder: EditorTab[] = [];
+    for (const gid of orderedGroupIds) {
+      for (const t of Object.values(snapshot.tabs)) {
+        if (t.groupId === gid && t.kind !== "search") tabsInOrder.push(t);
+      }
+    }
+    if (tabsInOrder.length === 0) return targetGroupId;
+
+    let intoGroupId = targetGroupId;
+    if (zone === "left" || zone === "right" || zone === "top" || zone === "bottom") {
+      const vertical = zone === "left" || zone === "right";
+      const position: "before" | "after" = zone === "right" || zone === "bottom" ? "after" : "before";
+      const newGroupId = splitGroupAt(targetGroupId, vertical ? "vertical" : "horizontal", position);
+      if (newGroupId) intoGroupId = newGroupId;
+    }
+    for (const t of tabsInOrder) {
+      if (t.kind === "note" && t.noteId) openTab(intoGroupId, t.noteId);
+      else if (t.kind === "attachment" && t.attachment) openAttachmentTab(intoGroupId, t.attachment);
+    }
+    return intoGroupId;
+  }
+
+  /**
+   * Close a group: drop its tabs + their sessions, remove the leaf, and
+   * collapse any single-child split left behind. Refuses the last group unless
+   * `force` is set — a detach-pane-into-window (Phase 4.6) of the ONLY pane
+   * empties the source on purpose (the tabs went with the snapshot to the new
+   * window), so it passes `force: true` to re-initialise a fresh empty root
+   * pane instead of leaving the detached tabs behind (a duplicate).
+   */
+  function closeGroup(groupId: string, force?: boolean): void {
     if (layout.value === null) return;
-    if (countGroups(layout.value) <= 1) return; // never close the last group
+    if (!force && countGroups(layout.value) <= 1) return; // never close the last group
     // Drop tabs owned by the group (and their sessions).
     const doomedTabs = Object.values(tabs.value).filter((t) => t.groupId === groupId);
     for (const t of doomedTabs) {
@@ -853,6 +946,8 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     splitGroupAt,
     dropTabToSplit,
     openNoteSplit,
+    detachGroupSnapshot,
+    importPaneSnapshot,
     tabForNote,
     tabForAttachment,
     tabForSearch,

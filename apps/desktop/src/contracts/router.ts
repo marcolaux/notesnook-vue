@@ -361,6 +361,58 @@ export interface WindowServer {
    */
   openNote(noteId: string, bounds?: WindowBounds | undefined, contextId?: string | undefined): void;
   /**
+   * Open a detached *pane* in its own window — a whole editor pane (a group leaf
+   * + all its tabs) torn off from another window. Creates a `BrowserWindow` that
+   * boots the full shell with `?window=pane&paneId=<id>`; the pane renderer
+   * fetches its {@link LayoutSnapshot} via {@link getPaneSnapshot} and hydrates
+   * it (reusing the main-window restore path). Main stores the snapshot in an
+   * in-memory map keyed by `paneId` (the URL carries only the id, not the
+   * snapshot). Optional `bounds` restores a saved size/position; optional
+   * `contextId` lets main track the pane window under the opening account so it
+   * reopens next run. See `src/main/pane-window.ts`.
+   */
+  openPaneWindow(
+    snapshot: LayoutSnapshot,
+    bounds?: WindowBounds | undefined,
+    contextId?: string | undefined
+  ): void;
+  /**
+   * Fetch the in-memory {@link LayoutSnapshot} for a pane window id (the one
+   * main generated and passed as `?window=pane&paneId=<id>`). Returns `null`
+   * when the id is unknown (the window opened after a main restart, or the
+   * snapshot was already consumed/evicted) — the pane renderer then re-`init()`s
+   * an empty root pane.
+   */
+  getPaneSnapshot(paneId: string): LayoutSnapshot | null;
+  /**
+   * Resolve a *pane* drag that started at `(startScreenX, startScreenY)` (OS
+   * screen coordinates, captured in the renderer at the pane-grip `dragstart`)
+   * at release. Same geometry logic as {@link releaseTab} (reuses
+   * `resolveTabRelease`), but carries the whole pane {@link LayoutSnapshot}
+   * alongside so main can hand it to the target window or a new pane window:
+   *  - `"none"` → ended inside the source window (no within-window pane drop
+   *    targets exist, so this is a cancelled/within-window grip drop);
+   *  - `"moved"` → ended over a DIFFERENT app window: main forwards
+   *    `app:open-pane-at` (with the snapshot + client coords) so the target
+   *    imports the pane's tabs as a new split sibling, and the source closes the
+   *    pane;
+   *  - `"toreOff"` → ended outside every window: main opens a new pane window
+   *    with the snapshot.
+   * Returns `{ action }` so the renderer closes the source pane only when the
+   * move/tear-off actually happened.
+   */
+  releasePane(
+    input: {
+      snapshot: LayoutSnapshot;
+      groupId: string;
+      startScreenX: number;
+      startScreenY: number;
+    },
+    senderId?: number | undefined
+  ): {
+    action: "none" | "moved" | "toreOff";
+  };
+  /**
    * Resolve a tab drag that started at `(startScreenX, startScreenY)` (OS screen
    * coordinates, captured in the renderer at `dragstart`) at release:
    *  - `"none"` → ended inside the source window (a within-window drop the
@@ -439,6 +491,12 @@ export interface SessionServer {
   saveWindowBounds(contextId: string, bounds: WindowBounds): Promise<void>;
   /** Persist a torn-off note window's bounds (upserted by noteId). */
   saveNoteWindowBounds(contextId: string, noteId: string, bounds: WindowBounds): Promise<void>;
+  /** Persist a torn-off pane window's layout snapshot (upserted by paneId). The
+   *  pane renderer owns its live layout and saves through this so its tabs
+   *  reopen next run. */
+  savePaneWindowLayout(contextId: string, paneId: string, snapshot: LayoutSnapshot): Promise<void>;
+  /** Persist a torn-off pane window's bounds (upserted by paneId). */
+  savePaneWindowBounds(contextId: string, paneId: string, bounds: WindowBounds): Promise<void>;
   /** Bind a window (identified by its webContents `senderId`) to a context so
    *  main-side geometry writes land under the right account. Called once on
    *  boot, before the first `saveLayout`. */
@@ -629,6 +687,53 @@ export const appRouter = t.router({
       )
       .mutation(({ input }) =>
         requireWindowServer().openNote(input.noteId, input.bounds, input.contextId)
+      ),
+    // Open a detached pane (a group leaf + all its tabs) in its own window.
+    // Main stores the snapshot in memory keyed by a generated paneId and opens
+    // `?window=pane&paneId=<id>`; the pane renderer fetches it via `getPaneSnapshot`.
+    // The zod-validated payload is cast to `LayoutSnapshot` (same optional-
+    // `undefined` delta as `saveLayout` — safe after zod validation).
+    openPaneWindow: t.procedure
+      .input(
+        z.object({
+          snapshot: LayoutSnapshotSchema,
+          bounds: WindowBoundsSchema.optional(),
+          contextId: z.string().optional()
+        })
+      )
+      .mutation(({ input }) =>
+        requireWindowServer().openPaneWindow(
+          input.snapshot as LayoutSnapshot,
+          input.bounds,
+          input.contextId
+        )
+      ),
+    // Fetch the in-memory snapshot for a pane window id (the pane renderer's
+    // boot-time hydration source). `null` when unknown → empty root pane.
+    getPaneSnapshot: t.procedure
+      .input(z.object({ paneId: z.string() }))
+      .query(({ input }) => requireWindowServer().getPaneSnapshot(input.paneId)),
+    // Resolve a dragged pane at release (move to another window / tear off / none).
+    // Same geometry logic as `releaseTab`, carrying the pane snapshot alongside.
+    releasePane: t.procedure
+      .input(
+        z.object({
+          snapshot: LayoutSnapshotSchema,
+          groupId: z.string(),
+          startScreenX: z.number(),
+          startScreenY: z.number()
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        requireWindowServer().releasePane(
+          {
+            snapshot: input.snapshot as LayoutSnapshot,
+            groupId: input.groupId,
+            startScreenX: input.startScreenX,
+            startScreenY: input.startScreenY
+          },
+          (ctx as { senderId?: number }).senderId
+        )
       ),
     // Resolve a dragged tab at release (move to another window / tear off / none).
     // Main reads the live cursor + every window's OS bounds and applies the
@@ -860,6 +965,23 @@ export const appRouter = t.router({
       .input(z.object({ contextId: z.string(), noteId: z.string(), bounds: WindowBoundsSchema }))
       .mutation(({ input }) =>
         requireSessionServer().saveNoteWindowBounds(input.contextId, input.noteId, input.bounds)
+      ),
+    // Persist a torn-off pane window's layout snapshot (upserted by paneId). The
+    // pane renderer saves its live layout here so its tabs reopen next run.
+    savePaneWindowLayout: t.procedure
+      .input(z.object({ contextId: z.string(), paneId: z.string(), snapshot: LayoutSnapshotSchema }))
+      .mutation(({ input }) =>
+        requireSessionServer().savePaneWindowLayout(
+          input.contextId,
+          input.paneId,
+          input.snapshot as LayoutSnapshot
+        )
+      ),
+    // Persist a torn-off pane window's bounds (upserted by paneId).
+    savePaneWindowBounds: t.procedure
+      .input(z.object({ contextId: z.string(), paneId: z.string(), bounds: WindowBoundsSchema }))
+      .mutation(({ input }) =>
+        requireSessionServer().savePaneWindowBounds(input.contextId, input.paneId, input.bounds)
       ),
     // Bind the calling window to a context (by webContents senderId) so main-
     // side geometry writes land under the right account. Called once on boot.

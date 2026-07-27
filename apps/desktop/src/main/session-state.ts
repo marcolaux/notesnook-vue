@@ -29,6 +29,7 @@ import {
   type SessionFile,
   type WindowBounds,
   emptyContextSession,
+  normalizeContextSession,
   sanitizeBounds
 } from "../contracts/session-state";
 
@@ -104,12 +105,12 @@ export function flushSession(): void {
 
 function getContext(contextId: string): ContextSession {
   ensureLoaded();
-  return cache.contexts[contextId] ?? emptyContextSession();
+  return normalizeContextSession(cache.contexts[contextId] ?? emptyContextSession());
 }
 
 function mutate(contextId: string, fn: (session: ContextSession) => ContextSession): void {
   ensureLoaded();
-  const current = cache.contexts[contextId] ?? emptyContextSession();
+  const current = normalizeContextSession(cache.contexts[contextId] ?? emptyContextSession());
   cache.contexts[contextId] = fn(current);
   cache.lastContext = contextId;
   scheduleWrite();
@@ -139,6 +140,40 @@ export const sessionServer: SessionServer = {
       const noteWindows = s.noteWindows.filter((w) => w.noteId !== noteId);
       noteWindows.push({ noteId, bounds: clean });
       return { ...s, noteWindows };
+    });
+  },
+
+  async savePaneWindowLayout(
+    contextId: string,
+    paneId: string,
+    snapshot: LayoutSnapshot
+  ): Promise<void> {
+    mutate(contextId, (s) => {
+      const paneWindows = s.paneWindows.filter((w) => w.paneId !== paneId);
+      // Keep the existing bounds; only the layout changes here.
+      const existing = s.paneWindows.find((w) => w.paneId === paneId);
+      paneWindows.push({
+        paneId,
+        bounds: existing?.bounds ?? { x: 0, y: 0, width: 1280, height: 800, maximized: false },
+        layout: snapshot
+      });
+      return { ...s, paneWindows };
+    });
+  },
+
+  async savePaneWindowBounds(contextId: string, paneId: string, bounds: WindowBounds): Promise<void> {
+    const clean = sanitizeBounds(bounds);
+    if (!clean) return;
+    mutate(contextId, (s) => {
+      const paneWindows = s.paneWindows.filter((w) => w.paneId !== paneId);
+      const existing = s.paneWindows.find((w) => w.paneId === paneId);
+      paneWindows.push({
+        paneId,
+        bounds: clean,
+        // Preserve the last-saved layout; only bounds change here.
+        layout: existing?.layout ?? { layout: null, groups: {}, tabs: {}, sessions: {}, activeGroupId: "" }
+      });
+      return { ...s, paneWindows };
     });
   },
 
@@ -273,5 +308,53 @@ export function addNoteWindow(contextId: string, noteId: string, bounds?: Window
     const noteWindows = s.noteWindows.filter((w) => w.noteId !== noteId);
     noteWindows.push({ noteId, bounds: bounds ?? { x: 0, y: 0, width: 1280, height: 800, maximized: false } });
     return { ...s, noteWindows };
+  });
+}
+
+/** Track a torn-off pane window: persist its bounds under `contextId` while
+ *  open (the pane renderer saves its layout separately via `savePaneWindowLayout`),
+ *  and remove it from the session's `paneWindows` list on close. */
+export function trackPaneWindow(win: BrowserWindow, paneId: string, contextId: string): void {
+  const save = debounce(() => {
+    if (win.isDestroyed()) return;
+    const bounds = boundsToSave(win);
+    if (!bounds) return;
+    void sessionServer.savePaneWindowBounds(contextId, paneId, bounds);
+  }, 250);
+  win.on("resize", save);
+  win.on("move", save);
+  win.on("maximize", save);
+  win.on("unmaximize", save);
+  win.on("closed", () => {
+    ensureLoaded();
+    const session = cache.contexts[contextId];
+    if (session) {
+      cache.contexts[contextId] = {
+        ...session,
+        paneWindows: (session.paneWindows ?? []).filter((w) => w.paneId !== paneId)
+      };
+      scheduleWrite();
+    }
+  });
+}
+
+/** Add a pane window to the session's `paneWindows` list when it opens (so a
+ *  crash/quit between open and the first geometry event still records it — with
+ *  the layout snapshot the pane renderer will later overwrite via
+ *  `savePaneWindowLayout`). */
+export function addPaneWindow(
+  contextId: string,
+  paneId: string,
+  snapshot: LayoutSnapshot,
+  bounds?: WindowBounds | undefined
+): void {
+  mutate(contextId, (s) => {
+    const paneWindows = s.paneWindows.filter((w) => w.paneId !== paneId);
+    paneWindows.push({
+      paneId,
+      bounds: bounds ?? { x: 0, y: 0, width: 1280, height: 800, maximized: false },
+      layout: snapshot
+    });
+    return { ...s, paneWindows };
   });
 }

@@ -48,7 +48,11 @@
 import { computed, ref } from "vue";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
+import { useContextMenuStore } from "@/stores/context-menu";
+import { separator, type MenuItem } from "@/utils/context-menu";
 import { desktop } from "@/platform/desktop-bridge";
+import { readCurrentContext } from "@/platform/account-context";
+import { Icon } from "@notesnook-vue/ui-vue";
 import {
   TAB_MIME,
   isTabDrag,
@@ -63,6 +67,11 @@ import {
   readNotePayload,
   markNoteDropHandled
 } from "@/utils/note-dnd";
+import {
+  writePanePayload,
+  consumePaneDropHandled,
+  resetPaneDropHandled
+} from "@/utils/pane-dnd";
 
 const props = defineProps<{ groupId: string }>();
 const notes = useNotesStore();
@@ -73,6 +82,7 @@ const layout = useEditorLayoutStore();
 const tabs = computed(() =>
   layout.tabsOf(props.groupId).map((t) => ({
     id: t.id,
+    kind: t.kind,
     noteId: t.noteId ?? "",
     title:
       t.kind === "attachment"
@@ -91,6 +101,227 @@ const activeTabId = computed<string | null>(
  *  the same paper at half intensity (`.editor-tab-inactive`) so it still
  *  blends into its (de-emphasised) editor. */
 const isPaneFocused = computed(() => layout.activeGroupId === props.groupId);
+const contextMenu = useContextMenuStore();
+
+// --- Pane detach (Phase 4.6) ------------------------------------------------
+/** Whether this pane has any portable tabs (note/attachment) — the grip +
+ *  "Detach pane" action are only meaningful then. Search-only / empty panes
+ *  have nothing to detach. */
+const canDetachPane = computed(() =>
+  layout.tabsOf(props.groupId).some((t) => t.kind !== "search")
+);
+
+/** Start screen position of an in-flight pane-grip drag (source strip only).
+ *  Null when no grip drag started here. Used by `dragend` to decide tear-off /
+ *  cross-window move via `releasePane`. */
+const paneDragStart = ref<{ x: number; y: number } | null>(null);
+
+/**
+ * Detach this pane into its own window (command / context-menu path). Captures
+ * the pane's snapshot, asks main to open a pane window for it, then closes the
+ * pane here (the snapshot carries the tabs; `closeGroup` drops them from the
+ * source + collapses the split). No-op when the pane has no portable tabs.
+ */
+function detachPane(): void {
+  const snapshot = layout.detachGroupSnapshot(props.groupId);
+  if (!snapshot) return;
+  const contextId = readCurrentContext();
+  void desktop.window.openPaneWindow.mutate({ snapshot, contextId });
+  layout.closeGroup(props.groupId, true);
+}
+
+/** Grip `dragstart`: write the pane payload + record the start screen position
+ *  so `dragend` can hand it to `releasePane` for geometry resolution. */
+function onGripDragStart(e: DragEvent): void {
+  writePanePayload(e, { groupId: props.groupId });
+  resetPaneDropHandled();
+  const screenX = window.screenX + e.clientX;
+  const screenY = window.screenY + e.clientY;
+  paneDragStart.value = { x: screenX, y: screenY };
+}
+
+/** Grip `dragend`: if no within-window target consumed the drop, ask main to
+ *  resolve the release (move onto another window / tear off into a new pane
+ *  window). The pane is closed here only when a move/tear-off actually
+ *  happened (the snapshot was carried to the target / new window first). */
+async function onGripDragEnd(_e: DragEvent): Promise<void> {
+  const start = paneDragStart.value;
+  paneDragStart.value = null;
+  if (!start) return;
+  // No within-window pane drop targets exist, so this is only false if a future
+  // target set the flag; otherwise proceed to cross-window resolution.
+  if (consumePaneDropHandled()) return;
+  const snapshot = layout.detachGroupSnapshot(props.groupId);
+  if (!snapshot) return;
+  try {
+    const res = await desktop.window.releasePane.mutate({
+      snapshot,
+      groupId: props.groupId,
+      startScreenX: start.x,
+      startScreenY: start.y
+    });
+    if (res.action === "moved" || res.action === "toreOff") layout.closeGroup(props.groupId, true);
+  } catch {
+    // Main unreachable (e.g. tests) — leave the pane in place.
+  }
+}
+
+/** Open a single note tab in its own window (the menu equivalent of the tab
+ *  drag tear-off): asks main to open a note window for it, then closes the
+ *  source tab (move semantics — the note moves to the new window). Note tabs
+ *  only; attachment/search tabs have no noteId. */
+function openTabInNewWindow(tab: { id: string; noteId: string }): void {
+  if (!tab.noteId) return;
+  const contextId = readCurrentContext();
+  void desktop.window.openNote.mutate({ noteId: tab.noteId, contextId });
+  notes.closeTab(tab.id);
+}
+
+/** Copy an `nn://note/<id>` deep link for the tab's note to the clipboard.
+ *  Note tabs only. */
+function copyNoteLink(tab: { noteId: string }): void {
+  if (!tab.noteId) return;
+  void navigator.clipboard.writeText(`nn://note/${tab.noteId}`).catch(() => {
+    /* clipboard unavailable (tests / no focus) — ignore */
+  });
+}
+
+/** Close every tab in this group EXCEPT `keepTabId`. */
+function closeOtherTabs(keepTabId: string): void {
+  for (const t of layout.tabsOf(props.groupId)) {
+    if (t.id !== keepTabId) notes.closeTab(t.id);
+  }
+}
+
+/** Close every tab in this group that comes AFTER `tabId` in strip order. */
+function closeTabsToRight(tabId: string): void {
+  const list = layout.tabsOf(props.groupId);
+  const idx = list.findIndex((t) => t.id === tabId);
+  if (idx < 0) return;
+  for (const t of list.slice(idx + 1)) notes.closeTab(t.id);
+}
+
+/** Close every tab in this group. */
+function closeAllTabsInPane(): void {
+  for (const t of layout.tabsOf(props.groupId)) notes.closeTab(t.id);
+}
+
+/** Tab `contextmenu`: a per-tab action menu. The actions operate on the
+ *  right-clicked tab (NOT necessarily the active one), so close-others /
+ *  close-to-right are relative to where the user clicked. Note-only actions
+ *  (copy link, open in new window) are hidden for attachment/search tabs. The
+ *  pane-level "Detach pane to new window" is included here too so a tab
+ *  right-click can pop the whole pane out without hunting for the grip. */
+function onTabContextMenu(e: MouseEvent, tab: { id: string; kind: string; noteId: string }): void {
+  e.preventDefault();
+  e.stopPropagation();
+  const list = layout.tabsOf(props.groupId);
+  const idx = list.findIndex((t) => t.id === tab.id);
+  const isNote = tab.kind === "note" && !!tab.noteId;
+  const items: MenuItem[] = [
+    { id: "close", label: "Close tab", icon: "x", onSelect: () => notes.closeTab(tab.id) },
+    {
+      id: "close-others",
+      label: "Close others",
+      disabled: list.length <= 1,
+      onSelect: () => closeOtherTabs(tab.id)
+    },
+    {
+      id: "close-right",
+      label: "Close tabs to the right",
+      disabled: idx < 0 || idx >= list.length - 1,
+      onSelect: () => closeTabsToRight(tab.id)
+    },
+    {
+      id: "close-all",
+      label: "Close all tabs in pane",
+      disabled: list.length === 0,
+      onSelect: () => closeAllTabsInPane()
+    }
+  ];
+  if (isNote) {
+    items.push(separator("sep-link"));
+    items.push({
+      id: "copy-link",
+      label: "Copy link to note",
+      icon: "link",
+      onSelect: () => copyNoteLink(tab)
+    });
+    items.push({
+      id: "open-new-window",
+      label: "Open in new window",
+      icon: "external-link",
+      onSelect: () => openTabInNewWindow(tab)
+    });
+  }
+  if (canDetachPane.value) {
+    items.push(separator("sep-pane"));
+    items.push({
+      id: "detach-pane",
+      label: "Detach pane to new window",
+      icon: "external-link",
+      onSelect: () => detachPane()
+    });
+  }
+  contextMenu.show(items, e.clientX, e.clientY);
+}
+
+/** Strip `contextmenu` (empty area only — tabs + grip stop propagation): the
+ *  pane-level action menu. Offered even on an empty pane (New note / Split are
+ *  always useful); "Detach pane" + "Close pane" appear only when meaningful. */
+function onStripContextMenu(e: MouseEvent): void {
+  e.preventDefault();
+  const items: MenuItem[] = [
+    {
+      id: "new-note",
+      label: "New note here",
+      icon: "plus",
+      onSelect: () => {
+        layout.setActiveGroup(props.groupId);
+        void notes.create();
+      }
+    },
+    {
+      id: "split-right",
+      label: "Split pane right",
+      icon: "panel-right",
+      onSelect: () => {
+        layout.setActiveGroup(props.groupId);
+        layout.splitGroup("vertical");
+      }
+    },
+    {
+      id: "split-down",
+      label: "Split pane down",
+      icon: "panel-left",
+      onSelect: () => {
+        layout.setActiveGroup(props.groupId);
+        layout.splitGroup("horizontal");
+      }
+    }
+  ];
+  if (canDetachPane.value) {
+    items.push(separator("sep-detach"));
+    items.push({
+      id: "detach-pane",
+      label: "Detach pane to new window",
+      icon: "external-link",
+      onSelect: () => detachPane()
+    });
+  }
+  if (layout.groupCount > 1) {
+    items.push(separator("sep-close"));
+    items.push({
+      id: "close-pane",
+      label: "Close pane",
+      icon: "x",
+      onSelect: () => layout.closeGroup(props.groupId)
+    });
+  }
+  // Avoid an empty menu on a degenerate state (no items built).
+  if (items.length === 0) return;
+  contextMenu.show(items, e.clientX, e.clientY);
+}
 
 /** Start screen position of the in-flight drag (source strip only — used by
  *  `dragend` to decide tear-off). Null when no drag started here. */
@@ -310,7 +541,26 @@ async function onTabDragEnd(e: DragEvent): Promise<void> {
     @dragover="onStripDragOver($event)"
     @dragleave="onStripDragLeave($event)"
     @drop="onStripDrop($event)"
+    @contextmenu="onStripContextMenu($event)"
   >
+    <!-- Pane detach grip (Phase 4.6): drag outside the window to tear this whole
+         pane off into a new window; drag onto another window to move it there.
+         The pane-level context menu (right-click the EMPTY strip area) and the
+         per-tab context menu both also offer "Detach pane to new window". Only
+         shown when the pane has portable (note/attachment) tabs. -->
+    <button
+      v-if="canDetachPane"
+      type="button"
+      draggable="true"
+      class="titlebar-no-drag flex shrink-0 cursor-grab items-center self-center px-1 text-text-muted opacity-60 hover:text-text hover:opacity-100"
+      title="Drag outside the window to detach this pane into a new window"
+      @dragstart="onGripDragStart($event)"
+      @dragend="onGripDragEnd($event)"
+      @click.stop
+      @contextmenu.stop.prevent
+    >
+      <Icon name="grip-vertical" :size="14" />
+    </button>
     <div
       v-for="tab in tabs"
       :key="tab.id"
@@ -326,6 +576,7 @@ async function onTabDragEnd(e: DragEvent): Promise<void> {
       title="Drag to reorder or move to another pane; drag outside the window to open in a new window"
       @click="layout.activateTab(tab.id)"
       @mousedown="onTabMouseDown($event, tab)"
+      @contextmenu.stop="onTabContextMenu($event, tab)"
       @dragstart="onTabDragStart($event, tab)"
       @dragover="onTabDragOver($event, tab)"
       @drop="onTabDrop($event, tab)"

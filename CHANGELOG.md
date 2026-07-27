@@ -5,6 +5,19 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-07-27
+
+### 🪟 Detach-Pane-into-Window & Tab/Pane Context Menus
+- **Detach a whole editor pane into its own window (Phase 4.6)**:
+  - Tear an entire pane (a group leaf + all its tabs) out into a standalone Electron window via three entry points: the tab-strip **grip handle** (drag outside the window), a **command palette** action (`app:detach-pane`), and the **`Cmd/Ctrl+Shift+K`** shortcut.
+  - Snapshot is transported by `paneId` only (URL) with the full `LayoutSnapshot` held in a main-process in-memory map; the pane window boots the full shell and hydrates via `desktop.window.getPaneSnapshot`, reusing the main-window restore path.
+  - Cross-window **move**: dragging the grip onto another app window imports the pane's tabs as a new split sibling (`app:open-pane-at`); dragging outside every window tears off a new pane window — both reuse the existing `resolveTabRelease` geometry.
+  - Pane windows own their own session-persistence slot (`ContextSession.paneWindows`) and reopen with their tabs + bounds after quit/relaunch.
+  - Reactive-proxy IPC-clone fix: `detachGroupSnapshot` JSON-round-trips the snapshot so Vue reactive proxies structured-clone across Electron IPC.
+- **Per-tab context menu** (right-click a tab): Close / Close others / Close tabs to the right / Close all tabs in pane, plus note-only **Copy link to note** (`nn://note/<id>`) and **Open in new window** (single-tab tear-off via `desktop.window.openNote`), and **Detach pane to new window**.
+- **Pane context menu** (right-click the empty tab-strip area only — tabs and grip stop propagation): **New note here**, **Split pane right/down**, **Detach pane to new window**, and **Close pane** (when more than one pane exists).
+- **Verification**: typecheck (node + web + contracts) clean; 1514 contract tests pass, incl. 15 in `pane-detach.spec.ts`.
+
 ## [0.8.0] - 2026-07-26
 
 ### 🗺️ Scaled Live DOM Minimap Engine & Responsive Sidebar Layout

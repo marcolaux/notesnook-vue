@@ -24,7 +24,9 @@ import { selectBroadcastTargets } from "../contracts/note-broadcast";
 import { openSettingsWindow, isSettingsWindow } from "./settings-window";
 import { openChangelogWindow } from "./changelog-window";
 import { openNoteWindow } from "./note-window";
+import { openPaneWindow as openPaneWindowImpl, getPaneSnapshot as getPaneSnapshotImpl } from "./pane-window";
 import { resolveContextForSender } from "./session-state";
+import type { LayoutSnapshot } from "../contracts/session-state";
 
 /** The main app window — set once it is created so `notifyDataChanged` can
  *  forward cross-window DB-mutation signals to it. */
@@ -45,6 +47,80 @@ export function createWindowServer(preloadPath: string): WindowServer {
     openNote(noteId: string, bounds?: WindowBounds | undefined, contextId?: string | undefined): void {
 
       openNoteWindow(preloadPath, noteId, bounds, contextId);
+    },
+    openPaneWindow(
+      snapshot: LayoutSnapshot,
+      bounds?: WindowBounds | undefined,
+      contextId?: string | undefined
+    ): void {
+      openPaneWindowImpl(preloadPath, snapshot, bounds, contextId);
+    },
+    getPaneSnapshot(paneId: string): LayoutSnapshot | null {
+      return getPaneSnapshotImpl(paneId);
+    },
+    releasePane(
+      input: {
+        snapshot: LayoutSnapshot;
+        groupId: string;
+        startScreenX: number;
+        startScreenY: number;
+      },
+      senderId?: number | undefined
+    ): { action: "none" | "moved" | "toreOff" } {
+      // Same geometry logic as `releaseTab` (reuses `resolveTabRelease`), but
+      // carries the whole pane snapshot alongside so the target window can
+      // import the pane's tabs as a new split sibling, or main can tear the
+      // pane off into a new pane window. The `groupId` is carried for the
+      // source renderer's bookkeeping (it closes the pane on moved/toreOff).
+      const end = screen.getCursorScreenPoint();
+      const windows: WindowRect[] = BrowserWindow.getAllWindows()
+        .filter((w) => !w.isDestroyed())
+        .map((w) => {
+          const b = w.getBounds();
+          return {
+            id: w.webContents.id,
+            rect: { left: b.x, top: b.y, width: b.width, height: b.height } satisfies ScreenRect,
+            isSettings: isSettingsWindow(w)
+          };
+        });
+      const res = resolveTabRelease(
+        input.startScreenX,
+        input.startScreenY,
+        end.x,
+        end.y,
+        windows
+      );
+      if (res.action === "moved" && res.targetId !== undefined) {
+        const target = BrowserWindow.getAllWindows().find(
+          (w) => !w.isDestroyed() && w.webContents.id === res.targetId
+        );
+        if (target) {
+          if (target.isMinimized()) target.restore();
+          target.show();
+          target.focus();
+          // Forward the pane snapshot to the target as client coords (cursor −
+          // target window origin) so it runs the SAME zone logic its in-window
+          // `EditorPane` uses to decide where to split. HTML5 `dataTransfer`
+          // doesn't cross windows, so the target's drop handlers never fire.
+          const tb = target.getBounds();
+          target.webContents.send("app:open-pane-at", {
+            snapshot: input.snapshot,
+            x: end.x - tb.x,
+            y: end.y - tb.y
+          });
+          return { action: "moved" };
+        }
+        // Target vanished between resolve + send → fall through to tear-off.
+      }
+      if (res.action === "toreOff") {
+        // Track the torn-off pane window under the source window's account so
+        // it reopens next run. Best-effort: if the source window isn't bound
+        // yet, the pane window opens but isn't persisted.
+        const contextId = resolveContextForSender(senderId);
+        openPaneWindowImpl(preloadPath, input.snapshot, undefined, contextId);
+        return { action: "toreOff" };
+      }
+      return { action: "none" };
     },
     releaseTab(
       input: { noteId: string; startScreenX: number; startScreenY: number },

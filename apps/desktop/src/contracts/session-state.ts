@@ -119,15 +119,32 @@ export interface NoteWindowRecord {
 }
 
 /**
+ * A torn-off *pane* window — a whole editor pane (a group leaf + all its tabs)
+ * detached into its own window. Unlike a {@link NoteWindowRecord} (one noteId),
+ * a pane window owns a full {@link LayoutSnapshot} (its group + tabs + sessions)
+ * so it rehydrates with all its tabs on reopen-next-run. `paneId` is the
+ * main-process id passed as `?window=pane&paneId=<id>`; it keys the in-memory
+ * snapshot map and the persisted record (one window per paneId).
+ */
+export interface PaneWindowRecord {
+  paneId: string;
+  bounds: WindowBounds;
+  layout: LayoutSnapshot;
+}
+
+/**
  * Per-account session. `mainBounds` is optional — when absent the main window
  * falls back to the `BASE_WINDOW` defaults (fresh install / never sized).
  * `mainWindowOpenTabs` with a `null` layout means "no tabs were open" → the
- * renderer re-`init()`s an empty root pane.
+ * renderer re-`init()`s an empty root pane. `noteWindows` are single-note
+ * torn-off windows; `paneWindows` are whole-pane torn-off windows (each with its
+ * own layout snapshot).
  */
 export interface ContextSession {
   mainBounds?: WindowBounds;
   mainWindowOpenTabs: LayoutSnapshot;
   noteWindows: NoteWindowRecord[];
+  paneWindows: PaneWindowRecord[];
 }
 
 export interface SessionFile {
@@ -232,10 +249,17 @@ export const LayoutSnapshotSchema = z.object({
   activeGroupId: z.string()
 });
 
+export const PaneWindowRecordSchema = z.object({
+  paneId: z.string(),
+  bounds: WindowBoundsSchema,
+  layout: LayoutSnapshotSchema
+});
+
 export const ContextSessionSchema = z.object({
   mainBounds: WindowBoundsSchema.optional(),
   mainWindowOpenTabs: LayoutSnapshotSchema,
-  noteWindows: z.array(NoteWindowRecordSchema)
+  noteWindows: z.array(NoteWindowRecordSchema),
+  paneWindows: z.array(PaneWindowRecordSchema)
 });
 
 export const SessionFileSchema = z.object({
@@ -254,9 +278,23 @@ export function emptyLayoutSnapshot(): LayoutSnapshot {
 }
 
 /** A fresh per-account session: default bounds (omit → main uses BASE_WINDOW),
- *  no tabs, no note windows. */
+ *  no tabs, no note/pane windows. */
 export function emptyContextSession(): ContextSession {
-  return { mainWindowOpenTabs: emptyLayoutSnapshot(), noteWindows: [] };
+  return { mainWindowOpenTabs: emptyLayoutSnapshot(), noteWindows: [], paneWindows: [] };
+}
+
+/**
+ * Normalize a context read from disk so missing arrays (older session files
+ * written before `paneWindows` existed) default to empty arrays rather than
+ * `undefined`. Pass-through for a well-formed session. Pure + shared so main can
+ * use it on every read without re-implementing the defaults.
+ */
+export function normalizeContextSession(session: ContextSession): ContextSession {
+  return {
+    ...session,
+    noteWindows: session.noteWindows ?? [],
+    paneWindows: session.paneWindows ?? []
+  };
 }
 
 /** Group-leaf `groupId`s in tree (pre-order) order. */

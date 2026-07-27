@@ -36,6 +36,29 @@ const appEvents = {
     ipcRenderer.on("app:open-note-at", handler);
     return () => ipcRenderer.removeListener("app:open-note-at", handler);
   },
+  // A pane (group leaf + its tabs) dragged from another window was released over
+  // THIS window. `snapshot` is the pane's LayoutSnapshot; `x`/`y` are the cursor
+  // in THIS window's client coords so the receiver can run the same edge-zone
+  // split logic its in-window `EditorPane` uses. Main forwards this from
+  // `releasePane` when a pane grip drag ends over a different app window.
+  onOpenPaneAt(
+    listener: (payload: {
+      snapshot: import("../contracts/session-state").LayoutSnapshot;
+      x: number;
+      y: number;
+    }) => void
+  ): () => void {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: {
+        snapshot: import("../contracts/session-state").LayoutSnapshot;
+        x: number;
+        y: number;
+      }
+    ) => listener(payload);
+    ipcRenderer.on("app:open-pane-at", handler);
+    return () => ipcRenderer.removeListener("app:open-pane-at", handler);
+  },
   onCloseTab(listener: (tabId: string) => void): () => void {
     const handler = (_event: Electron.IpcRendererEvent, tabId: string) =>
       listener(tabId);

@@ -7,12 +7,14 @@
  *  - Tab by index: `Cmd/Ctrl + 1` .. `8` (1st to 8th tab)
  *  - Last Tab: `Cmd/Ctrl + 9`
  *  - New Tab / Note: `Cmd/Ctrl + T`
+ *  - Detach focused pane to new window: `Cmd/Ctrl + Shift + K` (Phase 4.6)
  */
 import { onMounted, onUnmounted } from "vue";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
 import { desktop } from "@/platform/desktop-bridge";
+import { readCurrentContext } from "@/platform/account-context";
 
 export function useTabShortcuts(): void {
   const layout = useEditorLayoutStore();
@@ -81,6 +83,26 @@ export function useTabShortcuts(): void {
       e.preventDefault();
       e.stopPropagation();
       void notes.create();
+      return;
+    }
+
+    // --- Cmd/Ctrl + Shift + K -> Detach focused pane to new window (Phase 4.6) ---
+    // Captures the focused pane's snapshot, asks main to open a pane window for
+    // it, then closes the pane here (force: even the only pane empties the
+    // source — the tabs went with the snapshot). No-op when the focused pane
+    // has no portable (note/attachment) tabs.
+    if (metaOrCtrl && e.shiftKey && !e.altKey && (e.key === "k" || e.key === "K")) {
+      const groupId = layout.activeGroupId;
+      const hasPortable = layout.tabsOf(groupId).some((t) => t.kind !== "search");
+      if (hasPortable) {
+        e.preventDefault();
+        e.stopPropagation();
+        const snapshot = layout.detachGroupSnapshot(groupId);
+        if (!snapshot) return;
+        const contextId = readCurrentContext();
+        void desktop.window.openPaneWindow.mutate({ snapshot, contextId });
+        layout.closeGroup(groupId, true);
+      }
       return;
     }
   }
