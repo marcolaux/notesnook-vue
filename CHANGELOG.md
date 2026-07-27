@@ -5,6 +5,44 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-07-27
+
+### 👥 Multi-Account: One Window per Account, Simultaneously
+
+Several accounts can now be open at once — **one account per window** — so you can keep a local-only workspace, an upstream Notesnook account, and a self-hosted account side by side without signing out. Each window is its own Electron renderer process with its own encrypted SQLite database, its own keychain namespace, and its own server host config, so an upstream account and a self-hosted account coexist cleanly (core's `Hosts` is a per-process singleton — per-window is the right granularity; two different-host accounts in the *same* window remains impossible).
+
+#### Account switcher (sidebar)
+- A new **account button** in the sidebar footer opens a context menu (rebuilt on each open so it reflects the current registry + active context): **Local mode** (always present, checkmark when active), one row per logged-in account (email + checkmark when active), an **Open in new window ▸** submenu (Local + each account → a fresh full-shell window bound to that context), **Add account**, **Sign out of this account**, and a **Remove account… ▸** submenu (non-active accounts only, destructive).
+- **Switch in-place** is token-based — no password re-entry. The account's auth token lives in its own DB's KV and its master key in the per-context keychain, so switching this window to a known account live-swaps the `Database` and re-reads the user → logged-in, then bumps `contextChangeSignal` so `App.vue` reloads notes/collections. Other windows are untouched (each holds its own in-process context).
+- **Sign out** is non-destructive: it live-swaps back to the local DB + drops to the login screen, keeping the account's DB + token intact for a future switch back. **Local mode** (the switcher tile) swaps to the local DB + enters local mode (skip flag on, shell shows local notes), also keeping the account intact — distinct from Sign out (which shows the login screen).
+- **Remove account** wipes the account's keychain secrets, deletes its encrypted SQLite file (+ journal sidecars, closing any open handle another window holds), best-effort deletes its per-context IndexedDB, and drops the registry entry. The active account is refused.
+
+#### Account registry + per-window plumbing
+- New **`userData/accounts.json`** registry (mirrors the `app-state.json` atomic-persist pattern): `{ contextId, email, serverConfig, label?, lastUsed }` per known account. `"local"` is implicit — always available, never listed, never removable. `hashEmail` is one-way so the email is stored for display. Local-only, never synced.
+- Each window is **pinned to its context at creation** via `?ctx=<contextId>` in the URL (`main/note-window.ts`, `pane-window.ts`, new `account-window.ts`). `bootstrap(contextId?)` reads it (`ctx ?? readWindowContext() ?? readCurrentContext()`) so each window opens its OWN account's encrypted SQLite context. `getCurrentContext()` (already per-process) is the per-window source of truth — auth, session persistence, and App.vue use it (not the shared `localStorage` pointer) so windows don't fight over the shared pointer.
+- **Per-window server config**: `bootstrap.resolveHostsForContext(ctx)` looks the account's `serverConfig` up in the registry so an upstream + a self-hosted account coexist (each window's process holds its own `Hosts`). Local + unknown fall back to the shared `readServerConfig()`.
+
+#### Add account → new login window
+- **"Add account" opens a brand-new window** on the login screen (`?ctx=local&signin=1`) rather than re-arming the login screen in the current window. The caller's window keeps working in its current account while you sign into another. The sign-in window boots the local context (so no cached-account auto-login) and forces the login screen via a new `forceSignIn` ref + `effectiveShowShell = showShell && !(forceSignIn && !isLoggedIn)` getter; the router guard + App.vue route-settling key off `effectiveShowShell` so the sign-in window stays on `/login` until login completes. After sign-in, `isLoggedIn` flips → the shell shows the new account; the caller's window is untouched.
+
+#### Self-hosted login — no restart
+- The old **"Apply and restart"** is gone. `LoginScreen.applyServerConfig()` now validates + persists the chosen server config and returns a boolean — **no `location.reload()`**. `submit()` applies the config *before* `auth.login`, so `switchContext(accountCtx)` → `resolveHostsForContext` falls back to `readServerConfig()` (the just-written custom config) for a brand-new account → its DB is built against the self-hosted hosts → authenticate → `completeLogin` records the config in the registry for next time. Button relabeled `login.apply`. Per-window server config is what made the restart unnecessary.
+
+### 🪟 Multi-Window Restore on Relaunch
+- Quitting and reopening the app now **restores one full-shell window per account that was open at quit** (local + each logged-in account), each pinned to its own context via `?ctx=` and at its saved size/position. Previously only the last-used account's window reopened.
+- `session.json` gains an optional `openMainWindows: string[]` (ordered contextIds with an open main shell window; additive → no version bump, old files fall back to single-window restore). `session-state.ts bindContext` (which fires for full-shell windows on boot *and* re-fires on an in-window context switch) appends the context and installs one `closed` listener per window that removes the window's **current** context (looked up at close time — so a sign-in window that completed into account B drops B, not its first-bound "local"); a `quitting` flag set in `flushSession`/`before-quit` makes quit-driven closes skip the removal so the list survives to next launch. The pure `orderOpenMainWindows(file, validContexts)` helper orders `lastContext` first (it gets the primary tray/updater/deep-link wiring) and filters out removed accounts (valid = `local` ∪ registry contextIds) so a deleted DB is never reopened. The `before-quit` handler now sends `app:before-quit` to **all** windows (each also has a per-window `beforeunload` flush).
+- **Granularity is per-context** (one window per context — matches the one-`mainBounds`-per-context model), not per-window: two windows of the *same* context share one bounds slot, so only one restores. Multi-window forwarding of tray/updater/reminder/data-changed signals to the focused window (vs. the primary) is deferred.
+
+### 🐛 Bug Fixes
+- **Switching to Local from the account switcher while logged in did nothing.** `switchToAccount("local")` looked up the registry entry, but Local is implicit (never listed), so it bailed. Local is now special-cased: live-swap to the local DB + enter local mode (skip flag on, shell shows local notes), keeping the account's DB + token intact — the per-window analogue of Sign out, landing in local mode instead of the login screen.
+- **Blank login window** (`?signin=1` "Add account" path): `emailPlaceholder: "you@example.com"` (en) / `"du@example.com"` (de) broke vue-i18n's message compiler — `@` is linked-message syntax → `SyntaxError: Invalid linked format` → the LoginScreen render aborted → blank. Fixed by escaping as `you{'@'}example.com` / `du{'@'}example.com` in both catalogs (the only `@` occurrences). The LoginScreen also gained a known-accounts row (pre-fills the email + applies that account's `serverConfig` for re-login).
+
+#### Verification
+- `npm run typecheck` (node + web) — clean.
+- `npm run test:contract` — **1579/1579 tests pass** across 107 files (new `account-switcher-menu` 7, `server-config` schema 8, `orderOpenMainWindows` 9, `readWindowContext` cases, `auth` +2 for the Local-switch fix).
+- `npm run build` — clean (8.64s).
+- On-site gates pending (per the headless-first, batch-on-site convention): two windows two accounts simultaneously; switch in-place (token-based, no password); switch to Local while logged in; "Add account" → new login window; add a self-hosted account without restart; quit + relaunch reopens all account windows; close one window manually then quit → only the survivor reopens; remove an account.
+
 ## [0.10.0] - 2026-07-27
 
 ### ⚡ Vector Search Transaction Batching (Phase B) + Diagnostic Logging Gate
