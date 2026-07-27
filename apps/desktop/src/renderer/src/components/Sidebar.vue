@@ -506,7 +506,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
       @dragleave="v.name === 'archive' && onNoteTargetDragLeave('archive', undefined)"
       @drop="v.name === 'archive' && onArchiveNoteDrop($event)"
     >
-      <span class="shrink-0">{{ v.name === 'all' ? t('sidebar.allNotes') : v.label }}</span>
+      <span class="shrink-0">{{ v.name === 'all' ? t('sidebar.allNotes') : t(v.label) }}</span>
       <span
         v-if="v.name === 'archive' && collections.archiveCount > 0"
         class="ml-auto shrink-0 text-[10px] text-text-muted"
@@ -769,7 +769,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
       @dragleave="v.name === 'trash' && onNoteTargetDragLeave('trash', undefined)"
       @drop="v.name === 'trash' && onTrashNoteDrop($event)"
     >
-      <span class="shrink-0">{{ v.label }}</span>
+      <span class="shrink-0">{{ t(v.label) }}</span>
       <span
         v-if="v.name === 'trash' && collections.trashCount > 0"
         class="ml-auto shrink-0 text-[10px] text-text-muted"

@@ -2,6 +2,9 @@ import { computeEmbedding, getAllNoteCentroidEmbeddings } from "./vector-search"
 import type { NoteListItem } from "@/stores/notes";
 import type { NotebookListItem, TagListItem } from "@/utils/collections";
 import type { ColorListItem } from "@/utils/colors";
+import i18n from "@/i18n";
+
+const t = i18n.global.t.bind(i18n.global);
 
 
 export type NodeType = "note" | "tag" | "notebook" | "color";
@@ -628,7 +631,7 @@ export async function buildVisualizerGraph(
             target: n2.id,
             similarity: sim,
             type: "similarity",
-            label: `${Math.round(sim * 100)}% match`
+            label: t("vectorViz.matchPct", { pct: Math.round(sim * 100) })
           });
         }
       }
@@ -695,7 +698,7 @@ export async function buildVisualizerGraph(
     const clusterColor = CLUSTER_COLORS[colorIdx % CLUSTER_COLORS.length] ?? "#6366f1";
     colorIdx++;
 
-    const title = keywords.length > 0 ? keywords.join(" & ") : `Cluster ${cId + 1}`;
+    const title = keywords.length > 0 ? keywords.join(" & ") : t("vectorViz.clusterN", { n: cId + 1 });
 
     clusters.push({
       id: cId,

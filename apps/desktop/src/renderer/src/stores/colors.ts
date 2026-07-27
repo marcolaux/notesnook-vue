@@ -11,6 +11,9 @@ import {
 } from "@/utils/colors";
 import { applyManualOrder, moveIdTo } from "@/utils/sidebar-order";
 import { logger } from "@/utils/logger";
+import i18n from "@/i18n";
+
+const t = i18n.global.t.bind(i18n.global);
 
 /**
  * Colors store (headless) — the color collection for the sidebar's "colors"
@@ -273,10 +276,10 @@ export const useColorsStore = defineStore("colors", () => {
    */
   async function createColor(): Promise<string | null> {
     const usedCodes = new Set(items.value.map((c) => c.colorCode.toLowerCase()));
-    let title = "New color";
+    let title = t("sidebar.newColor");
     let n = 2;
     while (items.value.some((c) => c.title === title)) {
-      title = `New color ${n++}`;
+      title = t("sidebar.newColorN", { n: n++ });
     }
     let code = NEW_COLOR_PALETTE.find((c) => !usedCodes.has(c.toLowerCase()));
     if (!code) {

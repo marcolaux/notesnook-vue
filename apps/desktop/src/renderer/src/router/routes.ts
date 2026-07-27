@@ -47,47 +47,47 @@ export interface ViewEntry {
  * placeholder `hint` doubles as the "coming in Phase X" copy on unbuilt views.
  */
 export const VIEWS: readonly ViewEntry[] = [
-  { path: "/all", name: RouteName.all, label: "All Notes", position: "top" },
-  { path: "/tasks", name: RouteName.tasks, label: "Tasks", position: "top" },
+  { path: "/all", name: RouteName.all, label: "routes.all", position: "top" },
+  { path: "/tasks", name: RouteName.tasks, label: "routes.tasks", position: "top" },
   {
     path: "/notebooks",
     name: RouteName.notebooks,
-    label: "Notebooks",
+    label: "routes.notebooks",
     position: "top",
-    hint: "Notebooks & subnotebooks — coming in Phase 3.2."
+    hint: "routes.notebooksHint"
   },
   {
     path: "/tags",
     name: RouteName.tags,
-    label: "Tags",
+    label: "routes.tags",
     position: "top",
-    hint: "Tags & subtags — coming in Phase 3.2."
+    hint: "routes.tagsHint"
   },
   {
     path: "/monographs",
     name: RouteName.monographs,
-    label: "Monographs",
+    label: "routes.monographs",
     position: "top"
   },
   {
     path: "/archive",
     name: RouteName.archive,
-    label: "Archive",
+    label: "routes.archive",
     position: "top"
   },
   {
     path: "/reminders",
     name: RouteName.reminders,
-    label: "Reminders",
+    label: "routes.reminders",
     position: "top"
   },
   {
     path: "/trash",
     name: RouteName.trash,
-    label: "Trash",
+    label: "routes.trash",
     position: "bottom"
   },
-  { path: "/settings", name: RouteName.settings, label: "Settings", position: "bottom" }
+  { path: "/settings", name: RouteName.settings, label: "routes.settings", position: "bottom" }
 ];
 
 export const topViews = VIEWS.filter((v) => v.position === "top");

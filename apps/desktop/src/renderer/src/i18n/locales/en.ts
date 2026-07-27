@@ -68,7 +68,9 @@ export default {
     createSubTag: "Create sub-tag",
     newNotebook: "New notebook",
     newTag: "New tag",
+    newTagN: "New tag {n}",
     newColor: "New color",
+    newColorN: "New color {n}",
     resetManualOrder: "Reset manual order",
     setIcon: "Set icon",
     removeIcon: "Remove icon",
@@ -82,7 +84,12 @@ export default {
   attachments: {
     previewTitle: "Attachment",
     openExternally: "Open externally",
-    unsupportedPreview: "No in-app preview for this file type."
+    unsupportedPreview: "No in-app preview for this file type.",
+    categoryImage: "Images",
+    categoryVideo: "Videos",
+    categoryAudio: "Audio",
+    categoryDocument: "Documents",
+    categoryFile: "Files"
   },
   linkNote: {
     searchPlaceholder: "Search notes or enter URL…",
@@ -473,7 +480,9 @@ export default {
     typeNote: "note",
     typeTag: "tag",
     typeNotebook: "notebook",
-    typeColor: "color"
+    typeColor: "color",
+    matchPct: "{pct}% match",
+    clusterN: "Cluster {n}"
   },
   dbLocked: {
     headline: "Another instance is using this database",
@@ -550,6 +559,7 @@ export default {
     snoozeTomorrow: "Until tomorrow 9am"
   },
   routes: {
+    all: "All Notes",
     tasks: "Tasks",
     notebooks: "Notebooks",
     tags: "Tags",
@@ -557,6 +567,7 @@ export default {
     archive: "Archive",
     reminders: "Reminders",
     trash: "Trash",
+    settings: "Settings",
     notebooksHint: "Notebooks & subnotebooks — coming in Phase 3.2.",
     tagsHint: "Tags & subtags — coming in Phase 3.2."
   },
@@ -767,6 +778,119 @@ export default {
     groupSearchTab: "Search tab",
     groupAttachment: "Attachment",
     groupRecent: "Recent"
+  },
+  // Phase 7.1 Batch 6 — command palette titles, context menus, status/updater.
+  // `command.*` keys are stored in `Command.title` and resolved at omnibar render
+  // (`te(cmd.title) ? t(cmd.title) : cmd.title`) so palette labels localise +
+  // react to locale switch. The `Go to {label}` + `newNoteFrom`/`newTaskFrom`
+  // are interpolated snapshots (registered once per template/view reload).
+  command: {
+    newNote: "New note",
+    newTask: "New task",
+    newTemplate: "New template",
+    saveAsTemplate: "Save as template",
+    removeTemplate: "Remove template",
+    closeTab: "Close tab",
+    closeTabAndTrash: "Close tab and move to trash",
+    splitEditorRight: "Split editor right",
+    splitEditorDown: "Split editor down",
+    closeEditorPane: "Close editor pane",
+    detachPane: "Detach pane to new window",
+    focusNextPane: "Focus next pane",
+    goBack: "Go back",
+    goForward: "Go forward",
+    nextTab: "Next tab",
+    previousTab: "Previous tab",
+    logOut: "Log out",
+    signIn: "Sign in",
+    reloadWindow: "Reload window",
+    searchNotes: "Search notes",
+    findInNote: "Find in note",
+    toggleSidebar: "Toggle sidebar",
+    toggleNotesList: "Toggle notes list",
+    toggleToc: "Toggle table of contents",
+    toggleProperties: "Toggle properties panel",
+    toggleNoteHistory: "Toggle note history",
+    toggleFocusMode: "Toggle focus mode",
+    syncNow: "Sync now",
+    checkForUpdates: "Check for updates",
+    downloadUpdate: "Download update",
+    installUpdateRestart: "Install update and restart",
+    toggleSpellCheck: "Toggle spell check",
+    publishNote: "Publish note",
+    unpublishNote: "Unpublish note",
+    copyMonographUrl: "Copy monograph URL",
+    openMonographInBrowser: "Open monograph in browser",
+    openSettings: "Open Settings",
+    goTo: "Go to {label}",
+    newNoteFrom: "New note from {title}",
+    newTaskFrom: "New task from {title}"
+  },
+  // Context-menu entry labels (built fresh on each right-click → reactive
+  // enough). Reuses `archive.*` / `monographs.*` / `editorToolbar.*` where the
+  // exact label already exists; `contextMenu.*` holds the rest + the confirm
+  // dialogs. The plural `moveToTrashConfirm` is a vue-i18n plural array.
+  contextMenu: {
+    noColor: "No color",
+    newColor: "New color…",
+    createTag: "Create “{q}”",
+    createNotebook: "Create “{q}”",
+    unpublishNote: "Unpublish note",
+    copyMonographUrl: "Copy monograph URL",
+    openInBrowser: "Open in browser",
+    openInNewWindow: "Open in new window",
+    openInSplitRight: "Open in split right",
+    openInSplitDown: "Open in split down",
+    remindMe: "Remind me…",
+    color: "Color",
+    tags: "Tags",
+    notebooks: "Notebooks",
+    archive: "Archive",
+    pinToTop: "Pin to top",
+    unpinFromTop: "Unpin from top",
+    addToShortcuts: "Add to shortcuts",
+    removeFromShortcuts: "Remove from shortcuts",
+    duplicate: "Duplicate",
+    newSubNotebook: "New sub-notebook",
+    rename: "Rename…",
+    setIcon: "Set icon…",
+    removeIcon: "Remove icon",
+    deleteNotebook: "Delete notebook",
+    deleteTag: "Delete tag",
+    deleteColor: "Delete color",
+    open: "Open",
+    resetManualOrder: "Reset manual order",
+    searchTags: "Search tags…",
+    searchNotebooks: "Search notebooks…",
+    moveToTrashSingle: "Move this note to trash? You can restore it from the trash later.",
+    // vue-i18n v11 plural: a `|`-separated string selected by `t(key, n)`.
+    // (The legacy array form `["one","many"]` is a NOOP in composition `t`.)
+    moveToTrashConfirm:
+      "Move {n} note to trash? You can restore them from the trash later. | Move {n} notes to trash? You can restore them from the trash later.",
+    deleteNotebookConfirm: "Delete “{title}” and all of its sub-notebooks? Notes inside are moved to trash.",
+    deleteTagConfirm: "Delete the tag “{title}”? It is removed from all notes (the notes themselves are kept).",
+    deleteColorConfirm: "Delete the color “{title}”? It is removed from all notes (the notes themselves are kept)."
+  },
+  status: {
+    neverSynced: "Never synced",
+    justNow: "Just now",
+    minutesAgo: "{n}m ago",
+    hoursAgo: "{n}h ago",
+    yesterday: "Yesterday",
+    syncing: "Syncing…",
+    syncError: "Sync error",
+    unsynced: "Unsynced",
+    localOnly: "Local only",
+    relativeUnsynced: "{relative} • unsynced"
+  },
+  updater: {
+    checking: "Checking for updates…",
+    upToDate: "Up to date",
+    updateAvailable: "Update available",
+    updateAvailableVersion: "Update available (v{version})",
+    downloading: "Downloading… ({progress}%)",
+    readyToInstall: "Ready to install",
+    readyToInstallVersion: "Ready to install (v{version})"
   },
   login: {
     twoFactor: "Two-factor verification",

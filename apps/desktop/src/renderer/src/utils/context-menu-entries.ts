@@ -2,14 +2,14 @@
  * Pure context-menu entry builders (headless) — turn a right-clicked item
  * (note / notebook / tag / shortcut) + a small bag of action callbacks into the
  * flat `MenuItem[]` the {@link useContextMenuStore} overlay renders. Kept
- * framework-agnostic (no Pinia, no db, no vue-i18n) so they are unit-tested in
- * isolation (see `tests/contract/context-menu-entries.spec.ts`); the components
- * pass the real store/bridge methods as the deps.
+ * framework-agnostic (no Pinia, no db) so they are unit-tested in isolation
+ * (see `tests/contract/context-menu-entries.spec.ts`); the components pass the
+ * real store/bridge methods as the deps.
  *
- * Labels are English literals for now (the codebase is mid-i18n — NotesList /
- * CommandPalette still hardcode English too; migrating these is the Phase 7.1
- * sweep, not a context-menu concern). `checked` mirrors the item's current
- * state so toggle entries show a leading ✓; `danger` marks destructive entries.
+ * Labels resolve through `i18n.global.t` (the menu is rebuilt on each right-
+ * click, so labels localise + track the active locale without reactive wiring).
+ * `checked` mirrors the item's current state so toggle entries show a leading
+ * ✓; `danger` marks destructive entries.
  *
  * v2: the note-row menu carries Color / Tags / Notebooks submenus (one level
  * deep). The Tags + Notebooks submenus have a search field + a live "Create …"
@@ -22,6 +22,9 @@
  * only deletes on `true`.
  */
 import { separator, type MenuItem, type SubmenuSpec } from "@/utils/context-menu";
+import i18n from "@/i18n";
+
+const t = i18n.global.t.bind(i18n.global);
 
 /** Options for the generic confirm dialog (see `useDialogStore`). */
 export interface ConfirmOpts {
@@ -144,7 +147,7 @@ export function buildColorSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps): Sub
       const items: MenuItem[] = [
         {
           id: "no-color",
-          label: "No color",
+          label: t("contextMenu.noColor"),
           checked: note.colorId === null,
           onSelect: () => deps.clearColor(note.id)
         }
@@ -178,7 +181,7 @@ export function buildColorSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps): Sub
       }
       items.push(
         separator("new-color-sep"),
-        { id: "new-color", label: "New color…", onSelect: () => deps.createColor(note.id) }
+        { id: "new-color", label: t("contextMenu.newColor"), onSelect: () => deps.createColor(note.id) }
       );
       return items;
     }
@@ -199,30 +202,30 @@ function matchesQuery(title: string, query: string): boolean {
  */
 export function buildTagsSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps): SubmenuSpec {
   return {
-    search: { placeholder: "Search tags…" },
+    search: { placeholder: t("contextMenu.searchTags") },
     build: (query) => {
       const q = query.trim();
       const items: MenuItem[] = deps.tags
-        .filter((t) => q === "" || matchesQuery(t.title, q))
-        .map((t) => {
-          const assigned = note.tagIds.includes(t.id);
+        .filter((tg) => q === "" || matchesQuery(tg.title, q))
+        .map((tg) => {
+          const assigned = note.tagIds.includes(tg.id);
           return {
-            id: t.id,
-            label: t.title,
+            id: tg.id,
+            label: tg.title,
             checked: assigned,
             keepOpen: true,
-            onSelect: () => (assigned ? deps.removeTag(t.id, note.id) : deps.addTag(t.id, note.id))
+            onSelect: () => (assigned ? deps.removeTag(tg.id, note.id) : deps.addTag(tg.id, note.id))
           };
         });
       // Offer to create a tag with the typed title only when it is non-empty and
       // not an exact match of an existing tag (case-insensitive).
-      const exact = deps.tags.some((t) => t.title.toLowerCase() === q.toLowerCase());
+      const exact = deps.tags.some((tg) => tg.title.toLowerCase() === q.toLowerCase());
       if (q !== "" && !exact) {
         items.push(
           separator("create-sep"),
           {
             id: "create-tag",
-            label: `Create “${q}”`,
+            label: t("contextMenu.createTag", { q }),
             onSelect: () => deps.createTag(q, note.id)
           }
         );
@@ -240,7 +243,7 @@ export function buildTagsSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps): Subm
  */
 export function buildNotebooksSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps): SubmenuSpec {
   return {
-    search: { placeholder: "Search notebooks…" },
+    search: { placeholder: t("contextMenu.searchNotebooks") },
     build: (query) => {
       const q = query.trim();
       const items: MenuItem[] = deps.notebooks
@@ -261,7 +264,7 @@ export function buildNotebooksSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps):
           separator("create-sep"),
           {
             id: "create-notebook",
-            label: `Create “${q}”`,
+            label: t("contextMenu.createNotebook", { q }),
             onSelect: () => deps.createNotebook(q, note.id)
           }
         );
@@ -298,67 +301,67 @@ export function buildNoteMenu(note: NoteMenuTarget, deps: NoteMenuDeps): MenuIte
     ? [
         {
           id: "unpublish",
-          label: "Unpublish note",
+          label: t("contextMenu.unpublishNote"),
           icon: "trash-2",
           danger: true,
           onSelect: async () => {
             const ok = await deps.confirm({
-              title: "Unpublish note",
-              message: "This note will no longer be public. The link will stop working.",
-              confirmLabel: "Unpublish",
+              title: t("editorToolbar.unpublishConfirmTitle"),
+              message: t("editorToolbar.unpublishConfirmMsg"),
+              confirmLabel: t("editorToolbar.unpublishConfirmLabel"),
               danger: true
             });
             if (ok) await deps.unpublishNote(note.id);
           }
         },
-        { id: "copy-url", label: "Copy monograph URL", icon: "link", onSelect: () => deps.copyMonographUrl(note.id) },
-        { id: "open-monograph", label: "Open in browser", icon: "external-link", onSelect: () => deps.openMonograph(note.id) }
+        { id: "copy-url", label: t("contextMenu.copyMonographUrl"), icon: "link", onSelect: () => deps.copyMonographUrl(note.id) },
+        { id: "open-monograph", label: t("contextMenu.openInBrowser"), icon: "external-link", onSelect: () => deps.openMonograph(note.id) }
       ]
     : [
         {
           id: "publish",
-          label: "Publish note",
+          label: t("command.publishNote"),
           icon: "globe",
           onSelect: () => deps.publishNote(note.id, note.title)
         }
       ];
   return [
-    { id: "open-window", label: "Open in new window", onSelect: () => deps.openInWindow(note.id) },
-    { id: "split-right", label: "Open in split right", onSelect: () => deps.openInSplit(note.id, "right") },
-    { id: "split-down", label: "Open in split down", onSelect: () => deps.openInSplit(note.id, "bottom") },
+    { id: "open-window", label: t("contextMenu.openInNewWindow"), onSelect: () => deps.openInWindow(note.id) },
+    { id: "split-right", label: t("contextMenu.openInSplitRight"), onSelect: () => deps.openInSplit(note.id, "right") },
+    { id: "split-down", label: t("contextMenu.openInSplitDown"), onSelect: () => deps.openInSplit(note.id, "bottom") },
     separator("sep-1"),
     {
       id: "toggle-pinned",
-      label: note.pinned ? "Unpin from top" : "Pin to top",
+      label: note.pinned ? t("contextMenu.unpinFromTop") : t("contextMenu.pinToTop"),
       checked: note.pinned,
       onSelect: () => deps.togglePinned(note.id)
     },
     {
       id: "toggle-favorite",
-      label: note.favorite ? "Remove from shortcuts" : "Add to shortcuts",
+      label: note.favorite ? t("contextMenu.removeFromShortcuts") : t("contextMenu.addToShortcuts"),
       checked: note.favorite,
       onSelect: () => deps.toggleFavorite(note.id)
     },
-    { id: "remind-me", label: "Remind me…", onSelect: () => deps.remindMe(note.id, note.title) },
+    { id: "remind-me", label: t("contextMenu.remindMe"), onSelect: () => deps.remindMe(note.id, note.title) },
     // The publish section (separator + items) drops out entirely in local-only
     // mode (`canPublish === false`); `sep-2` stays as the divider before
     // Color/Tags/Notebooks either way, so no doubled separator.
     ...(deps.canPublish === false ? [] : [separator("publish-sep"), ...publishItems]),
     separator("sep-2"),
-    { id: "color", label: "Color", submenu: buildColorSubmenu(note, deps) },
-    { id: "tags", label: "Tags", submenu: buildTagsSubmenu(note, deps) },
-    { id: "notebooks", label: "Notebooks", submenu: buildNotebooksSubmenu(note, deps) },
+    { id: "color", label: t("contextMenu.color"), submenu: buildColorSubmenu(note, deps) },
+    { id: "tags", label: t("contextMenu.tags"), submenu: buildTagsSubmenu(note, deps) },
+    { id: "notebooks", label: t("contextMenu.notebooks"), submenu: buildNotebooksSubmenu(note, deps) },
     separator("sep-3"),
-    { id: "archive", label: "Archive", onSelect: () => deps.archiveNote(note.id) },
+    { id: "archive", label: t("contextMenu.archive"), onSelect: () => deps.archiveNote(note.id) },
     {
       id: "delete",
-      label: "Move to trash",
+      label: t("archive.moveToTrash"),
       danger: true,
       onSelect: async () => {
         const ok = await deps.confirm({
-          title: "Move to trash",
-          message: `Move this note to trash? You can restore it from the trash later.`,
-          confirmLabel: "Move to trash",
+          title: t("archive.moveToTrash"),
+          message: t("contextMenu.moveToTrashSingle"),
+          confirmLabel: t("archive.moveToTrash"),
           danger: true
         });
         if (ok) await deps.deleteNote(note.id);
@@ -429,7 +432,7 @@ export function buildMultiColorSubmenu(sel: MultiMenuSelection, deps: MultiNoteM
       const items: MenuItem[] = [
         {
           id: "no-color",
-          label: "No color",
+          label: t("contextMenu.noColor"),
           checked: sel.colorId === null,
           onSelect: () => deps.clearColorMany(sel.ids)
         }
@@ -462,7 +465,7 @@ export function buildMultiColorSubmenu(sel: MultiMenuSelection, deps: MultiNoteM
       }
       items.push(
         separator("new-color-sep"),
-        { id: "new-color", label: "New color…", onSelect: () => deps.createColorMany(sel.ids) }
+        { id: "new-color", label: t("contextMenu.newColor"), onSelect: () => deps.createColorMany(sel.ids) }
       );
       return items;
     }
@@ -475,28 +478,28 @@ export function buildMultiColorSubmenu(sel: MultiMenuSelection, deps: MultiNoteM
  *  in one open. A "Create …" entry creates a tag + adds it to all. */
 export function buildMultiTagsSubmenu(sel: MultiMenuSelection, deps: MultiNoteMenuDeps): SubmenuSpec {
   return {
-    search: { placeholder: "Search tags…" },
+    search: { placeholder: t("contextMenu.searchTags") },
     build: (query) => {
       const q = query.trim();
       const items: MenuItem[] = deps.tags
-        .filter((t) => q === "" || matchesQuery(t.title, q))
-        .map((t) => {
-          const allHave = sel.tagAllHave.has(t.id);
+        .filter((tg) => q === "" || matchesQuery(tg.title, q))
+        .map((tg) => {
+          const allHave = sel.tagAllHave.has(tg.id);
           return {
-            id: t.id,
-            label: t.title,
+            id: tg.id,
+            label: tg.title,
             checked: allHave,
             keepOpen: true,
-            onSelect: () => (allHave ? deps.removeTagToMany(t.id, sel.ids) : deps.addTagToMany(t.id, sel.ids))
+            onSelect: () => (allHave ? deps.removeTagToMany(tg.id, sel.ids) : deps.addTagToMany(tg.id, sel.ids))
           };
         });
-      const exact = deps.tags.some((t) => t.title.toLowerCase() === q.toLowerCase());
+      const exact = deps.tags.some((tg) => tg.title.toLowerCase() === q.toLowerCase());
       if (q !== "" && !exact) {
         items.push(
           separator("create-sep"),
           {
             id: "create-tag",
-            label: `Create “${q}”`,
+            label: t("contextMenu.createTag", { q }),
             onSelect: () => deps.createTagMany(q, sel.ids)
           }
         );
@@ -512,7 +515,7 @@ export function buildMultiTagsSubmenu(sel: MultiMenuSelection, deps: MultiNoteMe
  *  a notebook + adds all selected notes to it. */
 export function buildMultiNotebooksSubmenu(sel: MultiMenuSelection, deps: MultiNoteMenuDeps): SubmenuSpec {
   return {
-    search: { placeholder: "Search notebooks…" },
+    search: { placeholder: t("contextMenu.searchNotebooks") },
     build: (query) => {
       const q = query.trim();
       const items: MenuItem[] = deps.notebooks
@@ -534,7 +537,7 @@ export function buildMultiNotebooksSubmenu(sel: MultiMenuSelection, deps: MultiN
           separator("create-sep"),
           {
             id: "create-notebook",
-            label: `Create “${q}”`,
+            label: t("contextMenu.createNotebook", { q }),
             onSelect: () => deps.createNotebookMany(q, sel.ids)
           }
         );
@@ -561,26 +564,26 @@ export function buildMultiNotebooksSubmenu(sel: MultiMenuSelection, deps: MultiN
  */
 export function buildMultiNoteMenu(sel: MultiMenuSelection, deps: MultiNoteMenuDeps): MenuItem[] {
   return [
-    { id: "pin", label: "Pin to top", onSelect: () => deps.setPinned(sel.ids, true) },
-    { id: "unpin", label: "Unpin from top", onSelect: () => deps.setPinned(sel.ids, false) },
-    { id: "favorite", label: "Add to shortcuts", onSelect: () => deps.setFavorite(sel.ids, true) },
-    { id: "unfavorite", label: "Remove from shortcuts", onSelect: () => deps.setFavorite(sel.ids, false) },
+    { id: "pin", label: t("contextMenu.pinToTop"), onSelect: () => deps.setPinned(sel.ids, true) },
+    { id: "unpin", label: t("contextMenu.unpinFromTop"), onSelect: () => deps.setPinned(sel.ids, false) },
+    { id: "favorite", label: t("contextMenu.addToShortcuts"), onSelect: () => deps.setFavorite(sel.ids, true) },
+    { id: "unfavorite", label: t("contextMenu.removeFromShortcuts"), onSelect: () => deps.setFavorite(sel.ids, false) },
     separator("sep-1"),
-    { id: "color", label: "Color", submenu: buildMultiColorSubmenu(sel, deps) },
-    { id: "tags", label: "Tags", submenu: buildMultiTagsSubmenu(sel, deps) },
-    { id: "notebooks", label: "Notebooks", submenu: buildMultiNotebooksSubmenu(sel, deps) },
+    { id: "color", label: t("contextMenu.color"), submenu: buildMultiColorSubmenu(sel, deps) },
+    { id: "tags", label: t("contextMenu.tags"), submenu: buildMultiTagsSubmenu(sel, deps) },
+    { id: "notebooks", label: t("contextMenu.notebooks"), submenu: buildMultiNotebooksSubmenu(sel, deps) },
     separator("sep-2"),
-    { id: "duplicate", label: "Duplicate", onSelect: () => deps.duplicateMany(sel.ids) },
-    { id: "archive", label: "Archive", onSelect: () => deps.archiveMany(sel.ids) },
+    { id: "duplicate", label: t("contextMenu.duplicate"), onSelect: () => deps.duplicateMany(sel.ids) },
+    { id: "archive", label: t("contextMenu.archive"), onSelect: () => deps.archiveMany(sel.ids) },
     {
       id: "delete",
-      label: "Move to trash",
+      label: t("archive.moveToTrash"),
       danger: true,
       onSelect: async () => {
         const ok = await deps.confirm({
-          title: "Move to trash",
-          message: `Move ${sel.ids.length} notes to trash? You can restore them from the trash later.`,
-          confirmLabel: "Move to trash",
+          title: t("archive.moveToTrash"),
+          message: t("contextMenu.moveToTrashConfirm", sel.ids.length),
+          confirmLabel: t("archive.moveToTrash"),
           danger: true
         });
         if (ok) await deps.deleteMany(sel.ids);
@@ -631,38 +634,38 @@ export function buildNotebookMenu(
 ): MenuItem[] {
   const isPinned = deps.isShortcut(notebook.id);
   return [
-    { id: "new-sub", label: "New sub-notebook", onSelect: () => deps.createSubNotebook(notebook.id) },
+    { id: "new-sub", label: t("contextMenu.newSubNotebook"), onSelect: () => deps.createSubNotebook(notebook.id) },
     separator("sep-1"),
     {
       id: "toggle-shortcut",
-      label: isPinned ? "Remove from shortcuts" : "Add to shortcuts",
+      label: isPinned ? t("contextMenu.removeFromShortcuts") : t("contextMenu.addToShortcuts"),
       checked: isPinned,
       onSelect: () => deps.toggleShortcut(notebook.id)
     },
     {
       id: "toggle-pinned-top",
-      label: notebook.pinned ? "Unpin from top" : "Pin to top",
+      label: notebook.pinned ? t("contextMenu.unpinFromTop") : t("contextMenu.pinToTop"),
       checked: notebook.pinned,
       onSelect: () => deps.togglePinnedToTop(notebook.id)
     },
     separator("sep-2"),
-    { id: "rename", label: "Rename…", onSelect: () => deps.rename(notebook.id, notebook.title) },
-    { id: "set-icon", label: "Set icon…", onSelect: () => deps.setIcon(notebook.id) },
+    { id: "rename", label: t("contextMenu.rename"), onSelect: () => deps.rename(notebook.id, notebook.title) },
+    { id: "set-icon", label: t("contextMenu.setIcon"), onSelect: () => deps.setIcon(notebook.id) },
     {
       id: "remove-icon",
-      label: "Remove icon",
+      label: t("contextMenu.removeIcon"),
       disabled: !notebook.icon,
       onSelect: () => deps.removeIcon(notebook.id)
     },
     {
       id: "delete",
-      label: "Delete notebook",
+      label: t("contextMenu.deleteNotebook"),
       danger: true,
       onSelect: async () => {
         const ok = await deps.confirm({
-          title: "Delete notebook",
-          message: `Delete “${notebook.title}” and all of its sub-notebooks? Notes inside are moved to trash.`,
-          confirmLabel: "Delete",
+          title: t("contextMenu.deleteNotebook"),
+          message: t("contextMenu.deleteNotebookConfirm", { title: notebook.title }),
+          confirmLabel: t("common.delete"),
           danger: true
         });
         if (ok) await deps.deleteNotebook(notebook.id);
@@ -699,21 +702,21 @@ export function buildTagMenu(tag: TagMenuTarget, deps: TagMenuDeps): MenuItem[] 
   return [
     {
       id: "toggle-shortcut",
-      label: isPinned ? "Remove from shortcuts" : "Add to shortcuts",
+      label: isPinned ? t("contextMenu.removeFromShortcuts") : t("contextMenu.addToShortcuts"),
       checked: isPinned,
       onSelect: () => deps.toggleShortcut(tag.id)
     },
     separator("sep-1"),
-    { id: "rename", label: "Rename…", onSelect: () => deps.rename(tag.id, tag.title) },
+    { id: "rename", label: t("contextMenu.rename"), onSelect: () => deps.rename(tag.id, tag.title) },
     {
       id: "delete",
-      label: "Delete tag",
+      label: t("contextMenu.deleteTag"),
       danger: true,
       onSelect: async () => {
         const ok = await deps.confirm({
-          title: "Delete tag",
-          message: `Delete the tag “${tag.title}”? It is removed from all notes (the notes themselves are kept).`,
-          confirmLabel: "Delete",
+          title: t("contextMenu.deleteTag"),
+          message: t("contextMenu.deleteTagConfirm", { title: tag.title }),
+          confirmLabel: t("common.delete"),
           danger: true
         });
         if (ok) await deps.deleteTag(tag.id);
@@ -772,26 +775,26 @@ export function buildColorRowMenu(
   return [
     {
       id: "toggle-shortcut",
-      label: isPinned ? "Remove from shortcuts" : "Add to shortcuts",
+      label: isPinned ? t("contextMenu.removeFromShortcuts") : t("contextMenu.addToShortcuts"),
       checked: isPinned,
       onSelect: () => deps.toggleShortcut(color.id)
     },
     separator("sep-1"),
     {
       id: "rename",
-      label: "Rename…",
+      label: t("contextMenu.rename"),
       onSelect: () => deps.rename(color.id, color.title)
     },
     separator("sep-2"),
     {
       id: "delete",
-      label: "Delete color",
+      label: t("contextMenu.deleteColor"),
       danger: true,
       onSelect: async () => {
         const ok = await deps.confirm({
-          title: "Delete color",
-          message: `Delete the color “${color.title}”? It is removed from all notes (the notes themselves are kept).`,
-          confirmLabel: "Delete",
+          title: t("contextMenu.deleteColor"),
+          message: t("contextMenu.deleteColorConfirm", { title: color.title }),
+          confirmLabel: t("common.delete"),
           danger: true
         });
         if (ok) await deps.deleteColor(color.id);
@@ -831,11 +834,11 @@ export function buildShortcutMenu(
   deps: ShortcutMenuDeps
 ): MenuItem[] {
   return [
-    { id: "open", label: "Open", onSelect: () => deps.open(sc) },
+    { id: "open", label: t("contextMenu.open"), onSelect: () => deps.open(sc) },
     separator("sep-1"),
     {
       id: "remove",
-      label: "Remove from shortcuts",
+      label: t("contextMenu.removeFromShortcuts"),
       onSelect: () => deps.removeShortcut(sc.id)
     }
   ];
@@ -875,7 +878,7 @@ export function buildSidebarSectionMenu(
   return [
     {
       id: "reset-order",
-      label: "Reset manual order",
+      label: t("contextMenu.resetManualOrder"),
       disabled: !deps.hasManualOrder,
       onSelect: () => deps.resetOrder()
     }

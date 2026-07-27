@@ -19,6 +19,9 @@ registry (see `packages/ui-vue/src/components/icon-registry.ts`).
 */
 import type { Attachment, Database } from "@notesnook-vue/contracts";
 import type { FilteredSelector } from "@notesnook-vue/contracts";
+import i18n from "@/i18n";
+
+const t = i18n.global.t.bind(i18n.global);
 
 export type AttachmentFilter =
   | "all"
@@ -107,14 +110,14 @@ export function mimeCategoryIcon(cat: MimeCategory): string {
 export function mimeCategoryLabel(cat: MimeCategory): string {
   switch (cat) {
     case "image":
-      return "Images";
+      return t("attachments.categoryImage");
     case "video":
-      return "Videos";
+      return t("attachments.categoryVideo");
     case "audio":
-      return "Audio";
+      return t("attachments.categoryAudio");
     case "document":
-      return "Documents";
+      return t("attachments.categoryDocument");
     default:
-      return "Files";
+      return t("attachments.categoryFile");
   }
 }

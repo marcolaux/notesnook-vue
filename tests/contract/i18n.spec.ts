@@ -97,6 +97,43 @@ describe("i18n instance", () => {
     // rather than throwing — translation is total-safe.
     expect(i18n.global.t("sidebar.doesNotExist")).toBe("sidebar.doesNotExist");
   });
+
+  it("resolves the Batch 6 command/contextMenu/status/updater keys", () => {
+    expect(i18n.global.t("command.newNote")).toBe("New note");
+    expect(i18n.global.t("command.openSettings")).toBe("Open Settings");
+    expect(i18n.global.t("command.goTo", { label: "Archive" })).toBe("Go to Archive");
+    expect(i18n.global.t("command.newNoteFrom", { title: "Daily" })).toBe("New note from Daily");
+    expect(i18n.global.t("contextMenu.moveToTrashSingle")).toBe(
+      "Move this note to trash? You can restore it from the trash later."
+    );
+    expect(i18n.global.t("contextMenu.unpublishNote")).toBe("Unpublish note");
+    expect(i18n.global.t("contextMenu.color")).toBe("Color");
+    expect(i18n.global.t("status.localOnly")).toBe("Local only");
+    expect(i18n.global.t("status.minutesAgo", { n: 5 })).toBe("5m ago");
+    expect(i18n.global.t("status.relativeUnsynced", { relative: "5m ago" })).toBe(
+      "5m ago • unsynced"
+    );
+    expect(i18n.global.t("updater.updateAvailableVersion", { version: "1.2.3" })).toBe(
+      "Update available (v1.2.3)"
+    );
+    expect(i18n.global.t("updater.downloading", { progress: 42 })).toBe("Downloading… (42%)");
+    // `te` gates the omnibar command-title resolver: key strings return true,
+    // already-resolved snapshots (e.g. "Go to Archive") return false.
+    expect(i18n.global.te("command.newNote")).toBe(true);
+    expect(i18n.global.te("Go to Archive")).toBe(false);
+  });
+
+  it("resolves the contextMenu.moveToTrashConfirm plural via the `|` string + count", () => {
+    // vue-i18n v11: array plural messages are a NOOP in composition `t`; the
+    // `|`-separated string is the supported plural form. `{n}` auto-binds to
+    // the count passed as the 2nd arg.
+    expect(i18n.global.t("contextMenu.moveToTrashConfirm", 1)).toBe(
+      "Move 1 note to trash? You can restore them from the trash later."
+    );
+    expect(i18n.global.t("contextMenu.moveToTrashConfirm", 3)).toBe(
+      "Move 3 notes to trash? You can restore them from the trash later."
+    );
+  });
 });
 
 describe("setLocale", () => {

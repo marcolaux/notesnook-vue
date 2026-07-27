@@ -49,7 +49,6 @@ import {
   type Command,
   type CommandContext
 } from "@/commands/registry";
-import { filterCommands } from "@/commands/menu";
 import { searchVectorEmbeddings } from "@/utils/vector-search";
 import { readSemanticSearchEnabled } from "@/stores/settings";
 import { logger } from "@/utils/logger";
@@ -186,9 +185,15 @@ export const useOmnibarStore = defineStore("omnibar", () => {
   // --- per-mode filtered lists ----------------------------------------------
   /** Notes-mode rows (raw FTS results). */
   const noteResults = computed<HighlightedResult[]>(() => results.value);
-  /** Commands-mode rows (raw commands, for `execute` to look up by index). */
+  /** Commands-mode rows (raw commands, for `execute` to look up by index).
+   *  Filtering matches against the *resolved* title (`t(cmd.title)` for key
+   *  strings) + the English-literal `keywords`, so multi-word queries like
+   *  "new note" still subsequence-match the localised label, not the key. */
   const commandItems = computed<Command[]>(() =>
-    filterCommands(visibleCommands.value, effectiveQuery.value)
+    filterByKey(visibleCommands.value, effectiveQuery.value, (c) => [
+      i18n.global.te(c.title) ? t(c.title) : c.title,
+      ...(c.keywords ?? [])
+    ])
   );
   /** Tags-mode rows. */
   const tagItems = computed(() =>
@@ -256,7 +261,12 @@ export const useOmnibarStore = defineStore("omnibar", () => {
         return commandItems.value.map((cmd) => ({
           key: cmd.id,
           mode: "commands" as const,
-          label: cmd.title,
+          // `cmd.title` is an i18n key string (e.g. "command.newNote") for the
+          // static app/editor commands; resolve it so palette labels localise +
+          // react to locale switch. Dynamic / interpolated titles (the per-
+          // template "New note from <title>" + "Go to <view>" snapshots) are
+          // already-resolved plain strings → `te` returns false → passthrough.
+          label: i18n.global.te(cmd.title) ? t(cmd.title) : cmd.title,
           group: cmd.group
         }));
       case "tags":

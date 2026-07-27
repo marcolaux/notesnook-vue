@@ -8,6 +8,9 @@
  * sidebar sync indicator and the editor tags footer (the bottom status bar
  * was removed).
  */
+import i18n from "@/i18n";
+
+const t = i18n.global.t.bind(i18n.global);
 
 /** Sync progress states surfaced by the status bar. `offline` is derived in
  * the view from auth (local-only mode never syncs); the store only tracks the
@@ -83,12 +86,12 @@ export function readEditorStats(editor: EditorLike): EditorStats {
  * deterministic tests. `lastSynced === 0` means "never synced".
  */
 export function formatSyncRelative(lastSynced: number, now: number = Date.now()): string {
-  if (!lastSynced) return "Never synced";
+  if (!lastSynced) return t("status.neverSynced");
   const diff = now - lastSynced;
-  if (diff < 60_000) return "Just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 2 * 86_400_000) return "Yesterday";
+  if (diff < 60_000) return t("status.justNow");
+  if (diff < 3_600_000) return t("status.minutesAgo", { n: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return t("status.hoursAgo", { n: Math.floor(diff / 3_600_000) });
+  if (diff < 2 * 86_400_000) return t("status.yesterday");
   const d = new Date(lastSynced);
   const nowD = new Date(now);
   const sameYear = d.getFullYear() === nowD.getFullYear();
@@ -113,10 +116,10 @@ export function syncStatusText(
   hasUnsynced: boolean,
   now: number = Date.now()
 ): string {
-  if (!isLoggedIn) return "Local only";
-  if (state === "syncing") return "Syncing…";
-  if (state === "error") return "Sync error";
-  if (!lastSynced) return hasUnsynced ? "Unsynced" : "Never synced";
+  if (!isLoggedIn) return t("status.localOnly");
+  if (state === "syncing") return t("status.syncing");
+  if (state === "error") return t("status.syncError");
+  if (!lastSynced) return hasUnsynced ? t("status.unsynced") : t("status.neverSynced");
   const relative = formatSyncRelative(lastSynced, now);
-  return hasUnsynced ? `${relative} • unsynced` : relative;
+  return hasUnsynced ? t("status.relativeUnsynced", { relative }) : relative;
 }

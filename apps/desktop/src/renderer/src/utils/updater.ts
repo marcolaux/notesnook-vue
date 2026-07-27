@@ -5,10 +5,13 @@
  *
  * The {@link UpdateStatus} shape mirrors the main-process `UpdaterServer`
  * contract (`@contracts/router`); the store round-trips it over the tRPC
- * bridge. These helpers turn that snapshot into user-facing state/labels
- * (English; i18n = Phase 7.1).
+ * bridge. These helpers turn that snapshot into user-facing state/labels via
+ * `i18n.global.t` (the store reads them on each tick / render).
  */
 import type { UpdateStatus } from "@contracts/router";
+import i18n from "@/i18n";
+
+const t = i18n.global.t.bind(i18n.global);
 
 /** Coarse updater phase, derived from a status snapshot. */
 export type UpdatePhase =
@@ -28,21 +31,25 @@ export function classifyUpdatePhase(status: UpdateStatus | null | undefined): Up
   return "up-to-date";
 }
 
-/** User-facing label for a status snapshot (English; i18n = Phase 7.1). Pure. */
+/** User-facing label for a status snapshot. Pure. */
 export function updateStatusText(status: UpdateStatus | null | undefined): string {
   const phase = classifyUpdatePhase(status);
   switch (phase) {
     case "ready":
-      return status?.version ? `Ready to install (v${status.version})` : "Ready to install";
+      return status?.version
+        ? t("updater.readyToInstallVersion", { version: status.version })
+        : t("updater.readyToInstall");
     case "downloading":
-      return `Downloading… (${status?.progress ?? 0}%)`;
+      return t("updater.downloading", { progress: status?.progress ?? 0 });
     case "available":
-      return status?.version ? `Update available (v${status.version})` : "Update available";
+      return status?.version
+        ? t("updater.updateAvailableVersion", { version: status.version })
+        : t("updater.updateAvailable");
     case "up-to-date":
-      return "Up to date";
+      return t("updater.upToDate");
     case "unknown":
     default:
-      return "Checking for updates…";
+      return t("updater.checking");
   }
 }
 

@@ -16,6 +16,9 @@
  * unregister/re-register is cheap.
  */
 import { registerCommand, unregisterCommand, type Command } from "./registry";
+import i18n from "@/i18n";
+
+const t = i18n.global.t.bind(i18n.global);
 
 /** Tracks the command ids registered in the previous `syncTemplateCommands`
  *  call so they can be removed before re-registering. */
@@ -25,27 +28,32 @@ export function syncTemplateCommands(templates: { id: string; title: string }[])
   for (const id of registeredIds) unregisterCommand(id);
   registeredIds = [];
 
-  for (const t of templates) {
-    const title = t.title || "Untitled";
-    const noteFromId = `app:new-note-from:${t.id}`;
-    const taskFromId = `app:new-task-from:${t.id}`;
+  for (const tmpl of templates) {
+    // Snapshot the interpolated title at registration (`command.newNoteFrom` /
+    // `newTaskFrom` carry the user-data template title). Re-registered when
+    // templates reload, so a rename/locale switch reflects on the next sync.
+    // The omnibar resolver passes already-resolved titles through unchanged
+    // (`te` is false for a resolved string).
+    const title = tmpl.title || t("common.untitled");
+    const noteFromId = `app:new-note-from:${tmpl.id}`;
+    const taskFromId = `app:new-task-from:${tmpl.id}`;
     registerCommand({
       id: noteFromId,
-      title: `New note from ${title}`,
+      title: t("command.newNoteFrom", { title }),
       keywords: ["template", "new", "note", title.toLowerCase()],
       group: "app",
       run: (ctx) => {
-        void ctx.notes.create({ templateId: t.id });
+        void ctx.notes.create({ templateId: tmpl.id });
       }
     });
     registerCommand({
       id: taskFromId,
-      title: `New task from ${title}`,
+      title: t("command.newTaskFrom", { title }),
       keywords: ["template", "new", "task", "todo", "checklist", title.toLowerCase()],
       group: "app",
       run: (ctx) => {
         ctx.router?.push("/tasks");
-        void ctx.notes.create({ task: true, templateId: t.id });
+        void ctx.notes.create({ task: true, templateId: tmpl.id });
       }
     });
     registeredIds.push(noteFromId, taskFromId);

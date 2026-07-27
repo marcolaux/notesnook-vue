@@ -21,6 +21,9 @@ import {
 } from "@/utils/collections";
 import { moveIdTo } from "@/utils/sidebar-order";
 import { logger } from "@/utils/logger";
+import i18n from "@/i18n";
+
+const t = i18n.global.t.bind(i18n.global);
 
 /**
  * Sidebar collections store (Phase 3.2). Loads notebooks, tags and the trash
@@ -124,10 +127,10 @@ export const useCollectionsStore = defineStore("collections", () => {
     const s = selected.value;
     if (!s) return null;
     if (s.type === "notebook") {
-      return notebooks.value.find((n) => n.id === s.id)?.title ?? "Notebook";
+      return notebooks.value.find((n) => n.id === s.id)?.title ?? t("routes.notebooks");
     }
-    if (s.type !== "tag") return "Tag"; // colors fall through as before
-    const realTag = tags.value.find((t) => t.id === s.id);
+    if (s.type !== "tag") return t("routes.tags"); // colors fall through as before
+    const realTag = tags.value.find((tg) => tg.id === s.id);
     return realTag ? realTag.title : s.id; // `s.id` is the slash-path
   });
 
@@ -223,7 +226,7 @@ export const useCollectionsStore = defineStore("collections", () => {
   async function createSubNotebook(parentId: string): Promise<string | null> {
     try {
       const db = getDatabase();
-      const childId = await db.notebooks.add({ title: "New notebook" });
+      const childId = await db.notebooks.add({ title: t("sidebar.newNotebook") });
       if (!childId) return null;
       await db.relations.add(
         { type: "notebook", id: parentId },
@@ -240,7 +243,7 @@ export const useCollectionsStore = defineStore("collections", () => {
       const all = await getDatabase().notebooks.all.items().catch(() => []);
       notebooks.value = all.map(toNotebookListItem);
       // Enter inline-rename so the user can name the new sub-notebook directly.
-      startRename("notebook", childId, "New notebook");
+      startRename("notebook", childId, t("sidebar.newNotebook"));
       return childId;
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -264,10 +267,10 @@ export const useCollectionsStore = defineStore("collections", () => {
   async function createSubTag(parentPath: string): Promise<string | null> {
     try {
       const db = getDatabase();
-      let title = `${parentPath}/New tag`;
+      let title = `${parentPath}/${t("sidebar.newTag")}`;
       let n = 2;
-      while (tags.value.some((t) => t.title === title)) {
-        title = `${parentPath}/New tag ${n++}`;
+      while (tags.value.some((tg) => tg.title === title)) {
+        title = `${parentPath}/${t("sidebar.newTagN", { n: n++ })}`;
       }
       const id = await db.tags.add({ title });
       if (!id) return null;
@@ -297,10 +300,10 @@ export const useCollectionsStore = defineStore("collections", () => {
   async function createNotebook(): Promise<string | null> {
     try {
       const db = getDatabase();
-      const id = await db.notebooks.add({ title: "New notebook" });
+      const id = await db.notebooks.add({ title: t("sidebar.newNotebook") });
       if (!id) return null;
       await load();
-      startRename("notebook", id, "New notebook");
+      startRename("notebook", id, t("sidebar.newNotebook"));
       return id;
     } catch {
       return null;
@@ -316,10 +319,10 @@ export const useCollectionsStore = defineStore("collections", () => {
   async function createTag(): Promise<string | null> {
     try {
       const db = getDatabase();
-      let title = "New tag";
+      let title = t("sidebar.newTag");
       let n = 2;
-      while (tags.value.some((t) => t.title === title)) {
-        title = `New tag ${n++}`;
+      while (tags.value.some((tg) => tg.title === title)) {
+        title = t("sidebar.newTagN", { n: n++ });
       }
       const id = await db.tags.add({ title });
       if (!id) return null;

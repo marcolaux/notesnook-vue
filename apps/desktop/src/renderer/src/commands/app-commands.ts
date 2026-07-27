@@ -12,11 +12,14 @@ import { readCurrentContext } from "@/platform/account-context";
 import { usePublishDialogStore } from "@/stores/publish-dialog";
 import { useDialogStore } from "@/stores/dialog";
 import { useTemplatesStore } from "@/stores/templates";
+import i18n from "@/i18n";
+
+const t = i18n.global.t.bind(i18n.global);
 
 const appCommands: Command[] = [
   {
     id: "app:new-note",
-    title: "New note",
+    title: "command.newNote",
     keywords: ["create", "add", "note"],
     group: "app",
     run: (ctx) => {
@@ -25,7 +28,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:new-task",
-    title: "New task",
+    title: "command.newTask",
     keywords: ["create", "add", "task", "todo", "checklist"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -40,7 +43,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:new-template",
-    title: "New template",
+    title: "command.newTemplate",
     keywords: ["template", "create", "new"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -50,7 +53,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:save-as-template",
-    title: "Save as template",
+    title: "command.saveAsTemplate",
     keywords: ["template", "save", "convert", "turn"],
     group: "app",
     when: (ctx) =>
@@ -63,7 +66,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:remove-template",
-    title: "Remove template",
+    title: "command.removeTemplate",
     keywords: ["template", "remove", "untag", "delete"],
     group: "app",
     when: (ctx) =>
@@ -76,7 +79,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:close-tab",
-    title: "Close tab",
+    title: "command.closeTab",
     keywords: ["tab", "close", "editor"],
     group: "app",
     when: (ctx) => !!ctx.notes.activeTabId,
@@ -87,7 +90,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:close-tab-and-trash",
-    title: "Close tab and move to trash",
+    title: "command.closeTabAndTrash",
     keywords: ["tab", "close", "trash", "delete", "note"],
     group: "app",
     when: (ctx) => !!ctx.notes.activeNote,
@@ -107,7 +110,7 @@ const appCommands: Command[] = [
   // focused pane's tabs.
   {
     id: "app:split-vertical",
-    title: "Split editor right",
+    title: "command.splitEditorRight",
     keywords: ["split", "pane", "vertical", "right", "side"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -117,7 +120,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:split-horizontal",
-    title: "Split editor down",
+    title: "command.splitEditorDown",
     keywords: ["split", "pane", "horizontal", "down", "below"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -127,7 +130,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:close-pane",
-    title: "Close editor pane",
+    title: "command.closeEditorPane",
     keywords: ["split", "pane", "close", "collapse"],
     group: "app",
     when: (ctx) => ctx.auth.showShell && ctx.layout.groupCount > 1,
@@ -145,7 +148,7 @@ const appCommands: Command[] = [
   // pane has nothing to detach.
   {
     id: "app:detach-pane",
-    title: "Detach pane to new window",
+    title: "command.detachPane",
     keywords: ["detach", "pane", "window", "tear", "off", "split", "pop", "out"],
     group: "app",
     when: (ctx) =>
@@ -162,7 +165,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:focus-next-pane",
-    title: "Focus next pane",
+    title: "command.focusNextPane",
     keywords: ["focus", "pane", "split", "next", "cycle"],
     group: "app",
     when: (ctx) => ctx.auth.showShell && ctx.layout.groupCount > 1,
@@ -172,7 +175,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:go-back",
-    title: "Go back",
+    title: "command.goBack",
     keywords: ["history", "back", "previous", "navigate", "tab"],
     group: "app",
     when: (ctx) => {
@@ -186,7 +189,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:go-forward",
-    title: "Go forward",
+    title: "command.goForward",
     keywords: ["history", "forward", "next", "navigate", "tab"],
     group: "app",
     when: (ctx) => {
@@ -200,7 +203,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:next-tab",
-    title: "Next tab",
+    title: "command.nextTab",
     keywords: ["tab", "next", "cycle", "switch"],
     group: "app",
     when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeTabId,
@@ -210,7 +213,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:prev-tab",
-    title: "Previous tab",
+    title: "command.previousTab",
     keywords: ["tab", "previous", "prev", "cycle", "switch"],
     group: "app",
     when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeTabId,
@@ -220,7 +223,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:sign-out",
-    title: "Log out",
+    title: "command.logOut",
     keywords: ["logout", "sign out", "account"],
     group: "app",
     when: (ctx) => ctx.auth.isLoggedIn,
@@ -230,7 +233,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:sign-in",
-    title: "Sign in",
+    title: "command.signIn",
     keywords: ["login", "log in", "account"],
     group: "app",
     when: (ctx) => !ctx.auth.isLoggedIn,
@@ -240,7 +243,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:reload",
-    title: "Reload window",
+    title: "command.reloadWindow",
     keywords: ["refresh", "restart"],
     group: "app",
     run: () => {
@@ -249,7 +252,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:search-notes",
-    title: "Search notes",
+    title: "command.searchNotes",
     keywords: ["find", "search", "global", "filter", "list"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -264,7 +267,7 @@ const appCommands: Command[] = [
   // directly). Mirrors `app:search-notes` → `notes.focusSearch()`.
   {
     id: "app:find-in-note",
-    title: "Find in note",
+    title: "command.findInNote",
     keywords: ["find", "search", "replace", "in note", "editor", "content"],
     group: "app",
     when: (ctx) => !!ctx.editor && ctx.auth.showShell,
@@ -277,7 +280,7 @@ const appCommands: Command[] = [
   // right-side ToC + properties panels. The panel UI itself is on-site.
   {
     id: "app:toggle-sidebar",
-    title: "Toggle sidebar",
+    title: "command.toggleSidebar",
     keywords: ["sidebar", "collapse", "navigation"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -285,7 +288,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:toggle-list",
-    title: "Toggle notes list",
+    title: "command.toggleNotesList",
     keywords: ["list", "collapse", "notes"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -293,7 +296,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:toggle-toc",
-    title: "Toggle table of contents",
+    title: "command.toggleToc",
     keywords: ["toc", "outline", "headings", "minimap"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -304,7 +307,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:toggle-properties",
-    title: "Toggle properties panel",
+    title: "command.toggleProperties",
     keywords: ["properties", "panel", "info", "metadata"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -312,7 +315,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:toggle-note-history",
-    title: "Toggle note history",
+    title: "command.toggleNoteHistory",
     keywords: ["history", "versions", "revisions", "timeline", "diff"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -327,7 +330,7 @@ const appCommands: Command[] = [
   // collapse flags — toggling it off restores whatever they were.
   {
     id: "app:toggle-focus-mode",
-    title: "Toggle focus mode",
+    title: "command.toggleFocusMode",
     keywords: ["focus", "distraction", "zen", "hide", "sidebar", "list"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -335,7 +338,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:sync-now",
-    title: "Sync now",
+    title: "command.syncNow",
     keywords: ["sync", "synchronize", "push", "pull", "refresh"],
     group: "app",
     // Sync needs a server account; local mode (skipped login) has no token, so a
@@ -352,7 +355,7 @@ const appCommands: Command[] = [
   // The actual update is on-site (needs a packaged, signed build + network).
   {
     id: "app:check-updates",
-    title: "Check for updates",
+    title: "command.checkForUpdates",
     keywords: ["update", "updater", "version", "check", "latest"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -362,7 +365,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:download-update",
-    title: "Download update",
+    title: "command.downloadUpdate",
     keywords: ["update", "updater", "download", "fetch"],
     group: "app",
     when: (ctx) => ctx.auth.showShell && ctx.updater.updateAvailable,
@@ -372,7 +375,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:install-update",
-    title: "Install update and restart",
+    title: "command.installUpdateRestart",
     keywords: ["update", "updater", "install", "restart", "quit"],
     group: "app",
     when: (ctx) => ctx.auth.showShell && ctx.updater.readyToInstall,
@@ -385,7 +388,7 @@ const appCommands: Command[] = [
   // this is the palette entry point for the on/off switch.
   {
     id: "app:toggle-spell-check",
-    title: "Toggle spell check",
+    title: "command.toggleSpellCheck",
     keywords: ["spell", "spellcheck", "spelling", "dictionary", "language"],
     group: "app",
     when: (ctx) => ctx.auth.showShell,
@@ -403,7 +406,7 @@ const appCommands: Command[] = [
   // the correct URL because their API server returns their monograph server's.
   {
     id: "app:publish-note",
-    title: "Publish note",
+    title: "command.publishNote",
     keywords: ["publish", "monograph", "public", "web", "share"],
     group: "app",
     when: (ctx) => ctx.auth.isLoggedIn && !!ctx.notes.activeNote && !ctx.publish.published,
@@ -420,7 +423,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:unpublish-note",
-    title: "Unpublish note",
+    title: "command.unpublishNote",
     keywords: ["unpublish", "monograph", "private", "remove", "web"],
     group: "app",
     when: (ctx) => ctx.auth.isLoggedIn && !!ctx.notes.activeNote && ctx.publish.published,
@@ -430,9 +433,9 @@ const appCommands: Command[] = [
       const dialog = useDialogStore();
       void dialog
         .confirm({
-          title: "Unpublish note",
-          message: "This note will no longer be public. The link will stop working.",
-          confirmLabel: "Unpublish",
+          title: t("editorToolbar.unpublishConfirmTitle"),
+          message: t("editorToolbar.unpublishConfirmMsg"),
+          confirmLabel: t("editorToolbar.unpublishConfirmLabel"),
           danger: true
         })
         .then((ok) => {
@@ -442,7 +445,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:copy-monograph-url",
-    title: "Copy monograph URL",
+    title: "command.copyMonographUrl",
     keywords: ["copy", "monograph", "url", "link", "share"],
     group: "app",
     when: (ctx) => ctx.auth.isLoggedIn && !!ctx.notes.activeNote && ctx.publish.published,
@@ -453,7 +456,7 @@ const appCommands: Command[] = [
   },
   {
     id: "app:open-monograph-in-browser",
-    title: "Open monograph in browser",
+    title: "command.openMonographInBrowser",
     keywords: ["open", "monograph", "browser", "web", "view"],
     group: "app",
     when: (ctx) => ctx.auth.isLoggedIn && !!ctx.notes.activeNote && ctx.publish.published,
@@ -475,8 +478,12 @@ const appCommands: Command[] = [
 const navViews = VIEWS.filter((v) => v.name !== "settings");
 const gotoCommands: Command[] = navViews.map((v) => ({
   id: `app:goto-${v.name}`,
-  title: `Go to ${v.label}`,
-  keywords: ["go", "goto", "navigate", "open", "view", v.label.toLowerCase()],
+  // Snapshot the resolved label at registration (`t(v.label)` is a routes.* key;
+  // `command.goTo` interpolates it). Re-registered only on app reload, so a
+  // locale switch won't live-update these labels — accepted trade-off (the
+  // static command titles do update via the omnibar `te`/`t` resolver).
+  title: t("command.goTo", { label: t(v.label) }),
+  keywords: ["go", "goto", "navigate", "open", "view", t(v.label).toLowerCase()],
   group: "app",
   // Monographs is hidden in local-only mode — it's the published-notes view,
   // which needs a logged-in account (publishing is a server call). The other
@@ -492,7 +499,7 @@ const gotoCommands: Command[] = navViews.map((v) => ({
 // window (the `/settings` route is top-level and would replace the shell).
 const settingsCommand: Command = {
   id: "app:open-settings",
-  title: "Open Settings",
+  title: "command.openSettings",
   keywords: ["settings", "preferences", "open", "go", "goto"],
   group: "app",
   when: (ctx) => ctx.auth.showShell,
