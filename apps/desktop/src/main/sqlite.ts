@@ -272,7 +272,15 @@ class SQLite {
     this.sqlite?.loadExtension(getExtensionPath("sqlite3-fts5-html", "fts5-html"));
     try {
       if (this.sqlite) {
-        sqliteVec.load(this.sqlite);
+        // sqlite-vec ships as a per-platform loadable extension
+        // (`sqlite-vec-<os>-<arch>/vec0.<suffix>`). `sqliteVec.load()` calls
+        // `getLoadablePath()` → `require.resolve(...)`, which returns the
+        // IN-ASAR path in a packaged build — but SQLite's `loadExtension`
+        // can't load a native shared library from inside the asar virtual
+        // FS, so `vec0` never registers (`no such module: vec0`). Resolve the
+        // path ourselves and rewrite `.asar` → `.asar.unpacked` (the package
+        // is `asarUnpack`-ed in electron-builder.yml) so it loads from disk.
+        this.sqlite.loadExtension(toUnpackedPath(sqliteVec.getLoadablePath()));
         this.sqlite.exec(`
           CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(
             +note_id text,
@@ -303,23 +311,34 @@ class SQLite {
   }
 }
 
+/**
+ * Rewrite an in-asar resolved path to its `.asar.unpacked` counterpart. SQLite's
+ * `loadExtension` can't load a native shared library from inside the asar
+ * virtual FS — the extension must be unpacked (electron-builder `asarUnpack`)
+ * and loaded from the unpacked path. No-op in dev (no asar) and idempotent (a
+ * path already pointing at `.asar.unpacked` is returned unchanged), so it's
+ * safe to apply unconditionally to any `require.resolve`/`getLoadablePath`
+ * result.
+ */
+function toUnpackedPath(p: string): string {
+  if (p.includes(".asar.unpacked") || !p.includes(".asar")) return p;
+  return p.replace("electron.asar", "app.asar").replace(".asar", ".asar.unpacked");
+}
+
 function getExtensionPath(extensionName: string, entryPoint: string): string {
   const os = process.platform === "win32" ? "windows" : process.platform;
   const packageName = `${extensionName}-${os}-${process.arch}`;
   const extensionSuffix =
     process.platform === "win32" ? "dll" : process.platform === "darwin" ? "dylib" : "so";
-  let loadablePath = path.join(
-    require_.resolve(extensionName),
-    "..",
-    "..",
-    packageName,
-    `${entryPoint}.${extensionSuffix}`
+  const loadablePath = toUnpackedPath(
+    path.join(
+      require_.resolve(extensionName),
+      "..",
+      "..",
+      packageName,
+      `${entryPoint}.${extensionSuffix}`
+    )
   );
-
-  if (loadablePath.includes(".asar"))
-    loadablePath = loadablePath
-      .replace("electron.asar", "app.asar")
-      .replace(".asar", ".asar.unpacked");
 
   if (!statSync(loadablePath, { throwIfNoEntry: false }))
     throw new Error(`${extensionName} not found at ${loadablePath}.`);

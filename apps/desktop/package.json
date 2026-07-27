@@ -30,6 +30,7 @@
     "electron-trpc": "^0.7.1",
     "electron-updater": "^6.8.9",
     "sqlite-better-trigram": "^0.0.6",
+    "sqlite-vec": "^0.1.9",
     "sqlite3-fts5-html": "^0.0.6",
     "zod": "^3.23.0"
   },
@@ -41,7 +42,12 @@
     "sqlite3-fts5-html-darwin-arm64": "^0.0.6",
     "sqlite3-fts5-html-darwin-x64": "^0.0.6",
     "sqlite3-fts5-html-linux-x64": "^0.0.6",
-    "sqlite3-fts5-html-windows-x64": "^0.0.6"
+    "sqlite3-fts5-html-windows-x64": "^0.0.6",
+    "sqlite-vec-darwin-arm64": "^0.1.9",
+    "sqlite-vec-darwin-x64": "^0.1.9",
+    "sqlite-vec-linux-arm64": "^0.1.9",
+    "sqlite-vec-linux-x64": "^0.1.9",
+    "sqlite-vec-windows-x64": "^0.1.9"
   },
   "devDependencies": {
     "@notesnook-vue/contracts": "*",

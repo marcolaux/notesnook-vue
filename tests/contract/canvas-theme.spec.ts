@@ -70,6 +70,17 @@ describe("readCanvasThemeColors", () => {
 });
 
 describe("onThemeChange", () => {
+  // happy-dom's MutationObserver delivers via a MACROTASK. A single
+  // `setTimeout(r, 0)` yield is enough in isolation but under parallel test
+  // load the observer can need several macrotask turns, so poll until the
+  // expected call count is reached (bounded — the assertion still fires if it
+  // never lands).
+  async function waitForCalls(target: number, getCalls: () => number): Promise<void> {
+    for (let i = 0; i < 50 && getCalls() < target; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+
   it("fires the callback when <html data-theme> flips", async () => {
     let calls = 0;
     const teardown = onThemeChange(() => {
@@ -77,9 +88,9 @@ describe("onThemeChange", () => {
     });
     try {
       document.documentElement.setAttribute("data-theme", "default-light");
-      await new Promise((r) => setTimeout(r, 0));
+      await waitForCalls(1, () => calls);
       document.documentElement.setAttribute("data-theme", "default-dark");
-      await new Promise((r) => setTimeout(r, 0));
+      await waitForCalls(2, () => calls);
       expect(calls).toBe(2);
     } finally {
       teardown();
