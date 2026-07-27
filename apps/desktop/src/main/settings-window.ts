@@ -26,9 +26,30 @@ import { resolve } from "node:path";
 import { buildBrowserWindowOptionsForOS } from "./titlebar";
 import { attachTRPC } from "./ipc";
 import { setupExternalNavigation } from "./navigation";
-import { tMain } from "./i18n";
+import { tMain, registerLocaleChangeCallback } from "./i18n";
 
 let settingsWindow: BrowserWindow | null = null;
+
+/**
+ * Re-apply the localized OS-native window title to the open Settings window.
+ *
+ * Why this exists: the renderer loads the same `index.html` as every other
+ * window, whose `<title>Notesnook</title>` clobbers the `BrowserWindow` `title`
+ * option once the page parses — so the Phase 7.2 `title: tMain(...)`
+ * constructor option only flashes pre-paint, then becomes "Notesnook". This
+ * re-asserts the localized title (a) once after `did-finish-load` so the
+ * steady-state taskbar/Dock/Alt-Tab title is localized at first open, and
+ * (b) on a live locale switch via the registered locale-change callback. The
+ * in-app custom titlebar already localizes reactively (vue-i18n `t()`); this
+ * only fixes the OS-native chrome. No-op when the window is closed/destroyed.
+ */
+function retitleSettingsWindow(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.setTitle(tMain("window.settings"));
+  }
+}
+
+registerLocaleChangeCallback(retitleSettingsWindow);
 
 /**
  * Open the shared Settings window. Call from any app window via the
@@ -90,6 +111,15 @@ export function openSettingsWindow(preloadPath: string, section?: string): void 
   settingsWindow.webContents.on("did-fail-load", (_e, code, desc, url) => {
     // eslint-disable-next-line no-console
     console.error(`[settings-window] did-fail-load ${code} ${desc} ${url}`);
+  });
+
+  // The page's `<title>Notesnook</title>` overrides the `BrowserWindow` `title`
+  // option once it parses; re-assert the localized title after load completes
+  // (and on every reload/HMR in dev) so the steady-state OS-native title is
+  // localized. Idempotent + safe on a still-alive window. See
+  // `retitleSettingsWindow` for the live locale-switch path.
+  settingsWindow.webContents.on("did-finish-load", () => {
+    retitleSettingsWindow();
   });
 
   // Mirror the main window's dev console forwarding so the settings renderer's

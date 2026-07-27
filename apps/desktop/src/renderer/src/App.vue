@@ -29,6 +29,7 @@ import { desktop } from "@/platform/desktop-bridge";
 import { restoreSession } from "@/platform/session-restore";
 import { readCurrentContext, dbFileName } from "@/platform/account-context";
 import { useDialogStore } from "@/stores/dialog";
+import { syncLocale, LOCALE_STORAGE_KEY } from "@/i18n";
 import {
   useSessionPersistence,
   flushNow,
@@ -252,6 +253,15 @@ function bindCrossWindowThemeListener(): void {
       } catch {
         /* ignore malformed slot value */
       }
+    }
+    if (e.key === LOCALE_STORAGE_KEY) {
+      // A locale change originated in another window (typically the Settings
+      // window's language picker). Mirror it into THIS window's vue-i18n ref so
+      // every `t()` re-renders live — no persist/IPC, since the originator
+      // already did both (and the `storage` event doesn't fire in the
+      // originator, so no double-apply there). Before this, other open windows
+      // only picked up a locale change after a reload.
+      syncLocale(e.newValue);
     }
   };
   window.addEventListener("storage", onStorage);

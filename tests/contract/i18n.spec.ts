@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import { defineComponent, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
-import i18n, { setLocale, LOCALES, PSEUDO_LOCALE, toPseudo } from "@/i18n";
+import i18n, { setLocale, syncLocale, LOCALE_STORAGE_KEY, LOCALES, PSEUDO_LOCALE, toPseudo } from "@/i18n";
 import { translate, type Messages } from "@contracts/i18n";
 import en from "@contracts/i18n/en";
 import de from "@contracts/i18n/de";
@@ -160,6 +160,47 @@ describe("setLocale", () => {
     expect(() => setLocale("pseudo")).not.toThrow();
     // The locale still switches in-memory.
     expect(i18n.global.locale.value).toBe("pseudo");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// syncLocale (cross-window mirror — applies a locale change that originated
+// in ANOTHER window, without re-persisting or re-notifying main)
+// ---------------------------------------------------------------------------
+
+describe("syncLocale (cross-window mirror)", () => {
+  it("exposes the localStorage key the storage listener watches", () => {
+    expect(LOCALE_STORAGE_KEY).toBe("notesnook.locale");
+  });
+
+  it("switches this window's vue-i18n ref to a known locale", () => {
+    setLocale("en");
+    syncLocale("de");
+    expect(i18n.global.locale.value).toBe("de");
+    syncLocale("pseudo");
+    expect(i18n.global.locale.value).toBe("pseudo");
+    setLocale("en");
+  });
+
+  it("does NOT persist to localStorage (the originator already did)", () => {
+    // `storage` (the beforeEach fixture) IS globalThis.localStorage here.
+    storage.setItem("notesnook.locale", "en");
+    syncLocale("de");
+    expect(i18n.global.locale.value).toBe("de");
+    expect(storage.getItem("notesnook.locale")).toBe("en");
+    setLocale("en");
+  });
+
+  it("ignores an unknown locale (no-op)", () => {
+    setLocale("en");
+    syncLocale("fr");
+    expect(i18n.global.locale.value).toBe("en");
+  });
+
+  it("ignores null (key cleared in another window)", () => {
+    setLocale("en");
+    syncLocale(null);
+    expect(i18n.global.locale.value).toBe("en");
   });
 });
 

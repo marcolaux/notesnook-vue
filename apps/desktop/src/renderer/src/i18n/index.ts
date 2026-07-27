@@ -38,7 +38,12 @@ export { default as de } from "@contracts/i18n/de";
 export { default as pseudo, toPseudo } from "./locales/pseudo";
 export { LOCALES, DEFAULT_LOCALE, PSEUDO_LOCALE, type Locale } from "@contracts/i18n";
 
-const LOCALE_STORAGE_KEY = "notesnook.locale";
+/** `localStorage` key holding the persisted locale choice. Shared across same-
+ *  origin Electron windows, so a `storage` event fires in the *other* open
+ *  windows when one window changes the locale — the cross-window sync hook
+ *  (see `syncLocale` + `App.vue`'s storage listener) uses this to switch every
+ *  window's vue-i18n locale live, not just the one that made the change. */
+export const LOCALE_STORAGE_KEY = "notesnook.locale";
 
 /** Read the persisted locale choice, falling back to the default. Best-effort. */
 function readLocale(): Locale {
@@ -98,6 +103,19 @@ export function setLocale(locale: Locale): void {
   i18n.global.locale.value = locale;
   writeLocale(locale);
   notifyMain(locale);
+}
+
+/** Apply a locale change that originated in ANOTHER window (cross-window sync
+ *  via the `storage` event — `App.vue` listens for `LOCALE_STORAGE_KEY`
+ *  writes). Sets THIS window's vue-i18n locale ref ONLY: it does NOT re-persist
+ *  to `localStorage` or re-notify main, since the originating window already
+ *  did both (and the `storage` event doesn't fire in the originator, so there's
+ *  no double-apply there). No-op if `locale` isn't a known locale (e.g. the key
+ *  was cleared). */
+export function syncLocale(locale: string | null): void {
+  if (locale != null && (LOCALES as readonly string[]).includes(locale)) {
+    i18n.global.locale.value = locale as Locale;
+  }
 }
 
 /** The currently active locale (reactive — a writable computed ref). */
