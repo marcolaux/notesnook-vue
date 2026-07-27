@@ -12,6 +12,7 @@
  *   fallback width is used.
  */
 import { onMounted, onUnmounted } from "vue";
+import { useI18n } from "vue-i18n";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useShellStore } from "@/stores/shell";
 import { useTitleBarStore } from "@/stores/titlebar";
@@ -27,6 +28,7 @@ const titlebar = useTitleBarStore();
 const omnibar = useOmnibarStore();
 const upstream = useUpstreamNotifierStore();
 const updater = useUpdaterStore();
+const { t } = useI18n();
 
 // Build-time app version (Vite `define` from package.json) for the version
 // label. Exposed as a script const so the template can bind it.
@@ -108,7 +110,7 @@ onUnmounted(() => {
   >
     <button
       class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted transition-[opacity,background-color,color] duration-200 hover:bg-glass-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
-      title="Toggle Sidebar"
+      :title="t('titlebar.toggleSidebar')"
       :disabled="shell.focusMode || shell.visualizerVisible"
       @click="shell.toggleSidebar()"
     >
@@ -121,7 +123,7 @@ onUnmounted(() => {
     <button
       class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted transition-[background-color,color,transform] duration-200 hover:bg-glass-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
       :class="shell.focusMode ? 'bg-glass-hover text-text' : ''"
-      :title="shell.focusMode ? 'Exit focus mode' : 'Enter focus mode'"
+      :title="shell.focusMode ? t('titlebar.exitFocusMode') : t('titlebar.enterFocusMode')"
       :disabled="shell.visualizerVisible"
       @click="shell.toggleFocusMode()"
     >
@@ -136,7 +138,7 @@ onUnmounted(() => {
     <button
       class="titlebar-no-drag grid h-7 w-7 place-items-center rounded-md text-sm text-text-muted transition-[background-color,color,transform] duration-200 hover:bg-glass-hover"
       :class="shell.visualizerVisible ? 'bg-glass-hover text-text' : ''"
-      title="Vector & Semantic Cluster Visualizer"
+      :title="t('titlebar.visualizer')"
       @click="shell.toggleVisualizer()"
     >
       <Icon
@@ -155,15 +157,15 @@ onUnmounted(() => {
       <span
         v-if="upstream.hasNewer"
         class="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-px text-[10px] text-accent"
-        :title="`Upstream ${upstream.status?.latestTag} is newer than the ${upstream.status?.baselineTag} you built against — click to view`"
+        :title="t('titlebar.upstreamNewer', { latest: upstream.status?.latestTag, baseline: upstream.status?.baselineTag })"
       >
         <button type="button" class="flex cursor-pointer items-center gap-1 hover:underline" @click="openUpstreamRelease">
-          <Icon name="arrow-up" :size="10" /> upstream {{ upstream.status?.latestTag }}
+          <Icon name="arrow-up" :size="10" /> {{ t('titlebar.upstreamLabel') }} {{ upstream.status?.latestTag }}
         </button>
         <button
           type="button"
           class="cursor-pointer text-text-muted hover:text-text"
-          title="Dismiss until a newer release"
+          :title="t('titlebar.upstreamDismiss')"
           @click="upstream.dismiss()"
         >
           <Icon name="x" :size="12" />
@@ -172,22 +174,22 @@ onUnmounted(() => {
       <span
         v-if="updater.updateAvailable || updater.readyToInstall"
         class="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-px text-[10px] text-accent"
-        :title="updater.readyToInstall ? 'A downloaded update is ready to install — click to review' : 'A new version is available — click to download'"
+        :title="updater.readyToInstall ? t('titlebar.readyToInstall') : t('titlebar.updateAvailable')"
       >
         <button type="button" class="flex cursor-pointer items-center gap-1 hover:underline" @click="openUpdates">
           <Icon name="arrow-down" :size="10" />
-          {{ updater.readyToInstall ? "ready to install" : "update available" }}
+          {{ updater.readyToInstall ? t('titlebar.readyToInstallLabel') : t('titlebar.updateAvailableLabel') }}
         </button>
       </span>
       <span
         v-if="isIndexing"
         class="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-px text-[10px] text-accent animate-pulse"
-        title="Generating vector search embeddings in background idle frames (non-blocking)"
+        :title="t('titlebar.indexingTitle')"
       >
         <Icon name="loader" :size="10" class="animate-spin" />
-        indexing...
+        {{ t('titlebar.indexingLabel') }}
       </span>
-      <span class="text-[10px] text-text-muted">v{{ appVersion }}</span>
+      <span class="text-[10px] text-text-muted">{{ t('titlebar.version', { version: appVersion }) }}</span>
     </div>
   </div>
 </template>

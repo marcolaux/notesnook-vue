@@ -14,6 +14,7 @@
  * the new hosts (the switch only runs while logged-out, so no session is lost).
  */
 import { ref, computed, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Surface, Flex, Text, Input, Button } from "@notesnook-vue/ui-vue";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -26,6 +27,7 @@ import {
 } from "@/platform/server-config";
 
 const auth = useAuthStore();
+const { t } = useI18n();
 
 type Mode = "signin" | "signup";
 const mode = ref<Mode>("signin");
@@ -46,11 +48,13 @@ const customHosts = ref<Hosts>(
 // API (sync), AUTH, SSE, MONOGRAPH. SUBSCRIPTIONS / ISSUES / NOTESNOOK are NOT
 // user-configurable upstream — they stay at their defaults (merged in
 // `resolveHosts`). Labels + example ports mirror the upstream web app.
-const HOST_FIELDS: { key: keyof Hosts; label: string; placeholder: string }[] = [
-  { key: "API_HOST", label: "Sync server URL", placeholder: "e.g. http://localhost:4326" },
-  { key: "AUTH_HOST", label: "Auth server URL", placeholder: "e.g. http://localhost:5326" },
-  { key: "SSE_HOST", label: "SSE server URL", placeholder: "e.g. http://localhost:7326" },
-  { key: "MONOGRAPH_HOST", label: "Monograph server URL", placeholder: "e.g. http://localhost:6326" }
+// `labelKey`/`placeholderKey` resolve via `t()` so the labels localize; the
+// validation-error match in the template compares against `t(labelKey)`.
+const HOST_FIELDS: { key: keyof Hosts; labelKey: string; placeholderKey: string }[] = [
+  { key: "API_HOST", labelKey: "login.syncServerUrl", placeholderKey: "login.syncServerExample" },
+  { key: "AUTH_HOST", labelKey: "login.authServerUrl", placeholderKey: "login.authServerExample" },
+  { key: "SSE_HOST", labelKey: "login.sseServerUrl", placeholderKey: "login.sseServerExample" },
+  { key: "MONOGRAPH_HOST", labelKey: "login.monographServerUrl", placeholderKey: "login.monographServerExample" }
 ];
 
 const busy = computed(
@@ -59,10 +63,10 @@ const busy = computed(
 const showMfa = computed(() => auth.status === "mfa");
 const mfaPrompt = computed(() => {
   const m = auth.pendingMfa?.method;
-  if (m === "email") return "Enter the verification code sent to your email address.";
-  if (m === "sms") return "Enter the verification code sent to your phone.";
-  if (m === "app") return "Enter the code from your authenticator app.";
-  return "Enter your verification code.";
+  if (m === "email") return t("login.mfaEmail");
+  if (m === "sms") return t("login.mfaSms");
+  if (m === "app") return t("login.mfaApp");
+  return t("login.mfaDefault");
 });
 const canResendCode = computed(() => {
   const m = auth.pendingMfa?.method;
@@ -70,10 +74,10 @@ const canResendCode = computed(() => {
 });
 const secondaryMethodLabel = computed(() => {
   const s = auth.pendingMfa?.secondaryMethod;
-  if (s === "email") return "Use email verification instead";
-  if (s === "sms") return "Use SMS verification instead";
-  if (s === "app") return "Use authenticator app instead";
-  return "Use secondary method";
+  if (s === "email") return t("login.useEmailInstead");
+  if (s === "sms") return t("login.useSmsInstead");
+  if (s === "app") return t("login.useAppInstead");
+  return t("login.useSecondary");
 });
 
 const localError = ref("");
@@ -91,16 +95,16 @@ watch(showMfa, (v) => {
 function submit(): void {
   localError.value = "";
   if (!email.value.trim() || !password.value) {
-    localError.value = "Email and password are required.";
+    localError.value = t("login.emailPasswordRequired");
     return;
   }
   if (mode.value === "signup") {
     if (password.value !== confirmPassword.value) {
-      localError.value = "Passwords do not match.";
+      localError.value = t("login.passwordsDoNotMatch");
       return;
     }
     if (password.value.length < 8) {
-      localError.value = "Password must be at least 8 characters.";
+      localError.value = t("login.passwordTooShort");
       return;
     }
     void auth.signup(email.value.trim(), password.value);
@@ -112,7 +116,7 @@ function submit(): void {
 function submitMfa(): void {
   localError.value = "";
   if (!mfaCode.value.trim()) {
-    localError.value = "Enter your verification code.";
+    localError.value = t("login.enterCode");
     return;
   }
   void auth.submitMfa(mfaCode.value.trim());
@@ -155,7 +159,7 @@ function applyServer(): void {
         if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("scheme");
         merged[f.key] = raw;
       } catch {
-        localError.value = `${f.label} must be a valid http(s) URL.`;
+        localError.value = t("login.invalidUrl", { field: t(f.labelKey) });
         return;
       }
     }
@@ -177,7 +181,7 @@ function skip(): void {
       <Flex direction="column" :gap="4">
         <Text as="h1" variant="heading" size="xl" weight="bold">Notesnook</Text>
         <Text variant="muted" size="sm">
-          {{ showMfa ? "Two-factor verification" : mode === "signin" ? "Sign in to sync your notes" : "Create an account" }}
+          {{ showMfa ? t('login.twoFactor') : mode === "signin" ? t('login.signinToSync') : t('login.createAccountHeading') }}
         </Text>
 
         <!-- MFA step -->
@@ -199,7 +203,7 @@ function skip(): void {
           </Text>
           <Text v-if="formError" variant="body" size="xs" class="text-[var(--red-static)]">{{ formError }}</Text>
           <Button variant="primary" block :disabled="busy || resending" type="submit">
-            {{ busy ? "Verifying…" : "Verify" }}
+            {{ busy ? t('login.verifying') : t('login.verify') }}
           </Button>
 
           <div class="flex items-center justify-between text-xs pt-1">
@@ -210,7 +214,7 @@ function skip(): void {
               :disabled="busy || resending"
               @click="resendCode"
             >
-              {{ resending ? "Sending code…" : "Resend code" }}
+              {{ resending ? t('login.sendingCode') : t('login.resendCode') }}
             </button>
             <button
               v-if="auth.pendingMfa?.secondaryMethod"
@@ -233,7 +237,7 @@ function skip(): void {
               :class="mode === 'signin' ? 'bg-accent text-accent-foreground' : 'text-text-muted hover:bg-hover'"
               @click="mode = 'signin'"
             >
-              Sign in
+              {{ t('login.signinTab') }}
             </button>
             <button
               type="button"
@@ -241,7 +245,7 @@ function skip(): void {
               :class="mode === 'signup' ? 'bg-accent text-accent-foreground' : 'text-text-muted hover:bg-hover'"
               @click="mode = 'signup'"
             >
-              Sign up
+              {{ t('login.signupTab') }}
             </button>
           </div>
 
@@ -250,7 +254,7 @@ function skip(): void {
             type="email"
             block
             autocomplete="email"
-            placeholder="you@example.com"
+            :placeholder="t('login.emailPlaceholder')"
             :variant="formError ? 'error' : 'default'"
             :disabled="busy"
           />
@@ -259,7 +263,7 @@ function skip(): void {
             type="password"
             block
             autocomplete="current-password"
-            placeholder="Password"
+            :placeholder="t('login.passwordPlaceholder')"
             :variant="formError ? 'error' : 'default'"
             :disabled="busy"
           />
@@ -269,7 +273,7 @@ function skip(): void {
             type="password"
             block
             autocomplete="new-password"
-            placeholder="Confirm password"
+            :placeholder="t('login.confirmPasswordPlaceholder')"
             :variant="formError ? 'error' : 'default'"
             :disabled="busy"
           />
@@ -277,16 +281,16 @@ function skip(): void {
           <Text v-if="formError" variant="body" size="xs" class="text-[var(--red-static)]">{{ formError }}</Text>
 
           <Button variant="primary" block :disabled="busy" type="submit">
-            {{ busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account" }}
+            {{ busy ? t('login.pleaseWait') : mode === "signin" ? t('login.signinButton') : t('login.createAccountButton') }}
           </Button>
           <Button variant="ghost" block :disabled="busy" type="button" @click="skip">
-            Continue without account
+            {{ t('login.continueWithoutAccount') }}
           </Button>
         </form>
 
         <!-- Server selector -->
         <Flex direction="column" :gap="2" class="mt-2 border-t border-border pt-3">
-          <Text variant="muted" size="xs" weight="medium">Server</Text>
+          <Text variant="muted" size="xs" weight="medium">{{ t('login.server') }}</Text>
           <label class="flex items-center gap-2 text-sm text-text">
             <input
               v-model="serverProfile"
@@ -294,7 +298,7 @@ function skip(): void {
               value="notesnook"
               class="accent-accent"
             />
-            Notesnook (default)
+            {{ t('login.serverNotesnook') }}
           </label>
           <label class="flex items-center gap-2 text-sm text-text">
             <input
@@ -303,7 +307,7 @@ function skip(): void {
               value="custom"
               class="accent-accent"
             />
-            Custom / Self-hosted
+            {{ t('login.serverCustom') }}
           </label>
 
           <Flex v-if="serverProfile === 'custom'" direction="column" :gap="2" class="mt-1">
@@ -312,18 +316,18 @@ function skip(): void {
               :key="f.key"
               class="flex flex-col gap-1"
             >
-              <Text variant="muted" size="xs">{{ f.label }}</Text>
+              <Text variant="muted" size="xs">{{ t(f.labelKey) }}</Text>
               <Input
                 v-model="customHosts[f.key]"
                 type="url"
                 block
                 size="sm"
-                :placeholder="f.placeholder"
-                :variant="formError && formError.includes(f.label) ? 'error' : 'default'"
+                :placeholder="t(f.placeholderKey)"
+                :variant="formError && formError.includes(t(f.labelKey)) ? 'error' : 'default'"
               />
             </label>
             <Button variant="secondary" block size="sm" type="button" @click="applyServer">
-              Apply &amp; restart
+              {{ t('login.applyAndRestart') }}
             </Button>
             <Text v-if="formError" variant="body" size="xs" class="text-[var(--red-static)]">{{ formError }}</Text>
           </Flex>
@@ -335,7 +339,7 @@ function skip(): void {
             type="button"
             @click="applyServer"
           >
-            Switch back to Notesnook servers
+            {{ t('login.switchBack') }}
           </Button>
         </Flex>
       </Flex>

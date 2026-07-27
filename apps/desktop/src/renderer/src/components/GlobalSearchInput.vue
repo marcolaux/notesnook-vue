@@ -14,6 +14,7 @@
 -->
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useOmnibarStore } from "@/stores/omnibar";
 import { useTitleBarStore } from "@/stores/titlebar";
@@ -21,6 +22,7 @@ import OmnibarDropdown from "./OmnibarDropdown.vue";
 
 const omnibar = useOmnibarStore();
 const titlebar = useTitleBarStore();
+const { t } = useI18n();
 
 const input = ref<HTMLInputElement | null>(null);
 const field = ref<HTMLElement | null>(null);
@@ -111,7 +113,7 @@ watch(
         type="text"
         class="global-search__input"
         :value="omnibar.query"
-        placeholder="Search notes or type > for commands…"
+        :placeholder="t('omnibar.placeholder')"
         autocomplete="off"
         spellcheck="false"
         @input="onInput"
@@ -125,7 +127,7 @@ watch(
       <button
         type="button"
         class="global-search__cmd"
-        title="Command palette (⌘K)"
+        :title="t('omnibar.commandPaletteTitle')"
         @click="omnibar.openCommands()"
       >
         <Icon name="ellipsis" :size="14" />

@@ -53,6 +53,7 @@ import { filterCommands } from "@/commands/menu";
 import { searchVectorEmbeddings } from "@/utils/vector-search";
 import { readSemanticSearchEnabled } from "@/stores/settings";
 import { logger } from "@/utils/logger";
+import i18n from "@/i18n";
 
 export type OmnibarMode = "notes" | "commands" | "tags" | "notebooks" | "tabs";
 
@@ -113,6 +114,7 @@ function parsePrefix(raw: string): { mode: OmnibarMode; text: string } {
 }
 
 export const useOmnibarStore = defineStore("omnibar", () => {
+  const t = i18n.global.t.bind(i18n.global);
   const layout = useEditorLayoutStore();
   const editorStore = useEditorStore();
   const notes = useNotesStore();
@@ -209,19 +211,19 @@ export const useOmnibarStore = defineStore("omnibar", () => {
       attachment?: { filename?: string };
       searchQuery?: string;
     }[];
-    const tabRows: OmnibarItem[] = tabs.map((t) => {
+    const tabRows: OmnibarItem[] = tabs.map((tab) => {
       const title =
-        t.kind === "attachment"
-          ? (t.attachment?.filename ?? "Attachment")
-          : t.kind === "search"
-            ? "Search: " + (t.searchQuery ?? "")
-            : notes.titleOf(t.noteId ?? "");
+        tab.kind === "attachment"
+          ? (tab.attachment?.filename ?? t("omnibar.groupAttachment"))
+          : tab.kind === "search"
+            ? t("tabs.searchTitle", { query: tab.searchQuery ?? "" })
+            : notes.titleOf(tab.noteId ?? "");
       return {
-        key: "tab:" + t.id,
+        key: "tab:" + tab.id,
         mode: "tabs",
         label: title,
-        group: t.kind === "note" ? "Tab" : t.kind === "search" ? "Search tab" : "Attachment",
-        refId: t.id,
+        group: tab.kind === "note" ? t("omnibar.groupTab") : tab.kind === "search" ? t("omnibar.groupSearchTab") : t("omnibar.groupAttachment"),
+        refId: tab.id,
         tabPick: "tab"
       };
     });
@@ -230,8 +232,8 @@ export const useOmnibarStore = defineStore("omnibar", () => {
       .map((n) => ({
         key: "recent:" + n.id,
         mode: "tabs",
-        label: n.title || "Untitled",
-        group: "Recent",
+        label: n.title || t("common.untitled"),
+        group: t("omnibar.groupRecent"),
         refId: n.id,
         tabPick: "recent"
       }));
@@ -245,8 +247,8 @@ export const useOmnibarStore = defineStore("omnibar", () => {
         return noteResults.value.map((r) => ({
           key: r.id,
           mode: "notes" as const,
-          label: r.title.length ? matchesToHtml(r.title) : "Untitled",
-          titleHtml: r.title.length ? matchesToHtml(r.title) : "Untitled",
+          label: r.title.length ? matchesToHtml(r.title) : t("common.untitled"),
+          titleHtml: r.title.length ? matchesToHtml(r.title) : t("common.untitled"),
           snippetHtml: snippetHtml(r),
           refId: r.id
         }));
@@ -347,8 +349,8 @@ export const useOmnibarStore = defineStore("omnibar", () => {
           if (note) {
             blended.push({
               id: note.id,
-              title: [[note.title || "Untitled"]],
-              body: [[(note.headline || note.title || "Untitled").slice(0, 150)]],
+              title: [[note.title || t("common.untitled")]],
+              body: [[(note.headline || note.title || t("common.untitled")).slice(0, 150)]],
               note
             } as unknown as HighlightedResult);
           }

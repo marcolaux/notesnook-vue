@@ -506,7 +506,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
       @dragleave="v.name === 'archive' && onNoteTargetDragLeave('archive', undefined)"
       @drop="v.name === 'archive' && onArchiveNoteDrop($event)"
     >
-      <span class="shrink-0">{{ v.label }}</span>
+      <span class="shrink-0">{{ v.name === 'all' ? t('sidebar.allNotes') : v.label }}</span>
       <span
         v-if="v.name === 'archive' && collections.archiveCount > 0"
         class="ml-auto shrink-0 text-[10px] text-text-muted"
@@ -781,7 +781,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
       class="titlebar-no-drag rounded-md px-2 py-1.5 text-left text-text-muted transition-colors hover:bg-glass-hover"
       @click="openSettings"
     >
-      Settings
+      {{ t('settings.title') }}
     </button>
 
     <!-- Account area: email + a row with Log out (left) and the sync status
@@ -793,7 +793,7 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
           class="rounded px-1 py-0.5 text-left text-[10px] text-text-muted hover:bg-glass-hover"
           @click="auth.logout()"
         >
-          Log out
+          {{ t('sidebar.logOut') }}
         </button>
         <span class="shrink-0 text-[10px] text-text-muted" :title="syncText">{{ syncText }}</span>
       </div>
@@ -803,15 +803,15 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
         class="rounded-md px-2 py-1.5 text-left text-[11px] text-text-muted hover:bg-glass-hover"
         @click="auth.requestSignIn()"
       >
-        Sign in
+        {{ t('sidebar.signIn') }}
       </button>
       <!-- Local-only chip: shown only while in local mode (`skippedLogin` is the
            sole login gate there). Disappears once Sign in re-arms the login screen. -->
       <span
         v-if="auth.skippedLogin"
         class="shrink-0 rounded-full bg-glass-surface px-2 py-0.5 text-[10px] text-text-muted"
-        title="Your notes stay on this device and don't sync. Sign in to sync across devices."
-        >Local only</span
+        :title="t('sidebar.localOnlyHint')"
+        >{{ t('sidebar.localOnly') }}</span
       >
     </div>
 

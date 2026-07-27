@@ -13,6 +13,7 @@ import { nextTick } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import GlobalSearchInput from "@/components/GlobalSearchInput.vue";
 import { useOmnibarStore } from "@/stores/omnibar";
+import i18n from "@/i18n";
 import { useCollectionsStore } from "@/stores/collections";
 import { registerCommands, clearCommands, type Command } from "@/commands/registry";
 
@@ -75,7 +76,7 @@ describe("GlobalSearchInput + OmnibarDropdown", () => {
     cmds = fakeCommands();
     registerCommands(cmds);
     omnibar = useOmnibarStore();
-    wrapper = mount(GlobalSearchInput, { attachTo: document.body });
+    wrapper = mount(GlobalSearchInput, { attachTo: document.body, global: { plugins: [i18n] } });
   });
 
   afterEach(() => {

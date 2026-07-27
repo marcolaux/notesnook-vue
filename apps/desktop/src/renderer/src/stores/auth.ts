@@ -13,6 +13,7 @@ import {
   type ContextId
 } from "@/platform/account-context";
 import { logger } from "@/utils/logger";
+import i18n from "@/i18n";
 
 /**
  * Auth store — wraps `@notesnook/core`'s `UserManager` (`db.user.*`) and drives
@@ -104,6 +105,7 @@ function errorMessage(e: unknown): string {
 }
 
 export const useAuthStore = defineStore("auth", () => {
+  const t = i18n.global.t.bind(i18n.global);
   const user = ref<User | undefined>(undefined);
   const status = ref<AuthStatus>("unknown");
   const error = ref<string>("");
@@ -294,9 +296,11 @@ export const useAuthStore = defineStore("auth", () => {
         if (method === "email" || method === "sms") {
           try {
             await sendMfaCode(method);
-            resendStatus.value = `Verification code sent to your ${method === "email" ? "email address" : "phone"}.`;
+            resendStatus.value = t("login.codeSent", {
+              dest: method === "email" ? t("login.emailAddress") : t("login.phone")
+            });
           } catch (sendErr) {
-            error.value = `Failed to send 2FA code: ${errorMessage(sendErr)}`;
+            error.value = t("login.codeSendFailed", { err: errorMessage(sendErr) });
           }
         }
         return;
@@ -314,7 +318,7 @@ export const useAuthStore = defineStore("auth", () => {
   async function resendMfaCode(methodOverride?: string): Promise<void> {
     const pending = pendingMfa.value;
     if (!pending) {
-      error.value = "MFA session expired — please start again.";
+      error.value = t("login.mfaSessionExpired");
       return;
     }
     const method = methodOverride ?? pending.method;
@@ -322,9 +326,11 @@ export const useAuthStore = defineStore("auth", () => {
     resendStatus.value = "";
     try {
       await sendMfaCode(method);
-      resendStatus.value = `New verification code sent to your ${method === "email" ? "email address" : "phone"}.`;
+      resendStatus.value = t("login.codeResent", {
+        dest: method === "email" ? t("login.emailAddress") : t("login.phone")
+      });
     } catch (e) {
-      error.value = `Failed to resend 2FA code: ${errorMessage(e)}`;
+      error.value = t("login.codeResendFailed", { err: errorMessage(e) });
     }
   }
 
@@ -343,9 +349,11 @@ export const useAuthStore = defineStore("auth", () => {
     if (newMethod === "email" || newMethod === "sms") {
       try {
         await sendMfaCode(newMethod);
-        resendStatus.value = `Verification code sent to your ${newMethod === "email" ? "email address" : "phone"}.`;
+        resendStatus.value = t("login.codeSent", {
+          dest: newMethod === "email" ? t("login.emailAddress") : t("login.phone")
+        });
       } catch (e) {
-        error.value = `Failed to send 2FA code: ${errorMessage(e)}`;
+        error.value = t("login.codeSendFailed", { err: errorMessage(e) });
       }
     }
   }
@@ -355,7 +363,7 @@ export const useAuthStore = defineStore("auth", () => {
     const pending = pendingMfa.value;
     if (!pending) {
       status.value = "error";
-      error.value = "MFA session expired — please start again.";
+      error.value = t("login.mfaSessionExpired");
       return;
     }
     error.value = "";

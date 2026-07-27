@@ -18,6 +18,7 @@
 -->
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
+import { useI18n } from "vue-i18n";
 import type { OmnibarItem, OmnibarMode } from "@/stores/omnibar";
 
 const props = defineProps<{
@@ -35,19 +36,20 @@ const emit = defineEmits<{
 }>();
 
 const root = ref<HTMLElement | null>(null);
+const { t } = useI18n();
 
 const emptyText = computed(() => {
   switch (props.mode) {
     case "notes":
-      return "No results";
+      return t("omnibar.noResults");
     case "commands":
-      return "No matching commands";
+      return t("omnibar.noMatchingCommands");
     case "tags":
-      return "No matching tags";
+      return t("omnibar.noMatchingTags");
     case "notebooks":
-      return "No matching notebooks";
+      return t("omnibar.noMatchingNotebooks");
     case "tabs":
-      return "No open tabs or recent notes";
+      return t("omnibar.noOpenTabs");
   }
 });
 
@@ -100,7 +102,7 @@ watch(
         class="omnibar-dropdown__footer"
         @click="emit('openAll')"
       >
-        View all results <span class="omnibar-dropdown__kbd">↵</span>
+        {{ t('omnibar.viewAllResults') }} <span class="omnibar-dropdown__kbd">↵</span>
       </button>
     </div>
   </Teleport>

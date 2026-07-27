@@ -4,6 +4,7 @@ import { desktop } from "@/platform/desktop-bridge";
 import { useSettingsStore } from "@/stores/settings";
 import type { UpstreamReleaseStatus } from "@contracts/router";
 import { logger } from "@/utils/logger";
+import i18n from "@/i18n";
 
 /**
  * Upstream-release notifier store — the reactive surface for the main-process
@@ -60,6 +61,7 @@ function indicatorVisible(status: UpstreamReleaseStatus | null, dismissedTag: st
 }
 
 export const useUpstreamNotifierStore = defineStore("upstream-notifier", () => {
+  const t = i18n.global.t.bind(i18n.global);
   /** Last check result from the main bridge (null before the first check). */
   const status = ref<UpstreamReleaseStatus | null>(null);
   /** A check is in flight. */
@@ -77,8 +79,8 @@ export const useUpstreamNotifierStore = defineStore("upstream-notifier", () => {
   function notify(latest: UpstreamReleaseStatus): void {
     if (typeof globalThis.Notification !== "function") return;
     try {
-      const n = new globalThis.Notification("Notesnook upstream release available", {
-        body: `${latest.latestTag} released — you built against ${latest.baselineTag}.`,
+      const n = new globalThis.Notification(t("titlebar.upstreamReleaseTitle"), {
+        body: t("titlebar.upstreamReleaseBody", { latest: latest.latestTag, baseline: latest.baselineTag }),
         tag: "nn-upstream-release"
       });
       // Open the release page on click (best-effort).
