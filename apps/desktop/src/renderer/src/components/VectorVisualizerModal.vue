@@ -15,6 +15,7 @@ import {
   type ClusteringOptions,
   cosineSimilarity
 } from "@/utils/vector-clustering";
+import { readCanvasThemeColors, withAlpha, onThemeChange } from "@/utils/canvas-theme";
 
 const emit = defineEmits<{
   (e: "close"): void;
@@ -114,8 +115,12 @@ function render(): void {
   ctx.save();
   ctx.scale(dpr, dpr);
 
-  // Deep dark glass backdrop
-  ctx.fillStyle = "#090d16";
+  // Theme-aware canvas backdrop (flips with the active theme via
+  // `--background`, read from <html>'s computed style). Replaces a hardcoded
+  // `#090d16` that forced the graph dark regardless of the app theme.
+  const theme = readCanvasThemeColors();
+
+  ctx.fillStyle = theme.backdrop;
   ctx.fillRect(0, 0, width, height);
 
   // 1. Draw Cluster Hulls (Screen-Mapped)
@@ -150,9 +155,16 @@ function render(): void {
     ctx.stroke();
 
     const [centX, centY] = toScreenPos(cluster.centroid[0], cluster.centroid[1], width, height);
-    ctx.fillStyle = cluster.color;
     ctx.font = "600 12px Inter, sans-serif";
     ctx.textAlign = "center";
+    ctx.lineJoin = "round";
+    // Backdrop-colored halo guarantees the cluster title stays readable on
+    // either theme (a vivid yellow/emerald cluster color is illegible on a
+    // light backdrop without it).
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = theme.backdrop;
+    ctx.strokeText(`✦ ${cluster.title}`, centX, centY);
+    ctx.fillStyle = cluster.color;
     ctx.fillText(`✦ ${cluster.title}`, centX, centY);
   }
 
@@ -175,7 +187,9 @@ function render(): void {
 
     if (edge.type === "similarity") {
       const alpha = isConnected ? 0.9 : Math.max(0.12, edge.similarity * 0.35);
-      ctx.strokeStyle = isConnected ? "#6366f1" : `rgba(99, 102, 241, ${alpha})`;
+      // Active/highlighted similarity edge uses the theme accent (matches the
+      // app's selection color); inactive edges fade the same accent by alpha.
+      ctx.strokeStyle = isConnected ? theme.accent : withAlpha(theme.accent, alpha);
       ctx.lineWidth = isConnected ? 2.5 : Math.max(1, edge.similarity * 2);
       ctx.setLineDash([]);
     } else if (edge.type === "tag") {
@@ -183,7 +197,9 @@ function render(): void {
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 4]);
     } else {
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.2)";
+      // Neutral relationship edge (notebook/color) — theme-muted so it reads
+      // on both backdrops. Replaces a hardcoded slate rgba tuned for dark.
+      ctx.strokeStyle = withAlpha(theme.textMuted, 0.35);
       ctx.lineWidth = 1;
       ctx.setLineDash([]);
     }
@@ -211,7 +227,7 @@ function render(): void {
     ctx.beginPath();
     ctx.arc(nx, ny, radius, 0, Math.PI * 2);
 
-    let nodeColor = "#6366f1";
+    let nodeColor = theme.accent;
     if (node.type === "tag") nodeColor = "#06b6d4";
     else if (node.type === "notebook") nodeColor = "#f59e0b";
     else if (node.type === "color") nodeColor = node.color || "#ec4899";
@@ -225,12 +241,16 @@ function render(): void {
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    ctx.strokeStyle = isSelected ? "#ffffff" : isHovered ? "#e2e8f0" : "rgba(255,255,255,0.3)";
+    // Selection ring uses the theme accent; hover uses the theme text color;
+    // default is a subtle text-colored ring. All flip with the theme — the old
+    // white rings were invisible on a light backdrop.
+    ctx.strokeStyle = isSelected ? theme.accent : isHovered ? theme.text : withAlpha(theme.text, 0.3);
     ctx.lineWidth = isSelected || isHovered ? 2.5 : 1;
     ctx.stroke();
 
-    // Constant screen font size
-    ctx.fillStyle = isRelated || !activeId ? "#f8fafc" : "#64748b";
+    // Constant screen font size — label text follows the theme so it stays
+    // readable on either backdrop (hardcoded near-white/slate were dark-only).
+    ctx.fillStyle = isRelated || !activeId ? theme.text : theme.textMuted;
     ctx.font = `${isHovered || isSelected ? "600" : "400"} 11px Inter, sans-serif`;
     ctx.textAlign = "center";
     ctx.fillText(node.label, nx, ny + radius + 13);
@@ -331,14 +351,22 @@ function onKeyDown(e: KeyboardEvent): void {
   }
 }
 
+let stopThemeObserver: (() => void) | null = null;
+
 onMounted(() => {
   window.addEventListener("keydown", onKeyDown);
   colorsStore.refresh();
   refreshGraph();
+  // Re-render the canvas when the active theme changes (themeMode flip,
+  // darkTheme/lightTheme swap, catalog install, cross-window sync) so the
+  // graph follows the theme live instead of only on next open.
+  stopThemeObserver = onThemeChange(() => requestRender());
 });
 
 onUnmounted(() => {
   window.removeEventListener("keydown", onKeyDown);
+  stopThemeObserver?.();
+  stopThemeObserver = null;
 });
 
 const similarNotesForSelected = computed(() => {
