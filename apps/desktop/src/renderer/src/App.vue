@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
@@ -37,11 +38,7 @@ import { dropZoneFromPoint } from "@/utils/tab-dnd";
 import type { LayoutSnapshot } from "@contracts/session-state";
 import { filterLayoutSnapshot } from "@contracts/session-state";
 import { autoUpdateInstalledThemes } from "@/composables/use-themes-catalog";
-import {
-  isDatabaseLockedMessage,
-  DB_LOCKED_HEADLINE,
-  DB_LOCKED_BODY
-} from "@contracts/db-locked";
+import { isDatabaseLockedMessage } from "@contracts/db-locked";
 import { setTheme, ThemeDark, ThemeLight, type VueTheme } from "@notesnook-vue/theme-vue";
 import { useReminderNotifications } from "@/composables/use-reminder-notifications";
 import { useTabShortcuts } from "@/composables/use-tab-shortcuts";
@@ -67,6 +64,7 @@ const dbLocked = computed(
 );
 
 const dialog = useDialogStore();
+const { t } = useI18n();
 const forceUnlocking = ref(false);
 
 /** Retry the boot from the error overlay. A full reload re-runs the whole boot
@@ -91,11 +89,10 @@ function retryBoot(): void {
 async function forceUnlock(): Promise<void> {
   if (!dbLocked.value || forceUnlocking.value) return;
   const ok = await dialog.confirm({
-    title: "Force unlock database?",
-    message:
-      "This closes the database and deletes its journal (-wal/-shm) to clear a stuck lock from a crash. Any notes written since the last checkpoint may be lost. Make sure no other Notesnook window is open, then continue.",
-    confirmLabel: "Force unlock",
-    cancelLabel: "Cancel",
+    title: t("boot.forceUnlockConfirmTitle"),
+    message: t("boot.forceUnlockConfirmMsg"),
+    confirmLabel: t("boot.forceUnlock"),
+    cancelLabel: t("common.cancel"),
     danger: true
   });
   if (!ok) return;
@@ -886,20 +883,20 @@ if (!isSettingsWindow) {
       >
         <div class="max-w-md rounded-lg border border-glass-border bg-glass-surface px-6 py-5 text-center">
           <template v-if="bootState === 'loading'">
-            <div class="text-sm text-text-muted">Initialising database…</div>
+            <div class="text-sm text-text-muted">{{ t("boot.initialising") }}</div>
           </template>
           <template v-else>
             <div class="text-sm font-medium text-[var(--paragraph-error)]">
-              {{ dbLocked ? DB_LOCKED_HEADLINE : "Startup failed" }}
+              {{ dbLocked ? t("dbLocked.headline") : t("boot.startupFailed") }}
             </div>
             <div class="mt-2 text-xs text-text-muted">
-              {{ dbLocked ? DB_LOCKED_BODY : bootError }}
+              {{ dbLocked ? t("dbLocked.body") : bootError }}
             </div>
             <button
               class="titlebar-no-drag mt-4 rounded-md border border-glass-border bg-glass-hover px-3 py-1.5 text-xs text-text-main transition-colors hover:opacity-90"
               @click="retryBoot"
             >
-              Retry
+              {{ t("boot.retry") }}
             </button>
             <button
               v-if="dbLocked"
@@ -907,7 +904,7 @@ if (!isSettingsWindow) {
               :disabled="forceUnlocking"
               @click="forceUnlock"
             >
-              {{ forceUnlocking ? "Unlocking…" : "Force unlock" }}
+              {{ forceUnlocking ? t("boot.unlocking") : t("boot.forceUnlock") }}
             </button>
           </template>
         </div>

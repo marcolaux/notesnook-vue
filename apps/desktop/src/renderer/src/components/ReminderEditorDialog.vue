@@ -18,7 +18,8 @@
   the same way; migrating these is the Phase 7.1 sweep).
 -->
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount, nextTick } from "vue";
+import { ref, computed, watch, onBeforeUnmount, nextTick } from "vue";
+import { useI18n } from "vue-i18n";
 import { useReminderDialogStore } from "@/stores/reminder-dialog";
 import {
   REMINDER_MODES,
@@ -27,10 +28,29 @@ import {
 } from "@/utils/reminders";
 
 const dialog = useReminderDialogStore();
+const { t, tm } = useI18n();
 
 const titleInput = ref<HTMLInputElement | null>(null);
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS = computed(() => tm("reminder.weekdays") as unknown as string[]);
+
+/** Localized display labels for the raw mode/priority/recurring enum values. */
+const modeLabels = computed<Record<string, string>>(() => ({
+  once: t("reminder.modeOnce"),
+  repeat: t("reminder.modeRepeat"),
+  permanent: t("reminder.modePermanent")
+}));
+const priorityLabels = computed<Record<string, string>>(() => ({
+  silent: t("reminder.prioritySilent"),
+  vibrate: t("reminder.priorityVibrate"),
+  urgent: t("reminder.priorityUrgent")
+}));
+const recurLabels = computed<Record<string, string>>(() => ({
+  day: t("reminder.recurDay"),
+  week: t("reminder.recurWeek"),
+  month: t("reminder.recurMonth"),
+  year: t("reminder.recurYear")
+}));
 
 /** Format a ms epoch as the local `YYYY-MM-DDTHH:mm` string a
  *  `datetime-local` input expects (no timezone — local). */
@@ -135,37 +155,37 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
   <Teleport to="body">
     <div v-if="dialog.open" class="rmd__backdrop" @mousedown="onDown">
       <div class="rmd__panel" @mousedown.stop>
-        <div class="rmd__title">{{ dialog.mode === "edit" ? "Edit reminder" : "New reminder" }}</div>
+        <div class="rmd__title">{{ dialog.mode === "edit" ? t("reminder.titleEdit") : t("reminder.titleCreate") }}</div>
 
         <label class="rmd__field">
-          <span class="rmd__label">Title</span>
+          <span class="rmd__label">{{ t("reminder.titleLabel") }}</span>
           <input
             ref="titleInput"
             class="rmd__input"
             type="text"
-            placeholder="Reminder title"
+            :placeholder="t('reminder.titlePlaceholder')"
             :value="dialog.title"
             @input="onTitle"
           />
         </label>
 
         <div v-if="dialog.linkedNoteTitle" class="rmd__hint rmd__linked">
-          Linked to note: {{ dialog.linkedNoteTitle }}
+          {{ t("reminder.linkedNote", { title: dialog.linkedNoteTitle }) }}
         </div>
 
         <label class="rmd__field">
-          <span class="rmd__label">Description</span>
+          <span class="rmd__label">{{ t("reminder.description") }}</span>
           <textarea
             class="rmd__input rmd__textarea"
             rows="2"
-            placeholder="Optional notes"
+            :placeholder="t('reminder.descriptionPlaceholder')"
             :value="dialog.description"
             @input="onDescription"
           />
         </label>
 
         <label class="rmd__field">
-          <span class="rmd__label">{{ dialog.reminderMode === "permanent" ? "Starts" : "Date & time" }}</span>
+          <span class="rmd__label">{{ dialog.reminderMode === "permanent" ? t("reminder.starts") : t("reminder.dateTime") }}</span>
           <input
             class="rmd__input"
             type="datetime-local"
@@ -176,29 +196,29 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
 
         <div class="rmd__row">
           <label class="rmd__field rmd__field--inline">
-            <span class="rmd__label">Mode</span>
+            <span class="rmd__label">{{ t("reminder.mode") }}</span>
             <select class="rmd__input rmd__select" :value="dialog.reminderMode" @change="onMode">
-              <option v-for="m in REMINDER_MODES" :key="m" :value="m">{{ m }}</option>
+              <option v-for="m in REMINDER_MODES" :key="m" :value="m">{{ modeLabels[m] }}</option>
             </select>
           </label>
           <label class="rmd__field rmd__field--inline">
-            <span class="rmd__label">Priority</span>
+            <span class="rmd__label">{{ t("reminder.priority") }}</span>
             <select class="rmd__input rmd__select" :value="dialog.priority" @change="onPriority">
-              <option v-for="p in REMINDER_PRIORITIES" :key="p" :value="p">{{ p }}</option>
+              <option v-for="p in REMINDER_PRIORITIES" :key="p" :value="p">{{ priorityLabels[p] }}</option>
             </select>
           </label>
         </div>
 
         <template v-if="dialog.reminderMode === 'repeat'">
           <label class="rmd__field">
-            <span class="rmd__label">Repeats</span>
+            <span class="rmd__label">{{ t("reminder.repeats") }}</span>
             <select class="rmd__input rmd__select" :value="dialog.recurringMode" @change="onRecurring">
-              <option v-for="r in RECURRING_MODES" :key="r" :value="r">{{ r }}</option>
+              <option v-for="r in RECURRING_MODES" :key="r" :value="r">{{ recurLabels[r] }}</option>
             </select>
           </label>
 
           <div v-if="dialog.recurringMode === 'week'" class="rmd__field">
-            <span class="rmd__label">On days</span>
+            <span class="rmd__label">{{ t("reminder.onDays") }}</span>
             <div class="rmd__weekdays">
               <button
                 v-for="(d, i) in WEEKDAYS"
@@ -212,7 +232,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
           </div>
 
           <label v-if="dialog.recurringMode === 'month'" class="rmd__field">
-            <span class="rmd__label">Day of month</span>
+            <span class="rmd__label">{{ t("reminder.dayOfMonth") }}</span>
             <input
               class="rmd__input"
               type="number"
@@ -223,25 +243,25 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
             />
           </label>
 
-          <div v-if="dialog.recurringMode === 'day'" class="rmd__hint">Every day at the chosen time.</div>
-          <div v-if="dialog.recurringMode === 'year'" class="rmd__hint">Yearly on this date & time.</div>
+          <div v-if="dialog.recurringMode === 'day'" class="rmd__hint">{{ t("reminder.recurDayHint") }}</div>
+          <div v-if="dialog.recurringMode === 'year'" class="rmd__hint">{{ t("reminder.recurYearHint") }}</div>
         </template>
 
         <div class="rmd__checks">
           <label class="rmd__check">
             <input type="checkbox" :checked="dialog.localOnly" @change="onLocalOnly" />
-            <span>Local only (don't sync)</span>
+            <span>{{ t("reminder.localOnly") }}</span>
           </label>
           <label class="rmd__check">
             <input type="checkbox" :checked="dialog.disabled" @change="onDisabled" />
-            <span>Disabled</span>
+            <span>{{ t("reminder.disabled") }}</span>
           </label>
         </div>
 
         <div class="rmd__actions">
-          <button class="rmd__btn rmd__btn--cancel" @click="dialog.cancel">Cancel</button>
+          <button class="rmd__btn rmd__btn--cancel" @click="dialog.cancel">{{ t("common.cancel") }}</button>
           <button class="rmd__btn rmd__btn--confirm" @click="dialog.confirm">
-            {{ dialog.mode === "edit" ? "Save" : "Create" }}
+            {{ dialog.mode === "edit" ? t("reminder.save") : t("reminder.create") }}
           </button>
         </div>
       </div>

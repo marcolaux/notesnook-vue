@@ -18,9 +18,11 @@
 -->
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount, nextTick } from "vue";
+import { useI18n } from "vue-i18n";
 import { usePublishDialogStore } from "@/stores/publish-dialog";
 
 const dialog = usePublishDialogStore();
+const { t } = useI18n();
 
 const titleInput = ref<HTMLInputElement | null>(null);
 
@@ -69,52 +71,51 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
   <Teleport to="body">
     <div v-if="dialog.open" class="pub__backdrop" @mousedown="onDown">
       <div class="pub__panel" @mousedown.stop>
-        <div class="pub__title">{{ dialog.mode === "edit" ? "Update published note" : "Publish note" }}</div>
+        <div class="pub__title">{{ dialog.mode === "edit" ? t("publish.titleEdit") : t("publish.titleCreate") }}</div>
         <div class="pub__hint">
-          Publish this note to the web. Anyone with the link can read it
-          {{ dialog.selfDestruct ? "once before it self-destructs" : "until you unpublish" }}.
+          {{ t("publish.hint", { suffix: dialog.selfDestruct ? t("publish.hintOnce") : t("publish.hintUntil") }) }}
         </div>
 
         <label class="pub__field">
-          <span class="pub__label">Title</span>
+          <span class="pub__label">{{ t("publish.titleLabel") }}</span>
           <input
             ref="titleInput"
             class="pub__input"
             type="text"
-            placeholder="Note title"
+            :placeholder="t('publish.titlePlaceholder')"
             :value="dialog.title"
             @input="onTitle"
           />
         </label>
 
         <label class="pub__field">
-          <span class="pub__label">Password (optional)</span>
+          <span class="pub__label">{{ t("publish.passwordLabel") }}</span>
           <div class="pub__pw">
             <input
               class="pub__input"
               :type="dialog.showPassword ? 'text' : 'password'"
-              :placeholder="dialog.mode === 'edit' ? 'Leave blank to keep current' : 'Protect the public page'"
+              :placeholder="dialog.mode === 'edit' ? t('publish.passwordKeep') : t('publish.passwordProtect')"
               :value="dialog.password"
               @input="onPassword"
             />
             <button
               type="button"
               class="pub__pw-toggle"
-              :title="dialog.showPassword ? 'Hide' : 'Show'"
+              :title="dialog.showPassword ? t('publish.hide') : t('publish.show')"
               @click="dialog.setShowPassword(!dialog.showPassword)"
-            >{{ dialog.showPassword ? "Hide" : "Show" }}</button>
+            >{{ dialog.showPassword ? t("publish.hide") : t("publish.show") }}</button>
           </div>
         </label>
 
         <label class="pub__check">
           <input type="checkbox" :checked="dialog.selfDestruct" @change="onSelfDestruct" />
-          <span>Self-destruct after first view</span>
+          <span>{{ t("publish.selfDestruct") }}</span>
         </label>
 
         <div class="pub__actions">
-          <button class="pub__btn pub__btn--cancel" @click="dialog.cancel">Cancel</button>
+          <button class="pub__btn pub__btn--cancel" @click="dialog.cancel">{{ t("common.cancel") }}</button>
           <button class="pub__btn pub__btn--confirm" @click="dialog.confirm">
-            {{ dialog.mode === "edit" ? "Update" : "Publish" }}
+            {{ dialog.mode === "edit" ? t("publish.update") : t("publish.publish") }}
           </button>
         </div>
       </div>

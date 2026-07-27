@@ -12,10 +12,12 @@
 -->
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount, nextTick } from "vue";
+import { useI18n } from "vue-i18n";
 import { useColorDialogStore } from "@/stores/color-dialog";
 import { DefaultColors } from "@notesnook-vue/contracts";
 
 const dialog = useColorDialogStore();
+const { t } = useI18n();
 
 const titleInput = ref<HTMLInputElement | null>(null);
 
@@ -77,22 +79,22 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
   <Teleport to="body">
     <div v-if="dialog.open" class="color-dialog__backdrop" @mousedown="onDown">
       <div class="color-dialog__panel" @mousedown.stop>
-        <div class="color-dialog__title">New color</div>
+        <div class="color-dialog__title">{{ t("colorEditor.title") }}</div>
 
         <label class="color-dialog__field">
-          <span class="color-dialog__label">Name</span>
+          <span class="color-dialog__label">{{ t("colorEditor.name") }}</span>
           <input
             ref="titleInput"
             class="color-dialog__input"
             type="text"
-            placeholder="Color name"
+            :placeholder="t('colorEditor.namePlaceholder')"
             :value="dialog.title"
             @input="onTitle"
           />
         </label>
 
         <div class="color-dialog__field color-dialog__field--row">
-          <span class="color-dialog__label">Color</span>
+          <span class="color-dialog__label">{{ t("colorEditor.color") }}</span>
           <input
             class="color-dialog__picker"
             type="color"
@@ -121,10 +123,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
 
         <div class="color-dialog__actions">
           <button class="color-dialog__btn color-dialog__btn--cancel" @click="dialog.cancel">
-            Cancel
+            {{ t("common.cancel") }}
           </button>
           <button class="color-dialog__btn color-dialog__btn--confirm" @click="dialog.confirm">
-            Create
+            {{ t("common.create") }}
           </button>
         </div>
       </div>

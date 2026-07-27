@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useCollectionsStore } from "@/stores/collections";
@@ -22,6 +23,14 @@ const emit = defineEmits<{
 const notesStore = useNotesStore();
 const collectionsStore = useCollectionsStore();
 const colorsStore = useColorsStore();
+const { t } = useI18n();
+
+const typeLabels = computed<Record<string, string>>(() => ({
+  note: t("vectorViz.typeNote"),
+  tag: t("vectorViz.typeTag"),
+  notebook: t("vectorViz.typeNotebook"),
+  color: t("vectorViz.typeColor")
+}));
 
 const options = ref<ClusteringOptions>({ ...DEFAULT_CLUSTERING_OPTIONS });
 const isLoading = ref(true);
@@ -364,9 +373,9 @@ function navigateToNote(noteId: string): void {
       <!-- Info Badge -->
       <div class="flex items-center gap-2 font-semibold text-text">
         <Icon name="network" :size="16" class="text-accent" />
-        <span>Vector & Cluster Visualizer</span>
+        <span>{{ t("vectorViz.title") }}</span>
         <span class="rounded-full bg-glass-hover px-2 py-0.5 text-[10px] text-text-muted">
-          {{ nodes.length }} items · {{ clusters.length }} clusters
+          {{ t("vectorViz.summary", { nodes: nodes.length, clusters: clusters.length }) }}
         </span>
       </div>
 
@@ -380,7 +389,7 @@ function navigateToNote(noteId: string): void {
           :class="options.algorithm === 'dbscan' ? 'bg-glass-active text-text font-semibold shadow-sm' : 'text-text-muted hover:text-text'"
           @click="options.algorithm = 'dbscan'"
         >
-          DBSCAN
+          {{ t("vectorViz.dbscan") }}
         </button>
         <button
           type="button"
@@ -388,13 +397,13 @@ function navigateToNote(noteId: string): void {
           :class="options.algorithm === 'kmeans' ? 'bg-glass-active text-text font-semibold shadow-sm' : 'text-text-muted hover:text-text'"
           @click="options.algorithm = 'kmeans'"
         >
-          K-Means
+          {{ t("vectorViz.kmeans") }}
         </button>
       </div>
 
       <!-- Sliders -->
       <div v-if="options.algorithm === 'kmeans'" class="flex items-center gap-2">
-        <span class="text-text-muted font-medium">Clusters (K): {{ options.kmeansK }}</span>
+        <span class="text-text-muted font-medium">{{ t("vectorViz.clustersK", { k: options.kmeansK }) }}</span>
         <input
           v-model.number="options.kmeansK"
           type="range"
@@ -405,7 +414,7 @@ function navigateToNote(noteId: string): void {
       </div>
 
       <div v-else class="flex items-center gap-2">
-        <span class="text-text-muted font-medium">Density (ε): {{ options.dbscanEps.toFixed(2) }}</span>
+        <span class="text-text-muted font-medium">{{ t("vectorViz.densityEps", { eps: options.dbscanEps.toFixed(2) }) }}</span>
         <input
           v-model.number="options.dbscanEps"
           type="range"
@@ -420,7 +429,7 @@ function navigateToNote(noteId: string): void {
 
       <!-- Similarity Cutoff Slider -->
       <div class="flex items-center gap-2">
-        <span class="text-text-muted font-medium">Similarity: ≥ {{ Math.round(options.similarityThreshold * 100) }}%</span>
+        <span class="text-text-muted font-medium">{{ t("vectorViz.similarity", { pct: Math.round(options.similarityThreshold * 100) }) }}</span>
         <input
           v-model.number="options.similarityThreshold"
           type="range"
@@ -437,11 +446,11 @@ function navigateToNote(noteId: string): void {
       <div class="flex items-center gap-3 text-text-muted">
         <label class="flex cursor-pointer items-center gap-1.5 hover:text-text">
           <input v-model="options.includeTags" type="checkbox" class="rounded accent-accent" />
-          <span>Tags</span>
+          <span>{{ t("vectorViz.tags") }}</span>
         </label>
         <label class="flex cursor-pointer items-center gap-1.5 hover:text-text">
           <input v-model="options.includeNotebooks" type="checkbox" class="rounded accent-accent" />
-          <span>Notebooks</span>
+          <span>{{ t("vectorViz.notebooks") }}</span>
         </label>
       </div>
 
@@ -450,16 +459,16 @@ function navigateToNote(noteId: string): void {
       <button
         type="button"
         class="flex h-7 items-center gap-1.5 rounded-md bg-glass-hover px-2 text-xs text-text-muted hover:text-text transition-colors"
-        title="Reset view pan & zoom"
+        :title="t('vectorViz.resetViewTitle')"
         @click="viewport = { x: 0, y: 0, zoom: 1 }; requestRender()"
       >
-        <Icon name="rotate-ccw" :size="12" /> Reset
+        <Icon name="rotate-ccw" :size="12" /> {{ t("vectorViz.reset") }}
       </button>
 
       <button
         type="button"
         class="grid h-7 w-7 place-items-center rounded-md text-text-muted hover:bg-glass-hover hover:text-text transition-colors"
-        title="Close Visualizer (Esc)"
+        :title="t('vectorViz.closeTitle')"
         @click="emit('close')"
       >
         <Icon name="x" :size="16" />
@@ -481,7 +490,7 @@ function navigateToNote(noteId: string): void {
       <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm">
         <div class="flex items-center gap-2 rounded-xl bg-glass-surface border border-glass-border px-4 py-2.5 text-xs text-text shadow-2xl">
           <Icon name="loader" :size="16" class="animate-spin text-accent" />
-          <span>Computing 2D vector clusters...</span>
+          <span>{{ t("vectorViz.computing") }}</span>
         </div>
       </div>
     </div>
@@ -494,13 +503,13 @@ function navigateToNote(noteId: string): void {
       <div class="flex items-start justify-between border-b border-glass-border pb-3">
         <div class="min-w-0 flex-1">
           <span class="inline-block rounded bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent uppercase tracking-wider mb-1">
-            {{ selectedNode.type }}
+            {{ typeLabels[selectedNode.type] ?? selectedNode.type }}
           </span>
           <h3 class="truncate text-base font-semibold text-text" :title="selectedNode.label">
             {{ selectedNode.label }}
           </h3>
           <p v-if="selectedCluster" class="text-xs text-text-muted mt-0.5 flex items-center gap-1">
-            <span>✦ Cluster: {{ selectedCluster.title }}</span>
+            <span>{{ t("vectorViz.clusterLabel", { title: selectedCluster.title }) }}</span>
           </p>
         </div>
         <button
@@ -521,8 +530,8 @@ function navigateToNote(noteId: string): void {
         <!-- Top Semantic Similarity Connections -->
         <div>
           <h4 class="font-semibold text-text mb-2 flex items-center justify-between">
-            <span>Top Similar Notes</span>
-            <span class="text-[10px] text-text-muted">Similarity %</span>
+            <span>{{ t("vectorViz.topSimilar") }}</span>
+            <span class="text-[10px] text-text-muted">{{ t("vectorViz.similarityPct") }}</span>
           </h4>
           <div class="space-y-1.5">
             <div
@@ -541,7 +550,7 @@ function navigateToNote(noteId: string): void {
 
         <!-- Tags -->
         <div v-if="selectedNode.tags && selectedNode.tags.length > 0">
-          <h4 class="font-semibold text-text mb-1.5">Associated Tags</h4>
+          <h4 class="font-semibold text-text mb-1.5">{{ t("vectorViz.associatedTags") }}</h4>
           <div class="flex flex-wrap gap-1">
             <span
               v-for="t in selectedNode.tags"
@@ -561,7 +570,7 @@ function navigateToNote(noteId: string): void {
         class="w-full flex items-center justify-center gap-2 rounded-xl bg-accent py-2.5 font-medium text-xs text-white shadow-lg transition-opacity hover:opacity-90"
         @click="navigateToNote(selectedNode.noteId!)"
       >
-        <Icon name="file-text" :size="14" /> Open Note in Editor
+        <Icon name="file-text" :size="14" /> {{ t("vectorViz.openNote") }}
       </button>
     </div>
   </div>

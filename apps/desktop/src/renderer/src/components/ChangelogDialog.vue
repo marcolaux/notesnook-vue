@@ -4,11 +4,13 @@
  * is detected automatically or opened via Settings / TitleBar.
  */
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { useUpdaterStore } from "@/stores/updater";
 import { parseMarkdownToHtml, formatBundledChangelog, getLatestChangelogVersion } from "@/utils/markdown";
 import { Icon } from "@notesnook-vue/ui-vue";
 
 const updater = useUpdaterStore();
+const { t } = useI18n();
 
 const rawChangelogText = typeof __CHANGELOG_CONTENT__ !== "undefined" ? __CHANGELOG_CONTENT__ : "";
 const latestBundledVersion = getLatestChangelogVersion(rawChangelogText);
@@ -39,9 +41,9 @@ const renderedHtml = computed(() => {
 });
 
 const statusBadgeLabel = computed(() => {
-  if (updater.readyToInstall) return "Ready to Install";
-  if (updater.updateAvailable) return "Update Available";
-  return "Up to Date";
+  if (updater.readyToInstall) return t("changelog.badgeReady");
+  if (updater.updateAvailable) return t("changelog.badgeAvailable");
+  return t("changelog.badgeUpToDate");
 });
 
 const statusBadgeClass = computed(() => {
@@ -78,7 +80,7 @@ function handleAction(): void {
               <Icon name="sparkles" :size="22" />
             </div>
             <div>
-              <h3 class="text-base font-semibold text-text">What's New in {{ versionTag }}</h3>
+              <h3 class="text-base font-semibold text-text">{{ t("changelog.whatsNewIn", { version: versionTag }) }}</h3>
               <div class="mt-0.5 flex items-center gap-2 text-xs text-text-muted">
                 <span
                   class="px-2 py-0.5 rounded-full font-mono text-[10px]"
@@ -86,14 +88,14 @@ function handleAction(): void {
                 >
                   {{ statusBadgeLabel }}
                 </span>
-                <span>• Notesnook Desktop Release</span>
+                <span>{{ t("changelog.releaseLabel") }}</span>
               </div>
             </div>
           </div>
           <button
             type="button"
             class="text-text-muted hover:text-text p-1 rounded-md transition-colors"
-            title="Close"
+            :title="t('changelog.closeAttr')"
             @click="updater.dismissChangelog()"
           >
             <Icon name="x" :size="18" />
@@ -103,7 +105,7 @@ function handleAction(): void {
         <!-- Download progress if downloading -->
         <div v-if="downloading" class="py-3 border-b border-border flex flex-col gap-1.5">
           <div class="flex justify-between text-xs font-medium">
-            <span class="text-text">Downloading update...</span>
+            <span class="text-text">{{ t("changelog.downloading") }}</span>
             <span class="text-accent">{{ updater.status.progress }}%</span>
           </div>
           <div class="h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
@@ -133,7 +135,7 @@ function handleAction(): void {
             class="px-3.5 py-1.5 text-xs font-medium rounded-md border border-border bg-transparent hover:bg-surface-hover text-text transition-colors"
             @click="updater.dismissChangelog()"
           >
-            Remind Me Later
+            {{ t("changelog.remindLater") }}
           </button>
           <button
             type="button"
@@ -141,9 +143,9 @@ function handleAction(): void {
             :disabled="updater.busy || downloading"
             @click="handleAction"
           >
-            <template v-if="updater.readyToInstall">Install and Restart</template>
-            <template v-else-if="downloading">Downloading...</template>
-            <template v-else>Download & Update</template>
+            <template v-if="updater.readyToInstall">{{ t("changelog.installRestart") }}</template>
+            <template v-else-if="downloading">{{ t("changelog.downloadingDots") }}</template>
+            <template v-else>{{ t("changelog.downloadUpdate") }}</template>
           </button>
         </div>
       </div>

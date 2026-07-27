@@ -4,6 +4,7 @@
  * Loaded in its own Electron BrowserWindow when `?window=changelog`.
  */
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { useUpdaterStore } from "@/stores/updater";
 import { useTitleBarStore } from "@/stores/titlebar";
 import { desktop } from "@/platform/desktop-bridge";
@@ -12,6 +13,7 @@ import { Icon } from "@notesnook-vue/ui-vue";
 
 const updater = useUpdaterStore();
 const titlebar = useTitleBarStore();
+const { t } = useI18n();
 
 const rawChangelogText = typeof __CHANGELOG_CONTENT__ !== "undefined" ? __CHANGELOG_CONTENT__ : "";
 const latestBundledVersion = getLatestChangelogVersion(rawChangelogText);
@@ -42,9 +44,9 @@ const renderedHtml = computed(() => {
 });
 
 const statusBadgeLabel = computed(() => {
-  if (updater.readyToInstall) return "Ready to Install";
-  if (updater.updateAvailable) return "Update Available";
-  return "Up to Date";
+  if (updater.readyToInstall) return t("changelog.badgeReady");
+  if (updater.updateAvailable) return t("changelog.badgeAvailable");
+  return t("changelog.badgeUpToDate");
 });
 
 const statusBadgeClass = computed(() => {
@@ -78,12 +80,12 @@ function handleAction(): void {
     >
       <div class="flex items-center gap-2 text-xs font-semibold text-text">
         <Icon name="sparkles" :size="14" class="text-accent" />
-        <span>What's New</span>
+        <span>{{ t("changelog.whatsNew") }}</span>
       </div>
       <button
         type="button"
         class="titlebar-no-drag grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-glass-hover hover:text-text transition-colors"
-        title="Close Window"
+        :title="t('changelog.closeWindow')"
         @click="handleClose"
       >
         <Icon name="x" :size="14" />
@@ -99,12 +101,12 @@ function handleAction(): void {
             <Icon name="sparkles" :size="22" />
           </div>
           <div>
-            <h1 class="text-base font-bold text-text">What's New in {{ versionTag }}</h1>
+            <h1 class="text-base font-bold text-text">{{ t("changelog.whatsNewIn", { version: versionTag }) }}</h1>
             <div class="mt-0.5 flex items-center gap-2 text-xs text-text-muted">
               <span class="px-2 py-0.5 rounded-full font-mono text-[10px]" :class="statusBadgeClass">
                 {{ statusBadgeLabel }}
               </span>
-              <span>• Notesnook Desktop Release</span>
+              <span>{{ t("changelog.releaseLabel") }}</span>
             </div>
           </div>
         </div>
@@ -113,7 +115,7 @@ function handleAction(): void {
       <!-- Download progress banner -->
       <div v-if="downloading" class="py-2.5 px-3 rounded-lg bg-glass-hover border border-glass-border flex flex-col gap-1.5">
         <div class="flex justify-between text-xs font-medium">
-          <span class="text-text">Downloading update...</span>
+          <span class="text-text">{{ t("changelog.downloading") }}</span>
           <span class="text-accent">{{ updater.status.progress }}%</span>
         </div>
         <div class="h-1.5 w-full overflow-hidden rounded-full bg-glass-border">
@@ -143,7 +145,7 @@ function handleAction(): void {
           class="px-4 py-2 text-xs font-medium rounded-xl border border-glass-border bg-glass-hover hover:bg-glass-active text-text transition-colors"
           @click="handleClose"
         >
-          Close
+          {{ t("common.close") }}
         </button>
         <button
           v-if="updater.updateAvailable || updater.readyToInstall"
@@ -152,9 +154,9 @@ function handleAction(): void {
           :disabled="updater.busy || downloading"
           @click="handleAction"
         >
-          <template v-if="updater.readyToInstall">Install and Restart</template>
-          <template v-else-if="downloading">Downloading...</template>
-          <template v-else>Download & Update</template>
+          <template v-if="updater.readyToInstall">{{ t("changelog.installRestart") }}</template>
+          <template v-else-if="downloading">{{ t("changelog.downloadingDots") }}</template>
+          <template v-else>{{ t("changelog.downloadUpdate") }}</template>
         </button>
       </div>
     </div>

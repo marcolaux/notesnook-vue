@@ -6,9 +6,11 @@
 -->
 <script setup lang="ts">
 import { watch, onBeforeUnmount } from "vue";
+import { useI18n } from "vue-i18n";
 import { useDialogStore } from "@/stores/dialog";
 
 const dialog = useDialogStore();
+const { t } = useI18n();
 
 function onKeydown(e: KeyboardEvent): void {
   if (!dialog.open) return;
@@ -66,14 +68,14 @@ onBeforeUnmount(() => {
         <div class="confirm-dialog__message">{{ dialog.pending?.message }}</div>
         <div class="confirm-dialog__actions">
           <button class="confirm-dialog__btn confirm-dialog__btn--cancel" @click="cancel">
-            {{ dialog.pending?.cancelLabel ?? "Cancel" }}
+            {{ dialog.pending?.cancelLabel ?? t("common.cancel") }}
           </button>
           <button
             class="confirm-dialog__btn confirm-dialog__btn--confirm"
             :class="{ 'is-danger': dialog.pending?.danger }"
             @click="confirm"
           >
-            {{ dialog.pending?.confirmLabel ?? "Confirm" }}
+            {{ dialog.pending?.confirmLabel ?? t("common.confirm") }}
           </button>
         </div>
       </div>

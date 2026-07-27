@@ -95,11 +95,11 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
           v-model="query"
           class="icon-dialog__search"
           type="text"
-          placeholder="Search icons…"
+          :placeholder="t('iconEditor.searchPlaceholder')"
           spellcheck="false"
         />
 
-        <div v-if="loading" class="icon-dialog__empty">Loading icons…</div>
+        <div v-if="loading" class="icon-dialog__empty">{{ t("iconEditor.loading") }}</div>
         <template v-else>
           <div v-if="names.length" class="icon-dialog__grid">
             <button
@@ -117,11 +117,11 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
               <Icon :name="name" :size="16" />
             </button>
           </div>
-          <div v-else class="icon-dialog__empty">No matching icons.</div>
+          <div v-else class="icon-dialog__empty">{{ t("iconEditor.noMatch") }}</div>
         </template>
 
         <div class="icon-dialog__actions">
-          <button class="icon-dialog__btn" @click="dialog.cancel">Cancel</button>
+          <button class="icon-dialog__btn" @click="dialog.cancel">{{ t("common.cancel") }}</button>
         </div>
       </div>
     </div>

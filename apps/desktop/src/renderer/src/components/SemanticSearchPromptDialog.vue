@@ -5,12 +5,14 @@
  * Brand new users are enabled by default and auto-prompted.
  */
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { useAuthStore } from "@/stores/auth";
 import { useSettingsStore } from "@/stores/settings";
 import { Icon } from "@notesnook-vue/ui-vue";
 
 const auth = useAuthStore();
 const settings = useSettingsStore();
+const { t } = useI18n();
 
 const show = computed(() => {
   return auth.isLoggedIn && !settings.semanticSearchPrompted;
@@ -43,16 +45,16 @@ function handleDisable(): void {
             <Icon name="sparkles" :size="22" />
           </div>
           <div class="flex-1">
-            <h3 class="text-base font-semibold text-text">Enable Semantic Vector Search?</h3>
-            <p class="mt-1 text-xs text-text-muted">100% On-Device & Zero-Knowledge Encrypted</p>
+            <h3 class="text-base font-semibold text-text">{{ t("semanticSearch.title") }}</h3>
+            <p class="mt-1 text-xs text-text-muted">{{ t("semanticSearch.subtitle") }}</p>
           </div>
         </div>
 
         <p class="mt-4 text-xs leading-relaxed text-text-muted">
-          Notesnook now features <strong>On-Device Semantic Search</strong>! It uses AI vector embeddings to find notes based on context and meaning alongside traditional keyword search.
+          {{ t("semanticSearch.body1Pre") }}<strong>{{ t("semanticSearch.body1Bold") }}</strong>{{ t("semanticSearch.body1Post") }}
         </p>
         <p class="mt-2 text-xs leading-relaxed text-text-muted">
-          All embeddings are calculated locally on your device and stored directly inside your encrypted database. No plaintext note content or vectors ever leave your machine.
+          {{ t("semanticSearch.body2") }}
         </p>
 
         <div class="mt-6 flex justify-end gap-2.5 pt-3 border-t border-border">
@@ -61,14 +63,14 @@ function handleDisable(): void {
             class="px-3.5 py-1.5 text-xs font-medium rounded-md border border-border bg-transparent hover:bg-surface-hover text-text transition-colors"
             @click="handleDisable"
           >
-            Keep Lexical Only
+            {{ t("semanticSearch.keepLexical") }}
           </button>
           <button
             type="button"
             class="px-3.5 py-1.5 text-xs font-medium rounded-md border border-accent bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
             @click="handleEnable"
           >
-            Enable Semantic Search
+            {{ t("semanticSearch.enable") }}
           </button>
         </div>
       </div>

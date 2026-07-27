@@ -8,11 +8,13 @@
 -->
 <script setup lang="ts">
 import { watch, onBeforeUnmount } from "vue";
+import { useI18n } from "vue-i18n";
 import ThemePreview from "./ThemePreview.vue";
 import type { ThemeGridItem } from "@/composables/use-themes-catalog";
 
 const props = defineProps<{ theme: ThemeGridItem; applying?: boolean }>();
 const emit = defineEmits<{ (e: "confirm"): void; (e: "cancel"): void }>();
+const { t } = useI18n();
 
 function onKeydown(e: KeyboardEvent): void {
   if (e.key === "Escape") {
@@ -29,8 +31,8 @@ function onDown(e: MouseEvent): void {
 
 watch(
   () => props.theme,
-  (t) => {
-    if (t) window.addEventListener("keydown", onKeydown);
+  (th) => {
+    if (th) window.addEventListener("keydown", onKeydown);
     else window.removeEventListener("keydown", onKeydown);
   },
   { immediate: true }
@@ -48,16 +50,16 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
         <div class="tdd__title">{{ theme.name }} <span class="tdd__ver">v{{ theme.version }}</span></div>
         <p v-if="theme.description" class="tdd__desc">{{ theme.description }}</p>
         <div class="tdd__meta">
-          <span v-if="theme.authors.length">by {{ theme.authors.map((a) => a.name).join(", ") }}</span>
+          <span v-if="theme.authors.length">{{ t("themeDetails.by", { authors: theme.authors.map((a) => a.name).join(", ") }) }}</span>
           <span class="tdd__badge" :class="theme.colorScheme">{{ theme.colorScheme }}</span>
         </div>
         <div class="tdd__links">
-          <a v-if="theme.homepage" :href="theme.homepage" target="_blank" rel="noreferrer">Website</a>
-          <a v-if="theme.sourceURL" :href="theme.sourceURL" target="_blank" rel="noreferrer">Source</a>
-          <span class="tdd__license">License: {{ theme.license }}</span>
+          <a v-if="theme.homepage" :href="theme.homepage" target="_blank" rel="noreferrer">{{ t("themeDetails.website") }}</a>
+          <a v-if="theme.sourceURL" :href="theme.sourceURL" target="_blank" rel="noreferrer">{{ t("themeDetails.source") }}</a>
+          <span class="tdd__license">{{ t("themeDetails.license", { license: theme.license }) }}</span>
         </div>
         <div class="tdd__actions">
-          <button class="tdd__btn tdd__btn--cancel" @click="emit('cancel')">Cancel</button>
+          <button class="tdd__btn tdd__btn--cancel" @click="emit('cancel')">{{ t("common.cancel") }}</button>
           <button
             class="tdd__btn tdd__btn--confirm"
             :disabled="theme.isApplied || applying"
@@ -65,10 +67,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
           >
             {{
               theme.isApplied
-                ? "Applied"
+                ? t("themeDetails.applied")
                 : applying
-                  ? "Installing…"
-                  : `Set as ${theme.colorScheme === "dark" ? "Dark" : "Light"} theme`
+                  ? t("themeDetails.installing")
+                  : theme.colorScheme === "dark" ? t("themeDetails.setAsDark") : t("themeDetails.setAsLight")
             }}
           </button>
         </div>
