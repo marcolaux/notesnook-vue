@@ -15,7 +15,23 @@
 export default {
   common: {
     greeting: "Notesnook Vue",
-    close: "Close"
+    close: "Close",
+    cancel: "Cancel",
+    confirm: "Confirm",
+    ok: "OK",
+    delete: "Delete",
+    restore: "Restore",
+    all: "All",
+    none: "None",
+    search: "Search",
+    off: "Off",
+    on: "On",
+    enabled: "Enabled",
+    disabled: "Disabled",
+    selected: "Selected",
+    untitled: "Untitled",
+    never: "Never",
+    noAdditionalText: "No additional text"
   },
   history: {
     title: "Note history",
@@ -46,7 +62,6 @@ export default {
     noShortcuts: "No shortcuts",
     addToShortcuts: "Add to shortcuts",
     removeFromShortcuts: "Remove from shortcuts",
-    removeFromFavourites: "Remove from shortcuts",
     createSubNotebook: "Create sub-notebook",
     createSubTag: "Create sub-tag",
     newNotebook: "New notebook",
@@ -63,7 +78,6 @@ export default {
     unsupportedPreview: "No in-app preview for this file type."
   },
   linkNote: {
-    title: "Link to note or web/file URL",
     searchPlaceholder: "Search notes or enter URL…",
     blockSearchPlaceholder: "Search section…",
     linkWholeNote: "Link to whole note",
@@ -72,8 +86,15 @@ export default {
     noBlocks: "No sections in this note",
     emptyBlock: "(empty)",
     createNote: "Create note",
+    notesTab: "Notes",
+    webTab: "Web URL",
+    fileTab: "Local File",
+    webPlaceholder: "https://example.com",
+    filePlaceholder: "file:///path/to/file",
+    displayTitlePlaceholder: "Display text (optional)",
+    browseFile: "Browse file…",
+    insertLink: "Insert Link",
     webLinkOption: "Link to web page",
-    fileLinkOption: "Link to local file",
-    browseFile: "Browse file…"
+    fileLinkOption: "Link to local file"
   }
 } as const;

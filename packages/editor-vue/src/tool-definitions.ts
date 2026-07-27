@@ -146,6 +146,29 @@ export function setLastSelectedListType(type: ListTypeKey): void {
   lastSelectedListType = type;
 }
 
+/**
+ * Host label injection (Phase 7.1 i18n). This package stays free of any i18n
+ * dependency; instead the host installs a resolver that maps an action id
+ * (e.g. `"bold"`) to a localized title. `resolveToolTitle` falls back to the
+ * action's English `title` when no resolver is installed or the resolver
+ * returns `undefined` for a given id (e.g. the host catalog has no key for it).
+ * The resolver is read on each slash-menu open, so a locale change takes effect
+ * the next time the menu is shown — no editor recreation needed.
+ */
+let labelResolver: (id: string) => string | undefined = () => undefined;
+
+/** Install the host's localized-title resolver (called once at app boot). */
+export function setEditorLabelResolver(
+  fn: (id: string) => string | undefined
+): void {
+  labelResolver = fn;
+}
+
+/** Resolve a tool action's display title via the host resolver, else English. */
+export function resolveToolTitle(action: { id: string; title: string }): string {
+  return labelResolver(action.id) ?? action.title;
+}
+
 const toggleHeading = (level: 1 | 2 | 3) => (editor: Editor): void => {
   chain(editor).toggleHeading({ level }).run();
 };

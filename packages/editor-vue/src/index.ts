@@ -142,7 +142,9 @@ export {
   PARITY,
   DEFAULT_TOOLBAR,
   setLastSelectedListType,
-  getLastSelectedListType
+  getLastSelectedListType,
+  setEditorLabelResolver,
+  resolveToolTitle
 } from "./tool-definitions";
 export type {
   EditorAction,

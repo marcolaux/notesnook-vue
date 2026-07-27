@@ -12,6 +12,7 @@
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import type { SlashItem } from "../../tool-definitions";
 import { cycleIndex } from "../../utils/filter";
+import { resolveToolTitle } from "../../tool-definitions";
 
 const props = defineProps<{
   items: SlashItem[];
@@ -126,7 +127,7 @@ onBeforeUnmount(() => {
         @click="select(item)"
         @mouseenter="activeIndex = i; void nextTick(scrollActiveIntoView)"
       >
-        {{ item.title }}
+        {{ resolveToolTitle(item) }}
       </button>
     </div>
   </Teleport>

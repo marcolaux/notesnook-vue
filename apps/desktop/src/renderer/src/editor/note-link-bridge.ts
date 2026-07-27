@@ -73,7 +73,9 @@ export function wireNoteLink(
   const storage = editor.storage as Record<string, unknown>;
 
   // Labels are read on each popup mount (render.ts onStart), so a locale change
-  // is picked up the next time the picker opens.
+  // is picked up the next time the picker opens. `DEFAULT_NOTE_LINK_LABELS` is
+  // the English fallback; `t()` overrides every field from the `linkNote.*`
+  // catalog (all NoteLinkLabels fields are keyed there).
   const t = i18n.global.t.bind(i18n.global);
   storage.noteLinkLabels = {
     ...DEFAULT_NOTE_LINK_LABELS,
@@ -84,7 +86,17 @@ export function wireNoteLink(
     noResults: t("linkNote.noResults"),
     noBlocks: t("linkNote.noBlocks"),
     emptyBlock: t("linkNote.emptyBlock"),
-    createNote: t("linkNote.createNote")
+    createNote: t("linkNote.createNote"),
+    notesTab: t("linkNote.notesTab"),
+    webTab: t("linkNote.webTab"),
+    fileTab: t("linkNote.fileTab"),
+    webPlaceholder: t("linkNote.webPlaceholder"),
+    filePlaceholder: t("linkNote.filePlaceholder"),
+    displayTitlePlaceholder: t("linkNote.displayTitlePlaceholder"),
+    browseFile: t("linkNote.browseFile"),
+    insertLink: t("linkNote.insertLink"),
+    webLinkOption: t("linkNote.webLinkOption"),
+    fileLinkOption: t("linkNote.fileLinkOption")
   } satisfies NoteLinkLabels;
 
 

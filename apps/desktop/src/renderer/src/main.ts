@@ -4,6 +4,7 @@ import App from "./App.vue";
 import { router } from "./router";
 import { setCommandRouter } from "./commands/registry";
 import i18n from "./i18n";
+import { installEditorLabelResolver } from "@/composables/use-editor-labels";
 import "./style.css";
 // Command registration (app + editor actions populate the palette registry).
 // Imported for its side effect; safe before Pinia (handlers resolve stores lazily).
@@ -37,6 +38,10 @@ app.use(router);
 // i18n (vue-i18n, Composition API mode) — installs `$t`/`useI18n` for the
 // renderer. Locale is read from localStorage at construction (Phase 2.6/7.1).
 app.use(i18n);
+// Install the host tool-label resolver so editor-vue's slash menu (and the
+// host toolbar via `editorToolTitle`) can resolve `tools.<id>` titles. Inert
+// until `tools.*` keys are added to the catalog (Phase 7.1 batches).
+installEditorLabelResolver();
 // Expose the router to command-palette handlers (goto-* commands).
 setCommandRouter(router);
 app.mount("#app");
