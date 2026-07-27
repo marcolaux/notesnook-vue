@@ -58,16 +58,21 @@ function writeLocale(locale: Locale): void {
   }
 }
 
-/** Mirror the locale to the main-owned `app-state.json` (origin-independent,
- *  survives renderer-origin drift) so the main process can read it
- *  synchronously at boot to build a localized app menu / tray / window titles.
- *  Best-effort: a bridge hiccup never blocks the renderer's own locale switch.
- *  The live IPC notify to main (to rebuild its chrome without a restart) is
- *  added in Batch 1 alongside the `app:set-locale` handler. The app-state
- *  mirror is lazy-imported so the i18n module stays importable from non-
- *  component code that doesn't need the bridge, and so test environments
- *  without the bridge don't pull it in. */
+/** Propagate the locale to the main process: (1) mirror it to the main-owned
+ *  `app-state.json` (origin-independent, survives renderer-origin drift) so
+ *  main can read it synchronously at boot, and (2) notify main over the
+ *  `app:set-locale` IPC so it rebuilds its OS-level chrome (app menu / tray /
+ *  window titles) live without a restart. Both are best-effort: a bridge
+ *  hiccup never blocks the renderer's own locale switch. The app-state mirror
+ *  is lazy-imported so the i18n module stays importable from non-component code
+ *  that doesn't need the bridge, and so test environments without the bridge
+ *  don't pull it in. */
 function notifyMain(locale: Locale): void {
+  try {
+    void window.appEvents?.setLocale?.(locale);
+  } catch {
+    /* best-effort */
+  }
   try {
     void import("@/platform/app-state")
       .then(({ setAppState }) => setAppState({ locale }))

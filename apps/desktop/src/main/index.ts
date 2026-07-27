@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { attachTRPC } from "./ipc";
@@ -31,6 +31,8 @@ import { registerDialog } from "./dialog";
 import { registerShell } from "./shell";
 import { registerReminders } from "./reminders";
 import { registerAppState } from "./app-state";
+import { initMainLocale, setMainLocale } from "./i18n";
+import type { Locale } from "../contracts/i18n";
 import { registerNavigationSecurity, setupExternalNavigation } from "./navigation";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -89,6 +91,15 @@ function createMainWindow(bounds?: WindowBounds | undefined): BrowserWindow {
 }
 
 void app.whenReady().then(() => {
+  // Read the persisted interface locale (sync, from `app-state.json`) BEFORE
+  // the menu / tray / windows are registered so first paint is already
+  // localized. The renderer's `localStorage` value is the primary store; this
+  // is the durable cross-origin mirror it writes via `appState.set`. The
+  // `app:set-locale` IPC lets the renderer switch main's locale live (rebuilds
+  // the app menu / tray / window titles) without a restart — see `main/i18n.ts`.
+  initMainLocale();
+  ipcMain.handle("app:set-locale", (_event, locale: Locale) => setMainLocale(locale));
+
   // Force the OS-native theme to dark so macOS `vibrancy: "under-window"` /
   // Windows `backgroundMaterial: "acrylic"` render a *dark* material that
   // matches the app's dark UI. Without this the acrylic follows the system

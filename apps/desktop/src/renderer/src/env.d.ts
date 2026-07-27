@@ -35,6 +35,7 @@ interface Window {
     onReminderFired(listener: (id: string) => void): () => void;
     onBeforeQuit(listener: () => void): () => void;
     onUpdaterStatus(listener: (status: import("@contracts/router").UpdateStatus) => void): () => void;
+    setLocale(locale: import("@contracts/i18n").Locale): Promise<void>;
   };
   os: string;
   /**

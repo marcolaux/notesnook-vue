@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { exposeElectronTRPC } from "../shared/electron-trpc-shim";
 import type { TrayActionId } from "../contracts/tray";
+import type { Locale } from "../contracts/i18n";
 
 /**
  * Preload bridge — exposes a tiny, typed surface to the renderer via
@@ -111,6 +112,15 @@ const appEvents = {
     ) => listener(status);
     ipcRenderer.on("updater:status", handler);
     return () => ipcRenderer.removeListener("updater:status", handler);
+  },
+  // Tell the main process the renderer switched its interface locale so it can
+  // rebuild its OS-level chrome (app menu / tray / window titles) in the new
+  // language. The main process also persists the choice to `app-state.json`
+  // (durable across renderer-origin drift) so it's available synchronously at
+  // next boot before the renderer loads. Fire-and-forget; the renderer's own
+  // vue-i18n switch already happened.
+  setLocale(locale: Locale): Promise<void> {
+    return ipcRenderer.invoke("app:set-locale", locale);
   }
 };
 
