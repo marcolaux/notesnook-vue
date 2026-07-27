@@ -5,6 +5,25 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-07-27
+
+### 🐛 Fix: `no such module: vec0` in the packaged build
+
+The packaged app failed at boot with `TRPCClientError: no such module: vec0 (query: select … from pragma_table_info(?) …)`, blocking the database from initialising. Vector search (`vec0`) worked in dev but not in the installer — two packaged-build gaps in the `sqlite-vec` loadable extension:
+
+1. **`sqlite-vec` was not declared in `apps/desktop/package.json`** — only in the monorepo root. electron-builder packages `apps/desktop`'s production deps, so the `sqlite-vec` npm wrapper **and its per-platform `vec0.<dylib|so|dll>`** were excluded from `app.asar` entirely. At runtime `sqliteVec.getLoadablePath()` → `require.resolve('sqlite-vec-<os>-<arch>/vec0.<suffix>')` threw (module not found) → the error was swallowed by the existing `try/catch` → `vec0` never registered → the first schema query touching a `vec0` virtual table failed with `no such module: vec0`. Fixed by adding `sqlite-vec` + its five platform `optionalDependencies` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`) to `apps/desktop/package.json`, mirroring the existing `sqlite-better-trigram` / `sqlite3-fts5-html` declarations. The `asarUnpack` globs (`node_modules/sqlite-vec/**`, `node_modules/sqlite-vec-*/**`) were already present, so the dylib now ships unpacked in `app.asar.unpacked`.
+
+2. **`sqliteVec.load(db)` resolved the in-asar path** — even once packaged, `getLoadablePath()` returns a path inside `app.asar`, and SQLite's native `load_extension` can't `dlopen` a shared library from inside the asar virtual filesystem (Electron patches Node `fs`, not the OS `dlopen` path). The FTS5 tokenizer extensions already rewrote `.asar` → `.asar.unpacked` in `getExtensionPath`; `sqlite-vec` did not. Fixed by resolving the path ourselves and loading via `db.loadExtension(toUnpackedPath(sqliteVec.getLoadablePath()))`, where `toUnpackedPath` is a new idempotent helper (no-op in dev / when already unpacked) that `getExtensionPath` now shares — so all three loadable extensions (better-trigram, fts5-html, vec0) load from disk in packaged builds.
+
+`vec0` loads in the `PRAGMA key` run's `finally` (deferred until the DB is decrypted), ahead of any migration query that introspects `vec_notes`, so the boot flow completes.
+
+#### Verification
+- `npm run typecheck` (node + web) — clean.
+- `npm run test:contract` — **1579/1579 tests pass** across 107 files (also fixed a flaky `canvas-theme` `onThemeChange` test that raced under parallel load — happy-dom's `MutationObserver` delivers via macrotask; the assertion now polls until the expected call count instead of a single `setTimeout(0)` yield).
+- `npm run build` — clean (8.49s).
+- `npm run package:dir` — **verified `vec0.dylib` lands in `app.asar.unpacked/node_modules/sqlite-vec-darwin-arm64/vec0.dylib`** and the asar keeps the virtual stub `getLoadablePath()` resolves, so `toUnpackedPath` can rewrite it to the unpacked real path.
+- On-site gate pending: install the v0.11.1 build and confirm the app boots (no `no such module: vec0`) and vector search works.
+
 ## [0.11.0] - 2026-07-27
 
 ### 👥 Multi-Account: One Window per Account, Simultaneously
