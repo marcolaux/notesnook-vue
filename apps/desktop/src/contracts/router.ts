@@ -540,6 +540,13 @@ export interface AppState {
    *  (which allows an explicit `undefined`) is assignable under
    *  `exactOptionalPropertyTypes` — see `set` mutation input below. */
   skippedLogin?: boolean | undefined;
+  /** The interface locale (Phase 7.2). Mirrored to the main-owned
+   *  `app-state.json` so the main process can read it synchronously at boot
+   *  (before the renderer loads) to build a localized app menu / tray / window
+   *  titles. `| undefined` for the same zod-optional reason as `skippedLogin`.
+   *  The renderer's `localStorage` value is the primary store; this is the
+   *  durable cross-origin mirror. */
+  locale?: (import("./i18n").Locale) | undefined;
 }
 
 export interface AppStateServer {
@@ -1026,7 +1033,12 @@ export const appRouter = t.router({
   appState: t.router({
     get: t.procedure.query(() => requireAppStateServer().get()),
     set: t.procedure
-      .input(z.object({ skippedLogin: z.boolean().optional() }))
+      .input(
+        z.object({
+          skippedLogin: z.boolean().optional(),
+          locale: z.enum(["en", "pseudo"]).optional()
+        })
+      )
       .mutation(({ input }) => requireAppStateServer().set(input))
   })
 });

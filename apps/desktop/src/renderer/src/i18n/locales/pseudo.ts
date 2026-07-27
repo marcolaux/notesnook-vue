@@ -8,22 +8,16 @@
  * also extend vowels / pad length to surface layout issues, but the wrap alone
  * is enough to spot a missed `t()` call during dev. Regenerated from `./en` at
  * build time via {@link toPseudo} so it never drifts as keys are added.
+ *
+ * Phase 7.2: the English catalog + `toPseudo` moved to the shared
+ * `@contracts/i18n` module so the main process can build the same pseudo
+ * catalog; this file keeps the renderer's default export + re-exports
+ * `toPseudo` for existing importers.
  */
-import en from "./en";
+import en from "@contracts/i18n/en";
+import { toPseudo } from "@contracts/i18n";
 
-/** Recursively wrap every string leaf of a message catalog in guillemets. */
-export function toPseudo<T>(messages: T): T {
-  if (typeof messages === "string") return `⟪${messages}⟫` as unknown as T;
-  if (Array.isArray(messages)) return messages.map((m) => toPseudo(m)) as unknown as T;
-  if (messages && typeof messages === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(messages as Record<string, unknown>)) {
-      out[key] = toPseudo(value);
-    }
-    return out as unknown as T;
-  }
-  return messages;
-}
+export { toPseudo } from "@contracts/i18n";
 
 /** The pseudo-locale catalog — `en` with every string wrapped. */
 const pseudo = toPseudo(en);

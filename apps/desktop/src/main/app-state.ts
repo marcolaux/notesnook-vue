@@ -30,6 +30,7 @@ import { app } from "electron";
 import path from "node:path";
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
 import { registerAppStateServer, type AppState, type AppStateServer } from "../contracts/router";
+import { LOCALES, type Locale } from "../contracts/i18n";
 
 /** Cached file contents; `undefined` until first read. */
 let cache: AppState | undefined;
@@ -43,7 +44,10 @@ function load(): AppState {
   try {
     const parsed = JSON.parse(readFileSync(filePath(), "utf-8")) as unknown;
     if (parsed && typeof parsed === "object") {
-      cache = { skippedLogin: skipBool((parsed as AppState).skippedLogin) };
+      cache = {
+        skippedLogin: skipBool((parsed as AppState).skippedLogin),
+        locale: localeVal((parsed as AppState).locale)
+      };
       return cache;
     }
   } catch {
@@ -56,6 +60,23 @@ function load(): AppState {
 /** Coerce a persisted `skippedLogin` to `boolean | undefined`; ignore junk. */
 function skipBool(v: unknown): boolean | undefined {
   return typeof v === "boolean" ? v : undefined;
+}
+
+/** Coerce a persisted `locale` to a known `Locale | undefined`; ignore junk.
+ *  Used at boot to build a localized app menu / tray / window titles before the
+ *  renderer loads (the renderer's `localStorage` value is the primary store;
+ *  this is the durable cross-origin mirror). */
+function localeVal(v: unknown): Locale | undefined {
+  return typeof v === "string" && (LOCALES as readonly string[]).includes(v)
+    ? (v as Locale)
+    : undefined;
+}
+
+/** Synchronously read the persisted app state (cached after first load). Safe
+ *  to call at boot before the renderer loads — used by `main/i18n.ts` to pick
+ *  the initial main-process locale. */
+export function readAppStateSync(): AppState {
+  return load();
 }
 
 /** Atomic write (temp + rename on the same filesystem). */
