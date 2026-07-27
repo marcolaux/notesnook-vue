@@ -317,79 +317,6 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
     return true;
   }
 
-  /** TEMP DIAG: round-trip-verify a just-uploaded blob. Downloads the server's
-   *  copy into a `<hash>-verify` temp file (non-destructive — the real local
-   *  file is untouched) and decrypts it with the synced attachment key, logging
-   *  the decrypted byte count vs expected. This localizes upload-vs-decrypt
-   *  faults: if OUR app can't decrypt the server's copy, the stored blob is
-   *  corrupt/wrong; if it can, the bytes are good on S3 and a downstream
-   *  client's failure to render is on its side. Remove once cross-app image
-   *  sync is verified on-site. */
-  async function verifyServerRoundTrip(
-    filename: string,
-    requestOptions: RequestOptionsWithSignal
-  ): Promise<void> {
-    const tempName = `${filename}-verify`;
-    try {
-      const db = getDatabase();
-      const attachment = await db.attachments.attachment(filename);
-      if (!attachment) {
-        // eslint-disable-next-line no-console
-        console.warn(`[fs] DIAG round-trip: no attachment record for ${filename}`);
-        return;
-      }
-      const token = await db.tokenManager.getAccessToken();
-      const signedRes = await fetch(`${hosts.API_HOST}/s3?name=${filename}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      if (!signedRes.ok) {
-        // eslint-disable-next-line no-console
-        console.warn(`[fs] DIAG round-trip: signed-URL GET ${signedRes.status} for ${filename}`);
-        return;
-      }
-      const signedUrl = (await signedRes.text()).trim();
-      const res = await fetch(signedUrl);
-      if (!res.ok || !res.body) {
-        // eslint-disable-next-line no-console
-        console.warn(`[fs] DIAG round-trip: blob fetch ${res.status} for ${filename}`);
-        return;
-      }
-      const tempHandle = await streamablefs.createFile(
-        tempName,
-        attachment.size,
-        attachment.mimeType || "application/octet-stream",
-        { overwrite: true }
-      );
-      await res.body
-        .pipeThrough(chunkedStream(attachment.chunkSize + ABYTES))
-        .pipeTo(tempHandle.writeable);
-
-      const key = await db.attachments.decryptKey(attachment.key);
-      if (!key) {
-        // eslint-disable-next-line no-console
-        console.warn(`[fs] DIAG round-trip: decryptKey returned null for ${filename}`);
-        await streamablefs.deleteFile(tempName);
-        return;
-      }
-      const dec = await nn.createDecryptionStream(key, attachment.iv);
-      const chunks = await consumeStream(tempHandle.readable.pipeThrough(dec));
-      const out = concatBytes(chunks);
-      // eslint-disable-next-line no-console
-      console.log(
-        `[fs] DIAG round-trip: OK decrypted ${out.length} bytes (expected ${attachment.size}, alg=${attachment.alg}, ivLen=${attachment.iv.length}, chunkSize=${attachment.chunkSize}) for ${filename}`
-      );
-      await streamablefs.deleteFile(tempName);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn(`[fs] DIAG round-trip FAILED for ${filename}:`, e);
-      try {
-        await streamablefs.deleteFile(tempName);
-      } catch {
-        // ignore
-      }
-    }
-  }
-
   /** Upload one encrypted blob to the sync server. Returns `true` on success,
    *  `false` on failure (never throws — core's `queueUploads` logs the error
    *  and marks the attachment failed). Mirrors upstream `uploadFile`. */
@@ -408,10 +335,6 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
       if (uploadedSize > 0 && uploadedSize === (await handle.size())) return true;
 
       const multipart = handle.file.size >= MINIMUM_MULTIPART_FILE_SIZE;
-      // eslint-disable-next-line no-console
-      console.log(
-        `[fs] uploading ${filename} (${handle.file.size} bytes, ${multipart ? "multipart" : "single-part"})`
-      );
       const uploaded = multipart
         ? await multiPartUpload(handle, filename, requestOptions)
         : await singlePartUpload(handle, requestOptions);
@@ -420,8 +343,6 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
       if (!uploaded) {
         // eslint-disable-next-line no-console
         console.warn(`[fs] upload reported failure for ${filename} (see error above)`);
-      } else {
-        void verifyServerRoundTrip(filename, requestOptions).catch(() => undefined);
       }
       return uploaded;
     } catch (e) {
@@ -506,10 +427,6 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
         { overwrite: true }
       );
       await res.body.pipeThrough(chunkedStream(chunkSize + ABYTES)).pipeTo(fileHandle.writeable);
-      // eslint-disable-next-line no-console
-      console.log(
-        `[fs] downloaded ${filename} (${size} encrypted bytes -> ${decryptedLength} plaintext, alg=${attachment.alg})`
-      );
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console

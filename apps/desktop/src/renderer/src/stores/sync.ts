@@ -51,54 +51,6 @@ export const useSyncStore = defineStore("syncControl", () => {
     lastError.value = null;
   }
 
-  // TEMP-DIAG: probe whether core's `fileUploaded` event (→ markAsUploaded →
-  // dateUploaded, which the attachments `unsynced` filter requires to push the
-  // record) actually fires on our db.eventManager. If this never logs while
-  // `[fs] uploading` does, the event isn't being published or isn't reaching
-  // subscribers — explaining dateUploaded:null + synced:false after sync.
-  // Remove once cross-app image sync is verified on-site.
-  let probed = false;
-  function probeFileEvents(): void {
-    if (probed) return;
-    probed = true;
-    try {
-      const db = getDatabase();
-      db.eventManager.subscribe("file:upload", (p: unknown) => {
-        // eslint-disable-next-line no-console
-        logger.log("[sync] probe file:upload", p);
-      });
-      db.eventManager.subscribe(
-        "file:uploaded",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        async (p: any) => {
-          // eslint-disable-next-line no-console
-          logger.log("[sync] probe file:uploaded", p);
-          if (!p?.success) return;
-          // Observe ONLY — do NOT call markAsUploaded here. The bridge in
-          // `event-bridge.ts` re-publishes `file:uploaded` to the global `EV`,
-          // where the stale dist's `Attachments` subscriber lives; THAT
-          // subscriber calls `markAsUploaded`. Re-read after a short delay to
-          // confirm `dateUploaded` got set by core (via the bridge), proving
-          // the proper fix works without this probe mutating anything.
-          setTimeout(async () => {
-            try {
-              const a = await db.attachments.attachment(p.filename);
-              // eslint-disable-next-line no-console
-              logger.log(
-                "[sync] probe post-event (bridge-driven):",
-                a ? { dateUploaded: a.dateUploaded, synced: (a as any).synced } : "NOT FOUND"
-              );
-            } catch {
-              // ignore
-            }
-          }, 1000);
-        }
-      );
-    } catch {
-      // ignore
-    }
-  }
-
   /** Start a sync. `type` defaults to `"full"`. Returns `true` on success,
    * `false` on failure (error set). Never throws. */
   async function startSync(input: SyncControlInput = {}): Promise<boolean> {
@@ -106,39 +58,7 @@ export const useSyncStore = defineStore("syncControl", () => {
     busy.value = true;
     try {
       const db = getDatabase();
-      probeFileEvents();
       const ok = await db.sync(buildSyncOptions(input));
-      // TEMP-DIAG sync-pull: does db.sync() return true and did it complete?
-      // eslint-disable-next-line no-console
-      logger.log("[sync] db.sync returned:", ok, "input:", input);
-      // TEMP-DIAG: dump local attachment records after sync so we can see
-      // whether our just-uploaded attachment is marked synced + uploaded (i.e.
-      // actually collected/pushed) and not localOnly/deleted. The web app
-      // reports "No attachment found with hash" — if the record is synced=true
-      // here, our side pushed it and the drop is downstream (server/web-app).
-      // Remove once cross-app image sync is verified on-site.
-      if (ok) {
-        void (async () => {
-          try {
-            const items = await db.attachments.all.items();
-            // eslint-disable-next-line no-console
-            logger.log(
-              `[sync] diag: ${items.length} local attachment(s)`,
-              items.map((a) => ({
-                hash: a.hash,
-                hashType: a.hashType,
-                synced: (a as unknown as { synced?: boolean }).synced,
-                dateUploaded: a.dateUploaded,
-                localOnly: (a as unknown as { localOnly?: boolean }).localOnly,
-                deleted: (a as unknown as { deleted?: boolean }).deleted,
-                hasKey: !!a.key
-              }))
-            );
-          } catch {
-            // ignore diag failure
-          }
-        })();
-      }
       lastResult.value = ok;
       return ok;
     } catch (e) {
@@ -263,15 +183,11 @@ export const useSyncStore = defineStore("syncControl", () => {
    *  burst of edits collapses to one sync. Never throws. */
   function scheduleAutoSync(): void {
     const gated = autoSyncGated();
-    // eslint-disable-next-line no-console
-    logger.log("[sync] scheduleAutoSync called; gated=", gated);
     if (!gated) return;
     if (autoSyncTimer) clearTimeout(autoSyncTimer);
     autoSyncTimer = setTimeout(() => {
       autoSyncTimer = undefined;
       const stillGated = autoSyncGated();
-      // eslint-disable-next-line no-console
-      logger.log("[sync] autoSync timer fired; gated=", stillGated);
       if (!stillGated) return;
       void startSync();
     }, AUTO_SYNC_DEBOUNCE_MS);

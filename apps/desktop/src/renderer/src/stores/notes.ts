@@ -1157,30 +1157,6 @@ export const useNotesStore = defineStore("notes", () => {
       queueIndexNoteEmbeddings(note.id, html, note.title);
       // Tell the other windows so an editor showing this note reloads.
       broadcastNoteChanged(note.id);
-      // TEMP DIAG: confirm the note↔attachment relation was created by core's
-      // `content.postProcess` → `processLinkedAttachments`. Without this
-      // relation, other devices' `db.attachments.downloadMedia(noteId)` →
-      // `ofNote(noteId)` finds no attachments and never downloads our blobs
-      // (placeholders there), even though our app shows them from local cache.
-      // Remove once cross-app image sync is verified on-site.
-      void (async () => {
-        try {
-          const linked = await db.relations
-            .from({ type: "note", id: note.id }, "attachment")
-            .selector.fields(["attachments.hash", "attachments.dateUploaded"])
-            .items();
-          // eslint-disable-next-line no-console
-          logger.log(
-            `[notes] saveContent diag: note ${note.id} linked attachments=${linked.length}`,
-            linked.map((a: { hash: string; dateUploaded?: number }) => ({
-              hash: a.hash,
-              uploaded: !!a.dateUploaded
-            }))
-          );
-        } catch {
-          // ignore diag failure
-        }
-      })();
     } catch (e) {
       // eslint-disable-next-line no-console
       logger.error("[notes] saveContent failed:", e);
