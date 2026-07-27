@@ -153,6 +153,12 @@ export interface SessionFile {
   /** Best-effort hint used by main to size the FIRST window before any
    *  renderer reports its context. The renderer corrects it on first save. */
   lastContext?: string;
+  /** Ordered list of contextIds whose main shell window was open at last
+   *  quit — main reopens ONE full-shell window per entry on startup (per-window
+   *  multi-account restore: each window is pinned to its `ctx` via `?ctx=`).
+   *  Absent on older session files → main falls back to the single-window
+   *  legacy behaviour (reopen `lastContext` only). `"local"` may appear here. */
+  openMainWindows?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +271,8 @@ export const ContextSessionSchema = z.object({
 export const SessionFileSchema = z.object({
   version: z.literal(1),
   contexts: z.record(z.string(), ContextSessionSchema),
-  lastContext: z.string().optional()
+  lastContext: z.string().optional(),
+  openMainWindows: z.array(z.string()).optional()
 });
 
 // ---------------------------------------------------------------------------
@@ -389,6 +396,38 @@ export function filterLayoutSnapshot(snapshot: LayoutSnapshot, validNoteIds: Ite
   if (!activeGroupId || !groups[activeGroupId]) activeGroupId = remaining[0] ?? "";
 
   return { layout: pruned, groups, tabs, sessions, activeGroupId };
+}
+
+/**
+ * Compute the ordered list of contexts whose main shell window to reopen at
+ * startup. Pure over the session file + the set of still-valid context ids
+ * (`"local"` is always valid; an account context is valid while its registry
+ * entry exists — a removed account's window is dropped so a dead context is
+ * never restored). Returns `openMainWindows` with `lastContext` moved to the
+ * front (it receives the primary wiring: tray, updater, deep-link), filtered to
+ * valid contexts. Falls back to `[lastContext]` (or `[]`) when no
+ * `openMainWindows` was recorded (legacy single-window session file). Pure +
+ * shared so main can use it without re-implementing the ordering, and it is
+ * headless contract-testable.
+ */
+export function orderOpenMainWindows(
+  file: SessionFile,
+  validContexts: Iterable<string>
+): string[] {
+  const valid = new Set(validContexts);
+  const list = file.openMainWindows ?? [];
+  const last = file.lastContext;
+  if (list.length === 0) {
+    // Legacy / fresh install: reopen only the last-used context (if still
+    // valid). An empty file with no lastContext → `[]` (main creates a default
+    // main window instead of restoring nothing).
+    return last && valid.has(last) ? [last] : [];
+  }
+  const filtered = list.filter((c) => valid.has(c));
+  if (last && filtered.includes(last)) {
+    return [last, ...filtered.filter((c) => c !== last)];
+  }
+  return filtered;
 }
 
 /**

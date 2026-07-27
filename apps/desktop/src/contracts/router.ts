@@ -25,6 +25,7 @@ import {
   LayoutSnapshotSchema,
   WindowBoundsSchema
 } from "./session-state";
+import { AccountEntrySchema, type AccountEntry } from "./server-config";
 
 const t = initTRPC.create();
 
@@ -77,6 +78,15 @@ export interface SQLiteServer {
    * lost. The `id` is the same `filePath` passed to `open`.
    */
   forceUnlock(filePath: string): Promise<void>;
+  /**
+   * Close any open connection for `filePath` (if this process holds one) and
+   * delete the underlying `.sql` file + its `-wal`/`-shm` journal sidecars.
+   * Used by account removal (`removeAccount`) so an account's encrypted DB is
+   * gone whether or not a window currently has it open. `filePath` is the same
+   * `open` id (the requested filename; main resolves the real path under
+   * `userData`). Safe whether or not the DB is currently open.
+   */
+  deleteContextDb(filePath: string): Promise<void>;
 }
 
 let sqliteServer: SQLiteServer | undefined;
@@ -372,6 +382,23 @@ export interface WindowServer {
    */
   openNote(noteId: string, bounds?: WindowBounds | undefined, contextId?: string | undefined): void;
   /**
+   * Open a NEW full-shell app window bound to `contextId` (a logged-in
+   * account's `hashEmail`, or `"local"`). The window loads `?ctx=<contextId>`
+   * so `bootstrap()` opens that account's own encrypted SQLite context — the
+   * keystone of per-window multi-account (each window is its own renderer
+   * process with its own `Database` singleton + `Hosts`). Used by the account
+   * switcher's "Open in new window" action so several accounts can be open
+   * simultaneously, one per window. See `src/main/account-window.ts`.
+   */
+  openAccountWindow(contextId: string, bounds?: WindowBounds | undefined): void;
+  /**
+   * Open a NEW window dedicated to signing into an account (the switcher's
+   * "Add account" action). Boots the local context + `?signin=1` so the window
+   * shows the login screen and the caller's window is left untouched. See
+   * `src/main/account-window.ts`.
+   */
+  openSignInWindow(bounds?: WindowBounds | undefined): void;
+  /**
    * Open a detached *pane* in its own window — a whole editor pane (a group leaf
    * + all its tabs) torn off from another window. Creates a `BrowserWindow` that
    * boots the full shell with `?window=pane&paneId=<id>`; the pane renderer
@@ -576,6 +603,39 @@ function requireAppStateServer(): AppStateServer {
 }
 
 // ---------------------------------------------------------------------------
+// Account registry — the list of known (logged-in) accounts and their
+// per-account server config, persisted to `userData/accounts.json` by
+// `src/main/account-registry.ts`. Multi-account support: "local" is implicit
+// (always present, not listed, not removable); each entry is a server-
+// authenticated account with its own encrypted SQLite context. The renderer
+// uses `list` to render the account switcher and `get` to resolve a window's
+// server hosts at boot (`resolveHostsForContext`). Local-only; never synced;
+// never through `db.settings`.
+// ---------------------------------------------------------------------------
+export interface AccountRegistryServer {
+  /** All known accounts, newest-first by `lastUsed`. `local` is never listed. */
+  list(): Promise<AccountEntry[]>;
+  /** The entry for `contextId`, or `undefined` when unknown. */
+  get(contextId: string): Promise<AccountEntry | undefined>;
+  /** Insert or replace the entry for `entry.contextId` (upsert by contextId),
+   *  bumping `lastUsed` to the supplied value. Returns the merged list. */
+  upsert(entry: AccountEntry): Promise<AccountEntry[]>;
+  /** Remove the entry for `contextId` (no-op when absent). Returns the merged
+   *  list. Does NOT delete the account's DB/keychain — that is the renderer's
+   *  `removeAccount` path (`sqlite.delete` + `clearContextKeys`). */
+  remove(contextId: string): Promise<AccountEntry[]>;
+}
+
+let accountRegistryServer: AccountRegistryServer | undefined;
+export function registerAccountRegistryServer(server: AccountRegistryServer): void {
+  accountRegistryServer = server;
+}
+function requireAccountRegistryServer(): AccountRegistryServer {
+  if (!accountRegistryServer) throw new Error("Account registry server not registered (main boot incomplete)");
+  return accountRegistryServer;
+}
+
+// ---------------------------------------------------------------------------
 // Shell server — OS-interaction capabilities for the attachment preview's
 // "Open externally" action. Implemented in `src/main/shell.ts` and injected via
 // `registerShellServer`. Kept separate from the `fs` chunk store (which is the
@@ -715,6 +775,22 @@ export const appRouter = t.router({
       .mutation(({ input }) =>
         requireWindowServer().openNote(input.noteId, input.bounds, input.contextId)
       ),
+    // Open a NEW full-shell window bound to `contextId` (an account's
+    // `hashEmail`, or `"local"`). Loads `?ctx=<contextId>` so the new window's
+    // `bootstrap()` opens that account's own encrypted context — per-window
+    // multi-account (see `src/main/account-window.ts`). Used by the switcher's
+    // "Open in new window" action.
+    openAccountWindow: t.procedure
+      .input(z.object({ contextId: z.string(), bounds: WindowBoundsSchema.optional() }))
+      .mutation(({ input }) =>
+        requireWindowServer().openAccountWindow(input.contextId, input.bounds)
+      ),
+    // Open a NEW login window (the switcher's "Add account" action). Boots the
+    // local context + `?signin=1` so the login screen shows; the caller's window
+    // is untouched (per-window multi-account). See `src/main/account-window.ts`.
+    openSignInWindow: t.procedure
+      .input(z.object({ bounds: WindowBoundsSchema.optional() }).optional())
+      .mutation(({ input }) => requireWindowServer().openSignInWindow(input?.bounds)),
     // Open a detached pane (a group leaf + all its tabs) in its own window.
     // Main stores the snapshot in memory keyed by a generated paneId and opens
     // `?window=pane&paneId=<id>`; the pane renderer fetches it via `getPaneSnapshot`.
@@ -833,7 +909,10 @@ export const appRouter = t.router({
       .mutation(({ input }) => requireSQLite().delete(input.id)),
     forceUnlock: t.procedure
       .input(z.object({ filePath: z.string() }))
-      .mutation(({ input }) => requireSQLite().forceUnlock(input.filePath))
+      .mutation(({ input }) => requireSQLite().forceUnlock(input.filePath)),
+    deleteContextDb: t.procedure
+      .input(z.object({ filePath: z.string() }))
+      .mutation(({ input }) => requireSQLite().deleteContextDb(input.filePath))
   }),
 
   // Compressor — node zlib in main
@@ -1044,6 +1123,24 @@ export const appRouter = t.router({
   appState: t.router({
     get: t.procedure.query(() => requireAppStateServer().get()),
     set: t.procedure.input(appStateSetInput).mutation(({ input }) => requireAppStateServer().set(input))
+  }),
+
+  // Account registry — the list of known (logged-in) accounts + their
+  // per-account server config, persisted to `userData/accounts.json`. The
+  // renderer lists accounts for the switcher, looks one up to resolve a
+  // window's server hosts at boot, upserts on login, and removes on account
+  // removal. See `src/main/account-registry.ts` + `AccountRegistryServer`.
+  accountRegistry: t.router({
+    list: t.procedure.query(() => requireAccountRegistryServer().list()),
+    get: t.procedure
+      .input(z.object({ contextId: z.string() }))
+      .query(({ input }) => requireAccountRegistryServer().get(input.contextId)),
+    upsert: t.procedure
+      .input(AccountEntrySchema)
+      .mutation(({ input }) => requireAccountRegistryServer().upsert(input)),
+    remove: t.procedure
+      .input(z.object({ contextId: z.string() }))
+      .mutation(({ input }) => requireAccountRegistryServer().remove(input.contextId))
   })
 });
 

@@ -28,7 +28,7 @@
 import { watch } from "vue";
 import { desktop } from "@/platform/desktop-bridge";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
-import { readCurrentContext } from "@/platform/account-context";
+import { getCurrentContext } from "@/platform/bootstrap";
 import type { LayoutSnapshot } from "@contracts/session-state";
 
 const DEBOUNCE_MS = 400;
@@ -58,7 +58,12 @@ async function doSave(): Promise<void> {
   // Plain JSON copy so the IPC payload is free of Vue reactive proxies (which
   // don't structured-clone cleanly across the Electron bridge).
   const snapshot = JSON.parse(JSON.stringify(capture())) as LayoutSnapshot;
-  const contextId = readCurrentContext();
+  // Per-window context: save this window's layout under its OWN account
+  // (`getCurrentContext()` — the per-process current context set by `bootstrap`
+  // from the window's `?ctx=`), NOT the shared `localStorage` pointer, so a
+  // main window on account A and a pane window on account B each file under
+  // the right account in `userData/session.json`.
+  const contextId = getCurrentContext();
   try {
     if (paneId) {
       await desktop.session.savePaneWindowLayout.mutate({ contextId, paneId, snapshot });

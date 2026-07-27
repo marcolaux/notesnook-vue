@@ -462,6 +462,26 @@ export const sqliteServer: SQLiteServer = {
     if (!isPathAllowed(base))
       throw new Error("Database path is not allowed: " + base);
     await clearJournalSidecars(base);
+  },
+  async deleteContextDb(filePath) {
+    // Close any open connection for this id (a window may currently have the
+    // account open), then delete the `.sql` file + journal sidecars. The
+    // `SQLite.delete()` instance method needs an open instance, so for the
+    // not-currently-open case we resolve the path + rm directly (mirroring
+    // `forceUnlock`'s path resolution).
+    const sqlite = databases.get(filePath);
+    if (sqlite) {
+      await sqlite.delete();
+      databases.delete(filePath);
+      return;
+    }
+    if (filePath === ":memory:") return;
+    const base = path.join(app.getPath("userData"), filePath) + ".sql";
+    if (!isPathAllowed(base))
+      throw new Error("Database path is not allowed: " + base);
+    const { rm } = await import("node:fs/promises");
+    await rm(base, { force: true, maxRetries: 5, retryDelay: 500 });
+    await clearJournalSidecars(base);
   }
 };
 

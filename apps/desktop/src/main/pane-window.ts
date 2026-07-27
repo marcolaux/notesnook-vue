@@ -135,11 +135,12 @@ export function openPaneWindow(
 
   const devUrl = process.env["ELECTRON_RENDERER_URL"];
   if (devUrl) {
-    void win.loadURL(`${devUrl}?window=pane&paneId=${encodeURIComponent(paneId)}`);
+    const ctx = contextId ? `&ctx=${encodeURIComponent(contextId)}` : "";
+    void win.loadURL(`${devUrl}?window=pane&paneId=${encodeURIComponent(paneId)}${ctx}`);
   } else {
-    void win.loadFile(resolve(__dirname, "../renderer/index.html"), {
-      query: { window: "pane", paneId }
-    });
+    const query: Record<string, string> = { window: "pane", paneId };
+    if (contextId) query.ctx = contextId;
+    void win.loadFile(resolve(__dirname, "../renderer/index.html"), { query });
   }
   return paneId;
 }

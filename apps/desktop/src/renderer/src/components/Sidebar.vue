@@ -16,6 +16,9 @@ import { useContextMenuStore } from "@/stores/context-menu";
 import { useDialogStore } from "@/stores/dialog";
 import { topViews, bottomViews } from "@/router/routes";
 import { desktop } from "@/platform/desktop-bridge";
+import { getCurrentContext } from "@/platform/bootstrap";
+import { listAccounts } from "@/platform/account-registry";
+import { buildAccountSwitcherMenu } from "@/utils/account-switcher-menu";
 import NotebookNode from "@/components/NotebookNode.vue";
 import TagNode from "@/components/TagNode.vue";
 import {
@@ -121,6 +124,46 @@ function openSettings(): void {
     // eslint-disable-next-line no-console
     console.error("[sidebar] openSettings failed:", e);
   });
+}
+
+/**
+ * Open the multi-account switcher menu at the account button. Lists the known
+ * accounts (Local + logged-in accounts) so the user can switch THIS window in
+ * place, open another account in a NEW window (per-window multi-account), add
+ * an account, sign out, or remove an account. The menu is rebuilt on every
+ * open so it reflects the current registry + active context.
+ */
+async function openAccountMenu(e: MouseEvent): Promise<void> {
+  const accounts = await listAccounts();
+  const items = buildAccountSwitcherMenu({
+    accounts,
+    currentContext: getCurrentContext(),
+    t,
+    callbacks: {
+      onSwitch: (ctx) => {
+        void auth.switchToAccount(ctx);
+      },
+      onOpenInNewWindow: (ctx) => auth.openAccountInNewWindow(ctx),
+      onAddAccount: () => auth.openSignInWindow(),
+      onSignOut: () => {
+        void auth.logout();
+      },
+      onRemove: (ctx) => {
+        void confirmRemoveAccount(ctx);
+      }
+    }
+  });
+  contextMenu.show(items, e.clientX, e.clientY, "account-switcher");
+}
+
+/** Confirm + remove an account from this device (destructive). */
+async function confirmRemoveAccount(contextId: string): Promise<void> {
+  const ok = await dialog.confirm({
+    message: t("sidebar.removeAccountConfirm"),
+    danger: true
+  });
+  if (!ok) return;
+  await auth.removeAccount(contextId);
 }
 
 /** Active-state is driven by the exact current path (no nested routes here). */
@@ -784,35 +827,26 @@ function onShortcutsHeaderContext(e: MouseEvent): void {
       {{ t('settings.title') }}
     </button>
 
-    <!-- Account area: email + a row with Log out (left) and the sync status
-         (right). Sync text is derived in the script via `syncStatusText`. -->
-    <div v-if="auth.isLoggedIn" class="mt-1 rounded-md bg-glass-surface px-2 py-1.5">
-      <div class="truncate text-[11px] text-text-muted">{{ auth.user?.email }}</div>
-      <div class="mt-1 flex items-center justify-between gap-2">
-        <button
-          class="rounded px-1 py-0.5 text-left text-[10px] text-text-muted hover:bg-glass-hover"
-          @click="auth.logout()"
-        >
-          {{ t('sidebar.logOut') }}
-        </button>
-        <span class="shrink-0 text-[10px] text-text-muted" :title="syncText">{{ syncText }}</span>
-      </div>
-    </div>
-    <div v-else class="mt-1 flex items-center gap-1.5">
-      <button
-        class="rounded-md px-2 py-1.5 text-left text-[11px] text-text-muted hover:bg-glass-hover"
-        @click="auth.requestSignIn()"
-      >
-        {{ t('sidebar.signIn') }}
-      </button>
-      <!-- Local-only chip: shown only while in local mode (`skippedLogin` is the
-           sole login gate there). Disappears once Sign in re-arms the login screen. -->
-      <span
-        v-if="auth.skippedLogin"
-        class="shrink-0 rounded-full bg-glass-surface px-2 py-0.5 text-[10px] text-text-muted"
-        :title="t('sidebar.localOnlyHint')"
-        >{{ t('sidebar.localOnly') }}</span
-      >
+    <!-- Account area: a button showing the active account (or "Local only")
+         that opens the multi-account switcher menu — switch this window in
+         place, open another account in a new window, add / sign out / remove.
+         Sync text is derived in the script via `syncStatusText`. -->
+    <button
+      class="titlebar-no-drag mt-1 flex w-full items-center gap-1.5 rounded-md bg-glass-surface px-2 py-1.5 text-left transition-colors hover:bg-glass-hover"
+      :title="t('sidebar.switchAccount')"
+      @click="openAccountMenu"
+    >
+      <span class="truncate text-[11px] text-text-muted">{{
+        auth.isLoggedIn ? auth.user?.email : t('sidebar.localOnly')
+      }}</span>
+      <Icon name="chevron-up" class="ml-auto shrink-0 size-3 text-text-muted" />
+    </button>
+    <div
+      v-if="auth.isLoggedIn"
+      class="px-2 text-right text-[10px] text-text-muted"
+      :title="syncText"
+    >
+      {{ syncText }}
     </div>
 
   </nav>

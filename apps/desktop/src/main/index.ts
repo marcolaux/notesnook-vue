@@ -8,7 +8,7 @@ import { registerSafeStorage } from "./safe-storage";
 import { registerFileStorage } from "./file-storage";
 import {
   registerSession,
-  getMainBoundsForLastContext,
+  getOpenMainWindowsForRestore,
   flushSession,
   trackMainWindow
 } from "./session-state";
@@ -31,6 +31,7 @@ import { registerDialog } from "./dialog";
 import { registerShell } from "./shell";
 import { registerReminders } from "./reminders";
 import { registerAppState } from "./app-state";
+import { registerAccountRegistry } from "./account-registry";
 import { initMainLocale, setMainLocale } from "./i18n";
 import type { Locale } from "../contracts/i18n";
 import { registerNavigationSecurity, setupExternalNavigation } from "./navigation";
@@ -43,7 +44,10 @@ const isDev = !app.isPackaged;
 registerNavigationSecurity();
 registerDeepLinkListeners();
 
-function createMainWindow(bounds?: WindowBounds | undefined): BrowserWindow {
+function createMainWindow(
+  bounds?: WindowBounds | undefined,
+  contextId?: string | undefined
+): BrowserWindow {
   const window = new BrowserWindow(
     buildBrowserWindowOptionsForOS(
       process.platform,
@@ -81,10 +85,16 @@ function createMainWindow(bounds?: WindowBounds | undefined): BrowserWindow {
     });
   }
 
+  // Pin this window to its account context via `?ctx=<contextId>` when known
+  // (multi-window restore: each window boots its OWN account's DB). Without a
+  // `contextId` (the legacy single-window path / the dock `activate` fallback)
+  // the renderer falls back to the shared `currentContext` pointer.
+  const query = contextId ? { ctx: contextId } : undefined;
   if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
-    void window.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+    const base = process.env["ELECTRON_RENDERER_URL"];
+    void window.loadURL(query ? `${base}?${new URLSearchParams(query).toString()}` : base);
   } else {
-    void window.loadFile(resolve(__dirname, "../renderer/index.html"));
+    void window.loadFile(resolve(__dirname, "../renderer/index.html"), query ? { query } : undefined);
   }
 
   return window;
@@ -138,6 +148,11 @@ void app.whenReady().then(() => {
   // renderer localStorage can lose on hard quit / origin drift). Registered
   // before the window so `desktop.appState.*` is ready on the boot reconcile.
   registerAppState();
+  // Account-registry owner (`userData/accounts.json`) — the list of known
+  // (logged-in) accounts + their per-account server config, for the multi-
+  // account switcher. Registered before the window so `desktop.accountRegistry.*`
+  // is ready on the boot/switcher read. Local-only; never synced.
+  registerAccountRegistry();
 
   // Register the `nn://` custom protocol with the OS.
   enableDeepLinkProtocol();
@@ -151,14 +166,38 @@ void app.whenReady().then(() => {
     handleDeepLinkUrl(argvLink);
   }
 
-  // Restore the main window's last size/position (best-effort, keyed by the
-  // last-used context so the first window avoids a 1280×800 size flash). The
-  // renderer corrects the context binding on boot (`bindContext`).
-  const savedBounds = getMainBoundsForLastContext();
-  const window = createMainWindow(savedBounds);
-  // Persist the main window's bounds on resize/move/maximize (writes land under
-  // the bound context once the renderer calls `bindContext`).
-  trackMainWindow(window);
+  // Multi-window restore: reopen one full-shell window per context that was
+  // open at last quit (per-window multi-account — local + each logged-in
+  // account can each have their own window again). Each window is pinned to its
+  // `ctx` via `?ctx=<contextId>` so it boots its OWN account's DB. The first
+  // entry (the last-used context) receives the primary wiring — tray, updater,
+  // deep-link, spell-checker, reminders, and cross-window data-changed
+  // forwarding. Subsequent entries are plain shell windows with geometry
+  // tracking only. When nothing is restorable (fresh install / old session
+  // file with no `openMainWindows`), a single default main window is created.
+  const restore = getOpenMainWindowsForRestore();
+  let primary: BrowserWindow;
+  if (restore.length === 0) {
+    primary = createMainWindow();
+  } else {
+    // The first restorable context is the primary (last-used); create it, then
+    // one window per remaining context.
+    const first = restore[0]!;
+    primary = createMainWindow(first.bounds, first.contextId);
+    trackMainWindow(primary);
+    for (let i = 1; i < restore.length; i++) {
+      const { contextId, bounds } = restore[i]!;
+      const win = createMainWindow(bounds, contextId);
+      // Persist each restored window's bounds on resize/move/maximize (writes
+      // land under the bound context once the renderer calls `bindContext`).
+      trackMainWindow(win);
+    }
+  }
+  // The primary window owns the app-wide wiring (single-window legacy: this
+  // was the only window). Multi-window forwarding of these signals to a
+  // focused-window target is a later refinement; for now they stay on the
+  // last-used context's window.
+  const window = primary;
   // Bind the window + flush any queued deep links (cold-start open-url / argv).
   setDeepLinkWindow(window);
   // Track the main window so the Settings window can signal cross-window DB
@@ -202,12 +241,17 @@ app.on("window-all-closed", () => {
 // session). Covers Cmd+Q / tray Quit / window-close on every platform
 // (`window-all-closed` only quits on non-darwin, so this is the reliable hook).
 app.on("before-quit", () => {
-  const main = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-  if (main) {
-    try {
-      main.webContents.send("app:before-quit");
-    } catch {
-      /* webContents gone — no-op */
+  // Signal EVERY live renderer to flush its last layout snapshot (best-effort
+  // — IPC may not land before quit). Multi-window: each account window owns its
+  // own layout, so all must be flushed, not just the primary. Each window also
+  // has a per-window `beforeunload` flush as belt-and-suspenders.
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) {
+      try {
+        w.webContents.send("app:before-quit");
+      } catch {
+        /* webContents gone — no-op */
+      }
     }
   }
   flushSession();

@@ -13,9 +13,11 @@ import { desktop } from "./desktop-bridge";
 import { initDatabase, createDesktopPlatform } from "./database";
 import { injectTheme, ThemeDark } from "@notesnook-vue/theme-vue";
 import type { Database } from "@notesnook-vue/contracts";
-import { readServerConfig, resolveHosts } from "./server-config";
+import { readServerConfig, resolveHosts, type Hosts } from "./server-config";
+import { getAccount } from "./account-registry";
 import {
   readCurrentContext,
+  readWindowContext,
   isLocal,
   LOCAL_CONTEXT,
   type ContextId
@@ -35,7 +37,30 @@ export function getCurrentContext(): ContextId {
   return currentContext;
 }
 
-export async function bootstrap(): Promise<Database> {
+/**
+ * Resolve the concrete `Hosts` bag for a context. Per-window multi-account: an
+ * account's server profile lives in the registry (so an upstream-notesnook
+ * account and a self-hosted account can coexist), and each window's process
+ * holds its own `Hosts` (core's `Hosts` is a per-process module singleton). We
+ * look the account's `serverConfig` up by `contextId` and resolve it; the
+ * local context (no server) and any account not yet in the registry fall back
+ * to the shared `localStorage` `serverConfig` (back-compat — pre-multi-account
+ * installs, and a brand-new account mid-login before `completeLogin` upserts).
+ * Never throws — a registry/lookup failure falls back to the shared config.
+ */
+export async function resolveHostsForContext(contextId: ContextId): Promise<Hosts> {
+  if (!isLocal(contextId)) {
+    try {
+      const entry = await getAccount(contextId);
+      if (entry) return resolveHosts(entry.serverConfig);
+    } catch {
+      /* registry unavailable — fall back to the shared config below */
+    }
+  }
+  return resolveHosts(readServerConfig());
+}
+
+export async function bootstrap(contextId?: ContextId): Promise<Database> {
   // 0. Theme — inject before anything else so the first paint is already
   // themed. `injectTheme` writes the vendored `themeToCSS` output (scoped
   // `.theme-scope-*` vars) + glassmorphism vars + the Tailwind `:root` bridge
@@ -60,31 +85,36 @@ export async function bootstrap(): Promise<Database> {
   // (local mode, or a logged-in account) — each context has its own encrypted
   // SQLite file + keychain key + IndexedDB KV (see `account-context.ts`).
   try {
-    const contextId = readCurrentContext();
-    currentContext = contextId;
+    // Per-window context: each window is its own renderer process; main stamps
+    // `?ctx=<id>` on note/pane/account windows so they open that account's own
+    // encrypted SQLite context. The default first/main window (and Settings/
+    // Changelog) pass no `ctx` → fall back to the shared `localStorage`
+    // `currentContext` pointer (the last-used account, or `"local"`).
+    const ctx = contextId ?? readWindowContext() ?? readCurrentContext();
+    currentContext = ctx;
     // One-time legacy migration: adopt the pre-per-context single DB
     // (`notesnook.sql` + global `databaseKey`) as the local context's DB. The
     // file rename is main-side (at startup); here we copy the keychain key so
     // `getDatabaseKey("local")` retrieves the legacy key. No-op once migrated
     // or for account contexts.
-    if (isLocal(contextId)) {
+    if (isLocal(ctx)) {
       await migrateLegacyDatabaseKeyIfNeeded(LOCAL_CONTEXT);
     }
-    const serverHosts = resolveHosts(readServerConfig());
-    const platform = await createDesktopPlatform(contextId);
+    const serverHosts = await resolveHostsForContext(ctx);
+    const platform = await createDesktopPlatform(ctx);
     const db = await initDatabase(platform, serverHosts);
     database = db;
     // Bridge the Database's instance-local event bus to the global `EV` so the
     // renderer stores' sync/vault/session-expiry subscriptions fire (re-bound
     // on every switchContext below — a new Database has a new eventManager).
     bindEventBridge(db);
-    await seedIfEmpty(db, contextId);
+    await seedIfEmpty(db, ctx);
     // Local mode has no server login, so `db.attachments` (which needs a user
     // master key) would throw on save. Synthesise a local user + derive a master
     // key so drag-and-drop / paste of images works in local mode too. Account
     // contexts get a real user via login. Idempotent + offline (no network).
-    if (isLocal(contextId)) await ensureLocalUser(db);
-    await desktop.log.mutate({ level: "info", message: `database initialised (context: ${contextId})` });
+    if (isLocal(ctx)) await ensureLocalUser(db);
+    await desktop.log.mutate({ level: "info", message: `database initialised (context: ${ctx})` });
 
     // Schedule background idle vector search catch-up indexing for unindexed notes
     const triggerScanner = (): void => {
@@ -127,7 +157,7 @@ export async function bootstrap(): Promise<Database> {
  * open in Main's `databases` map and is reused when you switch back to it.
  */
 export async function switchContext(contextId: ContextId): Promise<Database> {
-  const serverHosts = resolveHosts(readServerConfig());
+  const serverHosts = await resolveHostsForContext(contextId);
   const platform = await createDesktopPlatform(contextId);
   const db = await initDatabase(platform, serverHosts);
   database = db;

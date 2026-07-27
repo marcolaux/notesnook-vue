@@ -110,10 +110,11 @@ export function openNoteWindow(
 
   const devUrl = process.env["ELECTRON_RENDERER_URL"];
   if (devUrl) {
-    void win.loadURL(`${devUrl}?window=note&noteId=${encodeURIComponent(noteId)}`);
+    const ctx = contextId ? `&ctx=${encodeURIComponent(contextId)}` : "";
+    void win.loadURL(`${devUrl}?window=note&noteId=${encodeURIComponent(noteId)}${ctx}`);
   } else {
-    void win.loadFile(resolve(__dirname, "../renderer/index.html"), {
-      query: { window: "note", noteId }
-    });
+    const query: Record<string, string> = { window: "note", noteId };
+    if (contextId) query.ctx = contextId;
+    void win.loadFile(resolve(__dirname, "../renderer/index.html"), { query });
   }
 }

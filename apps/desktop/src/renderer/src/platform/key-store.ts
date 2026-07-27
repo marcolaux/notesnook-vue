@@ -87,6 +87,31 @@ export async function migrateLegacyDatabaseKeyIfNeeded(
 }
 
 /**
+ * The per-context keychain secret names a context can hold. Used by
+ * {@link clearContextKeys} so account removal wipes every namespaced secret
+ * (`<name>:<contextId>`) the removed account created, not just the databaseKey.
+ */
+const CONTEXT_SECRET_NAMES = [DATABASE_KEY, "userEncryptionKey"];
+
+/**
+ * Wipe every per-context keychain secret for `contextId` (the `databaseKey`
+ * that encrypts the SQLite file + the `userEncryptionKey` master-key cache).
+ * Best-effort: each `remove` swallows a missing-key error. Used by account
+ * removal (`stores/auth.ts` `removeAccount`) so a removed account leaves no
+ * keychain trace; a future re-login regenerates them from the password. Never
+ * throws — a keychain hiccup must not abort the rest of account removal.
+ */
+export async function clearContextKeys(contextId: ContextId): Promise<void> {
+  for (const name of CONTEXT_SECRET_NAMES) {
+    try {
+      await desktop.safeStorage.remove.mutate({ key: keychainKey(name, contextId) });
+    } catch {
+      /* best-effort — the key may already be absent */
+    }
+  }
+}
+
+/**
  * Minimal secret store for the `userEncryptionKey` (and any other small
  * secrets NNStorage needs), backed by Main's `safeStorage` (OS keychain).
  * This is the Phase 1 slice of upstream's `IKeyStore` — just get/set string

@@ -24,10 +24,10 @@ import { useToolbarStore } from "@/stores/toolbar";
 import { useNotebookIconsStore } from "@/stores/notebook-icons";
 import { useTemplatesStore } from "@/stores/templates";
 import { useMonographsStore } from "@/stores/monographs";
-import { bootstrap } from "@/platform/bootstrap";
+import { bootstrap, getCurrentContext } from "@/platform/bootstrap";
 import { desktop } from "@/platform/desktop-bridge";
 import { restoreSession } from "@/platform/session-restore";
-import { readCurrentContext, dbFileName } from "@/platform/account-context";
+import { readWindowContext, dbFileName } from "@/platform/account-context";
 import { useDialogStore } from "@/stores/dialog";
 import { syncLocale, LOCALE_STORAGE_KEY } from "@/i18n";
 import {
@@ -100,7 +100,7 @@ async function forceUnlock(): Promise<void> {
   forceUnlocking.value = true;
   try {
     await desktop.sqlite.forceUnlock.mutate({
-      filePath: dbFileName(readCurrentContext())
+      filePath: dbFileName(getCurrentContext())
     });
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -131,6 +131,18 @@ const noteWindowNoteId = isNoteWindow
 // scheduling / session restore to the main window, like a note window.
 const isPaneWindow = windowType === "pane";
 const paneWindowId = isPaneWindow ? new URLSearchParams(location.search).get("paneId") : null;
+// Per-window account context: main stamps `?ctx=<id>` on note/pane/account
+// windows so each opens its own account's encrypted SQLite context. The
+// default first/main window (and Settings/Changelog) carry no `ctx` →
+// `bootstrap()` falls back to the shared `localStorage` `currentContext` pointer.
+const ctxParam = readWindowContext();
+// A dedicated sign-in window (the switcher's "Add account" action) boots with
+// `?signin=1` so it shows the login screen even when a cached account token or
+// the local-mode `skippedLogin` flag would otherwise show the shell. It boots
+// the local context (no cached account) so it starts logged-out; once the user
+// signs in, `auth.login` switches this window to the new account's context and
+// `isLoggedIn` flips the effective shell on → the account's notes show.
+const isSignInWindow = new URLSearchParams(location.search).get("signin") === "1";
 /** Any torn-off editor window (note or pane) — these defer main-window-only
  *  boot steps (sync, upstream notifier, reminder scheduling, session restore). */
 const isTornOffWindow = isNoteWindow || isPaneWindow;
@@ -148,6 +160,18 @@ const settings = useSettingsStore();
 const upstreamNotifier = useUpstreamNotifierStore();
 const config = useConfigStore();
 const notes = useNotesStore();
+
+// Tell the auth store whether this is a dedicated sign-in window so its
+// `effectiveShowShell` getter + the router guard keep it on the login screen
+// until the user signs in (see `stores/auth.ts`).
+auth.forceSignIn = isSignInWindow;
+
+/**
+ * Whether THIS window should show the shell (vs the login screen). Delegates to
+ * the store's `effectiveShowShell` (which accounts for `forceSignIn`) so the
+ * route settling + watches here stay in sync with the router guard.
+ */
+const effectiveShowShell = computed(() => auth.effectiveShowShell);
 
 // --- Theme application (Phase 7.0 on-site) ---------------------------------
 // `bootstrap()` injects `ThemeDark` as the pre-mount default (no flash); here
@@ -386,7 +410,7 @@ function openPaneAt(payload: { snapshot: LayoutSnapshot; x: number; y: number })
  */
 function bindContextToSession(): void {
   void desktop.session.bindContext
-    .mutate({ contextId: readCurrentContext() })
+    .mutate({ contextId: getCurrentContext() })
     .catch(() => {
       /* main unreachable — no-op */
     });
@@ -533,7 +557,7 @@ onMounted(async () => {
   bindCrossWindowThemeListener();
 
   try {
-    await bootstrap();
+    await bootstrap(ctxParam);
     // `bootstrap()` injects `ThemeDark` as its no-flash default, overwriting
     // the pre-bootstrap `applyTheme` above — re-apply the user's persisted
     // choice so a fresh boot matches the saved theme (not stuck dark).
@@ -659,14 +683,15 @@ onMounted(async () => {
       // pane window hydrates its own snapshot below; a note window opens its
       // single note).
       if (!isSettingsWindow && !isTornOffWindow) {
-        await restoreSession(readCurrentContext());
+        await restoreSession(getCurrentContext());
       }
     }
     bootState.value = "ready";
     // Settle the initial route now that auth is resolved. During boot the
     // guard saw `status === "unknown"` and let the redirect to `/all` through;
     // here we move to `/login` if the user is logged-out and not local-only.
-    void router.replace(auth.showShell ? "/all" : "/login");
+    // A dedicated sign-in window (`?signin=1`) forces `/login` until sign-in.
+    void router.replace(effectiveShowShell.value ? "/all" : "/login");
     // Torn-off note window: enable focus mode (hides sidebar + notes list) and
     // open the note as a tab. Only when the shell is visible — a note window
     // torn from a logged-in/local-only session always has a shell; if auth
@@ -741,7 +766,7 @@ onUnmounted(() => {
 const notesLoaded = ref(false);
 if (!isSettingsWindow) {
   watch(
-    () => auth.showShell,
+    () => effectiveShowShell.value,
     async (show) => {
       if (show && !notesLoaded.value) {
         notesLoaded.value = true;
@@ -761,7 +786,7 @@ if (!isSettingsWindow) {
         // context, so a redundant call here (when onMounted already restored)
         // is a no-op.
         if (!isTornOffWindow) {
-          await restoreSession(readCurrentContext());
+          await restoreSession(getCurrentContext());
         }
       }
       // Flush a deep link that arrived while the user was logged out.
@@ -776,9 +801,10 @@ if (!isSettingsWindow) {
   // Follow auth state with the route so screen transitions are automatic:
   // login / local-only → shell, logout / re-arm sign-in → login screen. The
   // initial settle happens in `onMounted` once `auth.init()` resolves; this
-  // watch handles every subsequent transition (logout, login, skip, request).
+  // watch handles every subsequent transition (logout, login, skip, request,
+  // and the sign-in window's login→shell flip once `isLoggedIn` turns on).
   watch(
-    () => auth.showShell,
+    () => effectiveShowShell.value,
     (show) => {
       void router.replace(show ? "/all" : "/login");
     }
@@ -864,7 +890,7 @@ if (!isSettingsWindow) {
       // Re-bind the main window to the new context (main-side geometry writes
       // must land under the new account) and restore its saved session.
       bindContextToSession();
-      await restoreSession(readCurrentContext());
+      await restoreSession(getCurrentContext());
       setPersistenceSuppressed(false);
       if (auth.isLoggedIn && config.syncEnabled && config.autoSyncEnabled) {
         void sync.startSync().then((ok) => {

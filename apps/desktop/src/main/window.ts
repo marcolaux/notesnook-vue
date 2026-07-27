@@ -25,6 +25,7 @@ import { openSettingsWindow, isSettingsWindow } from "./settings-window";
 import { openChangelogWindow } from "./changelog-window";
 import { openNoteWindow } from "./note-window";
 import { openPaneWindow as openPaneWindowImpl, getPaneSnapshot as getPaneSnapshotImpl } from "./pane-window";
+import { openAccountWindow as openAccountWindowImpl, openSignInWindow as openSignInWindowImpl } from "./account-window";
 import { resolveContextForSender } from "./session-state";
 import type { LayoutSnapshot } from "../contracts/session-state";
 
@@ -47,6 +48,12 @@ export function createWindowServer(preloadPath: string): WindowServer {
     openNote(noteId: string, bounds?: WindowBounds | undefined, contextId?: string | undefined): void {
 
       openNoteWindow(preloadPath, noteId, bounds, contextId);
+    },
+    openAccountWindow(contextId: string, bounds?: WindowBounds | undefined): void {
+      openAccountWindowImpl(preloadPath, contextId, bounds);
+    },
+    openSignInWindow(bounds?: WindowBounds | undefined): void {
+      openSignInWindowImpl(preloadPath, bounds);
     },
     openPaneWindow(
       snapshot: LayoutSnapshot,

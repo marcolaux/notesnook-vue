@@ -5,11 +5,13 @@ import {
   sanitizeBounds,
   emptyContextSession,
   emptyLayoutSnapshot,
+  orderOpenMainWindows,
   type LayoutSnapshot,
   type LayoutNode,
   type EditorTab,
   type EditorSession,
-  type WindowBounds
+  type WindowBounds,
+  type SessionFile
 } from "@contracts/session-state";
 
 // --- fixtures --------------------------------------------------------------
@@ -191,5 +193,92 @@ describe("emptyContextSession", () => {
     expect(e.mainWindowOpenTabs.tabs).toEqual({});
     expect(e.noteWindows).toEqual([]);
     expect(e.mainBounds).toBeUndefined();
+  });
+});
+
+// --- orderOpenMainWindows (multi-window restore ordering) ------------------
+// `local` is always a valid context; account contexts are valid while their
+// registry entry exists (the multi-window restore reader unions `local` with
+// the registry's context ids before calling). These tests exercise the pure
+// ordering/filtering logic headlessly; the live Electron wiring (which windows
+// are tracked open, the `quitting` flag, bounds sanitisation) is verified at
+// the on-site runtime check.
+
+const LOCAL = "local";
+const ACCT_A = "aaa1aaa1aaa1aaa1";
+const ACCT_B = "bbb2bbb2bbb2bbb2";
+const ACCT_REMOVED = "deadbeefdeadbeef";
+
+function file(opts: {
+  open?: string[];
+  last?: string;
+  contexts?: string[];
+}): SessionFile {
+  const contexts: SessionFile["contexts"] = {};
+  for (const c of opts.contexts ?? []) {
+    contexts[c] = emptyContextSession();
+  }
+  return {
+    version: 1,
+    contexts,
+    ...(opts.last !== undefined ? { lastContext: opts.last } : {}),
+    ...(opts.open !== undefined ? { openMainWindows: opts.open } : {})
+  };
+}
+
+describe("orderOpenMainWindows", () => {
+  it("returns the recorded open list with lastContext moved to front", () => {
+    const f = file({ open: [LOCAL, ACCT_A, ACCT_B], last: ACCT_B, contexts: [LOCAL, ACCT_A, ACCT_B] });
+    // lastContext (B) is promoted to front; the rest keep their order.
+    expect(orderOpenMainWindows(f, [LOCAL, ACCT_A, ACCT_B])).toEqual([ACCT_B, LOCAL, ACCT_A]);
+  });
+
+  it("keeps insertion order when lastContext is already first", () => {
+    const f = file({ open: [LOCAL, ACCT_A], last: LOCAL, contexts: [LOCAL, ACCT_A] });
+    expect(orderOpenMainWindows(f, [LOCAL, ACCT_A])).toEqual([LOCAL, ACCT_A]);
+  });
+
+  it("keeps insertion order when there is no lastContext", () => {
+    const f = file({ open: [LOCAL, ACCT_A, ACCT_B], contexts: [LOCAL, ACCT_A, ACCT_B] });
+    expect(orderOpenMainWindows(f, [LOCAL, ACCT_A, ACCT_B])).toEqual([LOCAL, ACCT_A, ACCT_B]);
+  });
+
+  it("keeps lastContext at front even when it is not the first list entry and no reordering otherwise", () => {
+    const f = file({ open: [ACCT_A, LOCAL, ACCT_B], last: LOCAL, contexts: [ACCT_A, LOCAL, ACCT_B] });
+    expect(orderOpenMainWindows(f, [ACCT_A, LOCAL, ACCT_B])).toEqual([LOCAL, ACCT_A, ACCT_B]);
+  });
+
+  it("filters out contexts that are no longer valid (a removed account)", () => {
+    const f = file({ open: [LOCAL, ACCT_A, ACCT_REMOVED, ACCT_B], last: ACCT_B, contexts: [LOCAL, ACCT_A, ACCT_REMOVED, ACCT_B] });
+    // ACCT_REMOVED is absent from the valid set → dropped, never restored.
+    expect(orderOpenMainWindows(f, [LOCAL, ACCT_A, ACCT_B])).toEqual([ACCT_B, LOCAL, ACCT_A]);
+  });
+
+  it("falls back to [lastContext] on a legacy session file with no openMainWindows", () => {
+    const f = file({ last: ACCT_A, contexts: [LOCAL, ACCT_A] });
+    expect(orderOpenMainWindows(f, [LOCAL, ACCT_A])).toEqual([ACCT_A]);
+  });
+
+  it("falls back to [] when there is no openMainWindows and no lastContext (fresh install)", () => {
+    const f: SessionFile = { version: 1, contexts: {} };
+    expect(orderOpenMainWindows(f, [LOCAL])).toEqual([]);
+  });
+
+  it("returns [] when the legacy lastContext is no longer valid", () => {
+    const f = file({ last: ACCT_REMOVED, contexts: [LOCAL, ACCT_REMOVED] });
+    expect(orderOpenMainWindows(f, [LOCAL])).toEqual([]);
+  });
+
+  it("returns [] when every recorded open context was removed", () => {
+    const f = file({ open: [ACCT_REMOVED], contexts: [ACCT_REMOVED] });
+    expect(orderOpenMainWindows(f, [LOCAL])).toEqual([]);
+  });
+
+  it("local is always valid even when not passed explicitly — but it must be in the valid set", () => {
+    // The contract: the caller supplies the valid set (local + registry ids).
+    // If local were somehow omitted, it would be filtered — this documents that
+    // the caller MUST include local (the restore reader does).
+    const f = file({ open: [LOCAL, ACCT_A], last: LOCAL, contexts: [LOCAL, ACCT_A] });
+    expect(orderOpenMainWindows(f, [ACCT_A])).toEqual([ACCT_A]);
   });
 });

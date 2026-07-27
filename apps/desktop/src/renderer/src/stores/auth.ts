@@ -2,16 +2,20 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { User } from "@notesnook-vue/contracts";
 import { EV, EVENTS } from "@notesnook-vue/contracts";
-import { getDatabase, switchContext } from "@/platform/bootstrap";
+import { getDatabase, getCurrentContext, switchContext } from "@/platform/bootstrap";
 import { LOCAL_USER_EMAIL } from "@/platform/local-user";
 import { getAppState, setAppState } from "@/platform/app-state";
 import {
   hashEmail,
-  readCurrentContext,
   writeCurrentContext,
+  dbFileName,
   LOCAL_CONTEXT,
   type ContextId
 } from "@/platform/account-context";
+import { readServerConfig, writeServerConfig } from "@/platform/server-config";
+import { getAccount, upsertAccount, removeAccountEntry } from "@/platform/account-registry";
+import { clearContextKeys } from "@/platform/key-store";
+import { desktop } from "@/platform/desktop-bridge";
 import { logger } from "@/utils/logger";
 import i18n from "@/i18n";
 
@@ -125,6 +129,21 @@ export const useAuthStore = defineStore("auth", () => {
   /** True when the shell should show (logged in, or local-only via skip). */
   const showShell = computed(() => isLoggedIn.value || skippedLogin.value);
 
+  /**
+   * Set by `App.vue` when the window was opened with `?signin=1` (the switcher's
+   * "Add account" action). Such a window boots the local context + forces the
+   * login screen — it must NOT auto-log into a cached account or fall into
+   * local mode via `skippedLogin`. Cleared implicitly once `isLoggedIn` flips
+   * true (login complete → the effective shell turns on).
+   */
+  const forceSignIn = ref(false);
+  /** The shell should show only when `showShell` AND not (a sign-in window that
+   *  is still awaiting login). The router guard + `App.vue` route settling both
+   *  key off this so a `?signin=1` window stays on the login screen pre-login. */
+  const effectiveShowShell = computed(
+    () => showShell.value && !(forceSignIn.value && !isLoggedIn.value)
+  );
+
   let eventsBound = false;
 
   /** Subscribe to externally-driven logout events once. */
@@ -227,10 +246,127 @@ export const useAuthStore = defineStore("auth", () => {
    * the live-swap already made the account DB the current `Database`, and a
    * reload proved unreliable mid-session. Called after a successful
    * login/signup/MFA completion.
+   *
+   * Also records the account in the multi-account registry so the switcher
+   * lists it and per-window host resolution can find its `serverConfig`. The
+   * registry write is fire-and-forget — the login is already complete; the
+   * write only affects the switcher's next render.
    */
-  function completeLogin(accountCtx: ContextId): void {
+  function completeLogin(accountCtx: ContextId, email: string): void {
     writeCurrentContext(accountCtx);
+    void upsertAccount({
+      contextId: accountCtx,
+      email,
+      serverConfig: readServerConfig(),
+      lastUsed: Date.now()
+    }).catch(() => {
+      /* best-effort — the switcher re-reads on next open */
+    });
     contextChangeSignal.value += 1;
+  }
+
+  /**
+   * Switch THIS window to a known account in-place — token-based, no password
+   * (the account's auth token lives in its own DB's `kv`; the master key lives
+   * in the per-context keychain). Applies the account's `serverConfig` to this
+   * window's `localStorage` first so `switchContext` resolves the right hosts,
+   * live-swaps the `Database`, re-reads the user (→ logged-in), and bumps
+   * `contextChangeSignal` so `App.vue` reloads notes/collections. Also writes
+   * the shared `currentContext` pointer as the "last used" default for a
+   * brand-new window — already-open windows are unaffected (each holds its own
+   * in-process `currentContext`).
+   *
+   * Returns `false` when the account is not in the registry (unknown id) so
+   * the caller can refresh/bail.
+   */
+  async function switchToAccount(contextId: ContextId): Promise<boolean> {
+    // Local is implicit — it has no registry entry (only logged-in accounts
+    // do). Switching this window to local = the per-window analogue of
+    // `logout()`: live-swap to the local DB + enter local mode (skip flag on,
+    // status logged-out so `showShell` is true), keeping the account's DB +
+    // token intact for a future switch back. The account's separate window
+    // (if any) is unaffected — each window holds its own in-process context.
+    if (contextId === LOCAL_CONTEXT) {
+      if (getCurrentContext() !== LOCAL_CONTEXT) {
+        try {
+          await switchContext(LOCAL_CONTEXT);
+        } catch (e) {
+          logger.error("[auth] switchToAccount(local) switchContext failed:", e);
+          return false;
+        }
+      }
+      writeCurrentContext(LOCAL_CONTEXT);
+      skippedLogin.value = true;
+      writeSkipped(true);
+      user.value = undefined;
+      status.value = "logged-out";
+      pendingMfa.value = null;
+      error.value = "";
+      contextChangeSignal.value += 1;
+      return true;
+    }
+    const entry = await getAccount(contextId);
+    if (!entry) return false;
+    // Per-window: this window's server UI/hosts follow the chosen account.
+    writeServerConfig(entry.serverConfig);
+    if (getCurrentContext() !== contextId) {
+      await switchContext(contextId);
+    }
+    await finalize();
+    writeCurrentContext(contextId);
+    void upsertAccount({ ...entry, lastUsed: Date.now() }).catch(() => undefined);
+    contextChangeSignal.value += 1;
+    return true;
+  }
+
+  /**
+   * Open a NEW full-shell window bound to `contextId` (the switcher's "Open in
+   * new window" action). The new window's `bootstrap()` reads its `?ctx` and
+   * opens that account's own encrypted SQLite context — so several accounts
+   * can be open simultaneously, one per window. Fire-and-forget; never throws.
+   */
+  function openAccountInNewWindow(contextId: ContextId): void {
+    void desktop.window.openAccountWindow
+      .mutate({ contextId })
+      .catch(() => undefined);
+  }
+
+  /**
+   * Open a NEW window dedicated to signing into an account (the switcher's "Add
+   * account" action). It boots the local context + `?signin=1` so it shows the
+   * login screen without auto-logging into a cached account, and the caller's
+   * window is left untouched (per-window multi-account — keep working in your
+   * current account while adding another). Fire-and-forget; never throws.
+   */
+  function openSignInWindow(): void {
+    void desktop.window.openSignInWindow.mutate({}).catch(() => undefined);
+  }
+
+  /**
+   * Permanently remove a known account from this device: wipe its keychain
+   * secrets (`databaseKey` + `userEncryptionKey`), delete its encrypted SQLite
+   * file (+ journal sidecars, closing any open connection another window
+   * holds), best-effort delete its per-context IndexedDB, and drop the
+   * registry entry. The active account (this window's context) is refused —
+   * the UI only offers removal for non-active accounts. Never throws on a
+   * partial failure (file/key deletion) — the registry entry is always
+   * dropped so the switcher stops listing the account.
+   */
+  async function removeAccount(contextId: ContextId): Promise<boolean> {
+    if (contextId === getCurrentContext()) return false;
+    await clearContextKeys(contextId);
+    try {
+      await desktop.sqlite.deleteContextDb.mutate({ filePath: dbFileName(contextId) });
+    } catch (e) {
+      logger.error("[auth] removeAccount: deleteContextDb failed:", e);
+    }
+    try {
+      indexedDB.deleteDatabase(`Notesnook-${contextId}`);
+    } catch {
+      /* best-effort — the master key is re-derived from password on re-login */
+    }
+    await removeAccountEntry(contextId);
+    return true;
   }
 
   const resendStatus = ref<string>("");
@@ -272,7 +408,7 @@ export const useAuthStore = defineStore("auth", () => {
     pendingMfa.value = null;
     try {
       const accountCtx = await hashEmail(email);
-      if (readCurrentContext() !== accountCtx) {
+      if (getCurrentContext() !== accountCtx) {
         await switchContext(accountCtx);
       }
       const db = getDatabase();
@@ -307,7 +443,7 @@ export const useAuthStore = defineStore("auth", () => {
       }
       await db.user.authenticatePassword(email, password);
       await finalize();
-      completeLogin(accountCtx);
+      completeLogin(accountCtx, email);
     } catch (e) {
       status.value = "error";
       error.value = errorMessage(e);
@@ -374,7 +510,7 @@ export const useAuthStore = defineStore("auth", () => {
       const ctx = pending.ctx;
       pendingMfa.value = null;
       await finalize();
-      completeLogin(ctx);
+      completeLogin(ctx, pending.email);
     } catch (e) {
       // Stay on the MFA step so the user can re-enter the code.
       status.value = "mfa";
@@ -388,13 +524,13 @@ export const useAuthStore = defineStore("auth", () => {
     error.value = "";
     try {
       const accountCtx = await hashEmail(email);
-      if (readCurrentContext() !== accountCtx) {
+      if (getCurrentContext() !== accountCtx) {
         await switchContext(accountCtx);
       }
       const db = getDatabase();
       await db.user.signup(email, password);
       await finalize();
-      completeLogin(accountCtx);
+      completeLogin(accountCtx, email);
     } catch (e) {
       status.value = "error";
       error.value = errorMessage(e);
@@ -413,7 +549,7 @@ export const useAuthStore = defineStore("auth", () => {
    */
   async function logout(): Promise<void> {
     // If already on local, nothing to switch (e.g. session-expired reset).
-    if (readCurrentContext() !== LOCAL_CONTEXT) {
+    if (getCurrentContext() !== LOCAL_CONTEXT) {
       try {
         await switchContext(LOCAL_CONTEXT);
       } catch (e) {
@@ -457,6 +593,8 @@ export const useAuthStore = defineStore("auth", () => {
     contextChangeSignal,
     isLoggedIn,
     showShell,
+    effectiveShowShell,
+    forceSignIn,
     init,
     login,
     submitMfa,
@@ -465,6 +603,10 @@ export const useAuthStore = defineStore("auth", () => {
     signup,
     logout,
     skipLogin,
-    requestSignIn
+    requestSignIn,
+    switchToAccount,
+    openAccountInNewWindow,
+    openSignInWindow,
+    removeAccount
   };
 });

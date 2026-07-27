@@ -83,7 +83,14 @@ export default {
     logOut: "Abmelden",
     signIn: "Anmelden",
     localOnly: "Nur lokal",
-    localOnlyHint: "Deine Notizen bleiben auf diesem Gerät und werden nicht synchronisiert. Melde dich an, um geräteübergreifend zu synchronisieren."
+    localOnlyHint: "Deine Notizen bleiben auf diesem Gerät und werden nicht synchronisiert. Melde dich an, um geräteübergreifend zu synchronisieren.",
+    account: "Konto",
+    switchAccount: "Konto wechseln",
+    openInNewWindow: "In neuem Fenster öffnen",
+    addAccount: "Konto hinzufügen",
+    signOutAccount: "Von diesem Konto abmelden",
+    removeAccount: "Konto entfernen…",
+    removeAccountConfirm: "Dieses Konto entfernen und seine Daten von diesem Gerät löschen? Dies kann nicht rückgängig gemacht werden."
   },
   attachments: {
     previewTitle: "Anhang",
@@ -908,7 +915,7 @@ export default {
     signinButton: "Anmelden",
     createAccountButton: "Account erstellen",
     continueWithoutAccount: "Ohne Account fortfahren",
-    emailPlaceholder: "du@example.com",
+    emailPlaceholder: "du{'@'}example.com",
     passwordPlaceholder: "Passwort",
     confirmPasswordPlaceholder: "Passwort bestätigen",
     verify: "Verifizieren",
@@ -940,6 +947,7 @@ export default {
     sseServerExample: "z. B. http://localhost:7326",
     monographServerExample: "z. B. http://localhost:6326",
     applyAndRestart: "Anwenden & neu starten",
+    apply: "Anwenden",
     switchBack: "Zurück zu Notesnook-Servern wechseln",
     invalidUrl: "{field} muss eine gültige http(s)-URL sein.",
     codeSent: "Verifizierungscode an deine {dest} gesendet.",

@@ -59,7 +59,15 @@ vi.mock("@/platform/bootstrap", () => ({
   getDatabase: () => mockDbRef.db,
   // `auth.login` live-swaps to the account DB before authenticating. In tests
   // the mock db is already installed, so a no-op swap keeps the same db.
-  switchContext: vi.fn(async () => undefined)
+  switchContext: vi.fn(async () => undefined),
+  // The store reads the per-window current context via `getCurrentContext()`.
+  // Tests drive it through the shared `writeCurrentContext` pointer (real
+  // account-context module, not mocked), so mirror that here so the store's
+  // "am I already on this context?" checks see the test's setup.
+  getCurrentContext: () => {
+    const v = (globalThis as { localStorage?: Storage }).localStorage?.getItem("notesnook.currentContext");
+    return v && v.trim() !== "" ? v : "local";
+  }
 }));
 
 // The auth store mirrors `skippedLogin` to the main-process app-state store
@@ -351,6 +359,46 @@ describe("auth store", () => {
     expect(auth.skippedLogin).toBe(false);
     expect(auth.showShell).toBe(false);
     expect(localStorage.getItem("notesnook.skippedLogin")).toBeNull();
+  });
+
+  it("switchToAccount(LOCAL_CONTEXT) → live-swaps to local + enters local mode (skip flag on, shell shows)", async () => {
+    // Reproduces the reported bug: clicking "Local mode" in the switcher while
+    // logged into an account did nothing — `switchToAccount` looked up the
+    // registry entry, Local is implicit (never listed), so it bailed (returned
+    // false) and the window stayed on the account. Now Local is special-cased:
+    // swap this window to the local DB + set the skip flag so the shell shows
+    // (local mode), keeping the account's DB + token intact for switching back.
+    mockDbRef.db = makeMockDb({ user: sampleUser });
+    writeCurrentContext("abcd1234abcd1234");
+    const auth = useAuthStore();
+    await auth.init();
+    expect(auth.isLoggedIn).toBe(true);
+    const before = auth.contextChangeSignal;
+    const ok = await auth.switchToAccount(LOCAL_CONTEXT);
+    expect(ok).toBe(true);
+    expect(switchContext).toHaveBeenCalledWith(LOCAL_CONTEXT);
+    expect(auth.status).toBe("logged-out");
+    expect(auth.user).toBeUndefined();
+    expect(readCurrentContext()).toBe(LOCAL_CONTEXT);
+    expect(auth.contextChangeSignal).toBe(before + 1);
+    // Local mode, NOT the login screen: the skip flag is on so `showShell` is
+    // true (the user picked "Local mode" from the switcher, not "Sign out").
+    expect(auth.skippedLogin).toBe(true);
+    expect(auth.showShell).toBe(true);
+    expect(localStorage.getItem("notesnook.skippedLogin")).toBe("1");
+  });
+
+  it("switchToAccount(LOCAL_CONTEXT) when already on local → no-op swap, still local mode", async () => {
+    mockDbRef.db = makeMockDb({ user: undefined });
+    const auth = useAuthStore();
+    await auth.init();
+    const before = auth.contextChangeSignal;
+    const ok = await auth.switchToAccount(LOCAL_CONTEXT);
+    expect(ok).toBe(true);
+    expect(switchContext).not.toHaveBeenCalled();
+    expect(auth.skippedLogin).toBe(true);
+    expect(auth.showShell).toBe(true);
+    expect(auth.contextChangeSignal).toBe(before + 1);
   });
 
   it("login failure → error status with message", async () => {

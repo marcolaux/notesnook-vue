@@ -30,24 +30,15 @@
  */
 import { hosts } from "@notesnook-vue/contracts";
 import { PRODUCTION_HOSTS } from "./production-hosts.generated";
+import type {
+  ServerConfig,
+  ServerProfile
+} from "@contracts/server-config";
+
+export type { ServerConfig, ServerProfile } from "@contracts/server-config";
 
 /** The full per-component server-URL bag `Database.host()` expects. */
 export type Hosts = typeof hosts;
-
-export type ServerProfile = "notesnook" | "custom";
-
-/** Default Notesnook servers — no customisation. */
-export interface NotesnookProfile {
-  profile: "notesnook";
-}
-
-/** Self-hosted / custom servers — one URL per component. */
-export interface CustomProfile {
-  profile: "custom";
-  hosts: Hosts;
-}
-
-export type ServerConfig = NotesnookProfile | CustomProfile;
 
 const CONFIG_KEY = "notesnook.serverConfig";
 
@@ -109,7 +100,10 @@ export function writeServerConfig(config: ServerConfig): void {
  */
 export function resolveHosts(config: ServerConfig): Hosts {
   if (config.profile === "custom") {
-    return { ...PRODUCTION_HOSTS, ...config.hosts };
+    // The contract stores custom hosts as a `Record<string,string>` (looser
+    // than the renderer's keyed `Hosts`); cast back — `isHosts` validated the
+    // keys before the config was ever stored.
+    return { ...PRODUCTION_HOSTS, ...(config.hosts as Hosts) };
   }
   return { ...PRODUCTION_HOSTS };
 }

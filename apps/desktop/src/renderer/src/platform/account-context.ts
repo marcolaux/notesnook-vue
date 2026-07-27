@@ -114,6 +114,29 @@ export function writeCurrentContext(id: ContextId): void {
 }
 
 /**
+ * The per-window context id, parsed from the URL query `?ctx=<id>` that main
+ * stamps onto every window at creation (note / pane / account windows). This is
+ * the keystone of per-window multi-account: each window is a separate renderer
+ * process, and `bootstrap()` reads THIS (not the shared `localStorage`
+ * `currentContext` pointer) to decide which account's encrypted SQLite context
+ * to open — so several windows can hold several different accounts at once.
+ *
+ * Returns `undefined` when there is no `ctx` query (the default first/main
+ * window, Settings, Changelog), in which case `bootstrap()` falls back to the
+ * shared `readCurrentContext()` pointer (the last-used account, or `"local"`).
+ *
+ * Pure over a `search` string for headless testability; the default reads
+ * `location.search`.
+ */
+export function readWindowContext(search?: string): ContextId | undefined {
+  const s = search ?? (typeof location !== "undefined" ? location.search : "");
+  if (!s) return undefined;
+  const params = new URLSearchParams(s);
+  const v = params.get("ctx");
+  return v && v.trim() !== "" ? v : undefined;
+}
+
+/**
  * Decision helper for the one-time legacy-DB → local migration. Returns whether
  * the legacy single DB (`notesnook.sql`, from before per-context support) should
  * be adopted as the local context's DB: only when the local file is absent but

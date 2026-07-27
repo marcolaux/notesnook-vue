@@ -79,7 +79,14 @@ export default {
     logOut: "Log out",
     signIn: "Sign in",
     localOnly: "Local only",
-    localOnlyHint: "Your notes stay on this device and don't sync. Sign in to sync across devices."
+    localOnlyHint: "Your notes stay on this device and don't sync. Sign in to sync across devices.",
+    account: "Account",
+    switchAccount: "Switch account",
+    openInNewWindow: "Open in new window",
+    addAccount: "Add account",
+    signOutAccount: "Sign out of this account",
+    removeAccount: "Remove account…",
+    removeAccountConfirm: "Remove this account and delete its data from this device? This cannot be undone."
   },
   attachments: {
     previewTitle: "Attachment",
@@ -932,7 +939,7 @@ export default {
     signinButton: "Sign in",
     createAccountButton: "Create account",
     continueWithoutAccount: "Continue without account",
-    emailPlaceholder: "you@example.com",
+    emailPlaceholder: "you{'@'}example.com",
     passwordPlaceholder: "Password",
     confirmPasswordPlaceholder: "Confirm password",
     verify: "Verify",
@@ -964,6 +971,7 @@ export default {
     sseServerExample: "e.g. http://localhost:7326",
     monographServerExample: "e.g. http://localhost:6326",
     applyAndRestart: "Apply & restart",
+    apply: "Apply",
     switchBack: "Switch back to Notesnook servers",
     invalidUrl: "{field} must be a valid http(s) URL.",
     codeSent: "Verification code sent to your {dest}.",

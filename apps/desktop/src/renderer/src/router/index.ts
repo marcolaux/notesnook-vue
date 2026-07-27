@@ -8,6 +8,10 @@
  *    `auth.init()` resolves, and the boot overlay covers the screen meanwhile;
  *  - logged-out (incl. local-only not chosen) → force `/login`;
  *  - logged-in / local-only → block `/login` (bounce to `/all`).
+ *  - a dedicated sign-in window (`?signin=1`, "Add account") is held on
+ *    `/login` until the user signs in — `effectiveShowShell` stays false while
+ *    `forceSignIn && !isLoggedIn`, overriding the `skippedLogin`/cached-token
+ *    paths that would otherwise show the shell.
  *
  * `createAppRouter()` is the factory; the exported `router` is the app-wide
  * singleton. Tests build their own instance to avoid shared-history bleed.
@@ -20,8 +24,11 @@ export function installAuthGuard(router: Router): void {
   router.beforeEach((to) => {
     const auth = useAuthStore();
     if (auth.status === "unknown") return true;
-    if (!auth.showShell && to.path !== "/login") return { path: "/login" };
-    if (auth.showShell && to.path === "/login") return { path: "/all" };
+    // Use `effectiveShowShell` (accounts for `?signin=1` windows) so a sign-in
+    // window stays on /login even when `skippedLogin`/a cached token would make
+    // `showShell` true.
+    if (!auth.effectiveShowShell && to.path !== "/login") return { path: "/login" };
+    if (auth.effectiveShowShell && to.path === "/login") return { path: "/all" };
     // Monographs (the published-notes view) is hidden in local-only mode —
     // publishing is a server call gated on a logged-in account. The sidebar
     // entry + goto command are already hidden; this is defense-in-depth for a

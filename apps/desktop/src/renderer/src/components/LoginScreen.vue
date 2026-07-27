@@ -13,7 +13,7 @@
  * new config and reloads so `bootstrap()` re-initialises the Database against
  * the new hosts (the switch only runs while logged-out, so no session is lost).
  */
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { Surface, Flex, Text, Input, Button } from "@notesnook-vue/ui-vue";
 import { useAuthStore } from "@/stores/auth";
@@ -25,6 +25,8 @@ import {
   type Hosts,
   type ServerProfile
 } from "@/platform/server-config";
+import { listAccounts } from "@/platform/account-registry";
+import type { AccountEntry } from "@contracts/server-config";
 
 const auth = useAuthStore();
 const { t } = useI18n();
@@ -37,11 +39,31 @@ const password = ref("");
 const confirmPassword = ref("");
 const mfaCode = ref("");
 
+// Known (logged-in) accounts on this device — when present, the login screen
+// shows a row of account chips above the email field. Clicking one pre-fills
+// the email + applies that account's `serverConfig` (so re-login targets the
+// right server — an upstream-notesnook account vs a self-hosted one). The
+// sidebar switcher is the primary multi-account entry; this is a convenience
+// for re-logging into a known account.
+const knownAccounts = ref<AccountEntry[]>([]);
+onMounted(async () => {
+  knownAccounts.value = await listAccounts();
+});
+function pickAccount(a: AccountEntry): void {
+  email.value = a.email;
+  writeServerConfig(a.serverConfig);
+  serverProfile.value = a.serverConfig.profile;
+  if (a.serverConfig.profile === "custom") {
+    customHosts.value = { ...(a.serverConfig.hosts as Hosts) };
+  }
+  password.value = "";
+}
+
 // --- Server config (local copy; applied via reload) ---
 const initialConfig = readServerConfig();
 const serverProfile = ref<ServerProfile>(initialConfig.profile);
 const customHosts = ref<Hosts>(
-  initialConfig.profile === "custom" ? { ...initialConfig.hosts } : defaultHosts()
+  initialConfig.profile === "custom" ? { ...(initialConfig.hosts as Hosts) } : defaultHosts()
 );
 
 // The four hosts upstream's web Settings → Servers exposes (`HostIds`):
@@ -98,6 +120,15 @@ function submit(): void {
     localError.value = t("login.emailPasswordRequired");
     return;
   }
+  // Persist the chosen server config BEFORE authenticating. `auth.login` →
+  // `switchContext(accountCtx)` resolves hosts via `resolveHostsForContext`,
+  // which falls back to `readServerConfig()` (shared localStorage) for a
+  // brand-new account not yet in the registry. Writing the config here means a
+  // self-hosted account's first login hits the right server WITHOUT a restart
+  // (the old "Apply and restart" reloaded the whole window; per-window server
+  // config makes that unnecessary — the new account's DB is built against these
+  // hosts, and `completeLogin` records them in the registry for next time).
+  if (!applyServerConfig()) return;
   if (mode.value === "signup") {
     if (password.value !== confirmPassword.value) {
       localError.value = t("login.passwordsDoNotMatch");
@@ -144,7 +175,20 @@ async function switchMethod(): Promise<void> {
   }
 }
 
-function applyServer(): void {
+/**
+ * Persist the current server-profile selection (notesnook default, or a custom
+ * self-hosted bag) to `localStorage`. Returns `false` (with `localError` set)
+ * when a custom URL is invalid so `submit()` aborts before authenticating.
+ *
+ * No reload — per-window multi-account made a restart unnecessary: the new
+ * account's `Database` is built against these hosts inside `auth.login`'s
+ * `switchContext` (via `resolveHostsForContext`'s `readServerConfig` fallback
+ * for a brand-new account), and `completeLogin` records the config in the
+ * registry for that account. The "Apply" button is an explicit way to lock the
+ * config in (e.g. before choosing "Continue without account"); signing in
+ * applies it automatically via `submit`.
+ */
+function applyServerConfig(): boolean {
   localError.value = "";
   if (serverProfile.value === "custom") {
     // Partial bag, like upstream: start from the defaults and override only the
@@ -160,14 +204,14 @@ function applyServer(): void {
         merged[f.key] = raw;
       } catch {
         localError.value = t("login.invalidUrl", { field: t(f.labelKey) });
-        return;
+        return false;
       }
     }
     writeServerConfig({ profile: "custom", hosts: merged });
   } else {
     writeServerConfig({ profile: "notesnook" });
   }
-  location.reload();
+  return true;
 }
 
 function skip(): void {
@@ -249,6 +293,27 @@ function skip(): void {
             </button>
           </div>
 
+          <!-- Known accounts on this device: click to pre-fill the email +
+               apply that account's server config (so re-login hits the right
+               server). The primary multi-account entry is the sidebar
+               switcher; this is a re-login convenience. -->
+          <Flex
+            v-if="knownAccounts.length"
+            direction="column"
+            :gap="1"
+            class="mb-1"
+          >
+            <button
+              v-for="a in knownAccounts"
+              :key="a.contextId"
+              type="button"
+              class="rounded-md border border-border px-3 py-1.5 text-left text-[12px] text-text-muted transition-colors hover:bg-hover"
+              @click="pickAccount(a)"
+            >
+              {{ a.email }}
+            </button>
+          </Flex>
+
           <Input
             v-model="email"
             type="email"
@@ -326,8 +391,8 @@ function skip(): void {
                 :variant="formError && formError.includes(t(f.labelKey)) ? 'error' : 'default'"
               />
             </label>
-            <Button variant="secondary" block size="sm" type="button" @click="applyServer">
-              {{ t('login.applyAndRestart') }}
+            <Button variant="secondary" block size="sm" type="button" @click="applyServerConfig">
+              {{ t('login.apply') }}
             </Button>
             <Text v-if="formError" variant="body" size="xs" class="text-[var(--red-static)]">{{ formError }}</Text>
           </Flex>
@@ -337,7 +402,7 @@ function skip(): void {
             block
             size="sm"
             type="button"
-            @click="applyServer"
+            @click="applyServerConfig"
           >
             {{ t('login.switchBack') }}
           </Button>

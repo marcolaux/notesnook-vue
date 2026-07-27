@@ -22,6 +22,7 @@ import {
   keychainKey,
   readCurrentContext,
   writeCurrentContext,
+  readWindowContext,
   shouldMigrateLegacyToLocal,
   CURRENT_CONTEXT_KEY
 } from "@/platform/account-context";
@@ -134,6 +135,34 @@ describe("account-context", () => {
     });
     it("does not migrate when there is no legacy file (fresh install)", () => {
       expect(shouldMigrateLegacyToLocal(false, false)).toBe(false);
+    });
+  });
+
+  describe("readWindowContext (per-window `?ctx=`)", () => {
+    it("parses the `ctx` query param", () => {
+      expect(readWindowContext("?ctx=abc123def456")).toBe("abc123def456");
+    });
+    it("parses `ctx` alongside other window params", () => {
+      expect(readWindowContext("?window=note&noteId=xyz&ctx=acct-1")).toBe("acct-1");
+    });
+    it("returns undefined when there is no `ctx` param (default main/settings window)", () => {
+      expect(readWindowContext("?window=settings")).toBeUndefined();
+      expect(readWindowContext("?window=note&noteId=xyz")).toBeUndefined();
+    });
+    it("returns undefined for an empty/blank `ctx` value", () => {
+      expect(readWindowContext("?ctx=")).toBeUndefined();
+      expect(readWindowContext("?ctx=%20")).toBeUndefined();
+    });
+    it("returns undefined when there is no search string at all", () => {
+      expect(readWindowContext("")).toBeUndefined();
+      expect(readWindowContext(undefined)).toBeUndefined();
+    });
+    it("does NOT consult the shared localStorage pointer (per-window, not global)", () => {
+      localStorage.setItem(CURRENT_CONTEXT_KEY, "stored-acct");
+      // No `ctx` in the URL → undefined (NOT the stored pointer); bootstrap
+      // falls back to readCurrentContext() itself when readWindowContext is
+      // undefined — the two are deliberately separate sources.
+      expect(readWindowContext("?window=settings")).toBeUndefined();
     });
   });
 });
