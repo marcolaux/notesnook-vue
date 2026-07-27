@@ -161,7 +161,11 @@ export default {
       spellOn: "Ein",
       spellOnOne: "Ein — 1 Sprache",
       spellOnMany: "Ein — {n} Sprachen",
-      spellError: "Fehler: {error}"
+      spellError: "Fehler: {error}",
+      spellLanguages: "Sprachen der Rechtschreibprüfung",
+      spellLanguagesHint: "Unabhängig von der Oberflächensprache. Die Rechtschreibprüfung verwendet alle ausgewählten Sprachen.",
+      noLanguages: "(keine ausgewählt)",
+      spellMacosAuto: "Unter macOS wird die Rechtschreibung automatisch anhand deiner Systemsprachen geprüft. Eine Sprachauswahl ist hier nicht verfügbar."
     },
     notes: {
       title: "Notizen",

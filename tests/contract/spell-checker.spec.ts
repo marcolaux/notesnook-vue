@@ -228,6 +228,35 @@ describe("useSpellCheckerStore", () => {
     expect(s.lastError).toBe("nope");
   });
 
+  it("toggleLanguage adds a code not in the enabled set, then re-reads", async () => {
+    bridge.enabledLanguages.query.mockResolvedValue([toLanguage("en-US"), toLanguage("de")]);
+    const s = useSpellCheckerStore();
+    s.enabledLanguages = [toLanguage("en-US")];
+    const ok = await s.toggleLanguage("de");
+    expect(ok).toBe(true);
+    expect(bridge.setLanguages.mutate).toHaveBeenCalledWith(["en-US", "de"]);
+    expect(s.enabledCodes).toEqual(["en-US", "de"]);
+  });
+
+  it("toggleLanguage removes a code already in the enabled set", async () => {
+    bridge.enabledLanguages.query.mockResolvedValue([toLanguage("en-US")]);
+    const s = useSpellCheckerStore();
+    s.enabledLanguages = [toLanguage("en-US"), toLanguage("de")];
+    const ok = await s.toggleLanguage("de");
+    expect(ok).toBe(true);
+    expect(bridge.setLanguages.mutate).toHaveBeenCalledWith(["en-US"]);
+    expect(s.enabledCodes).toEqual(["en-US"]);
+  });
+
+  it("toggleLanguage never throws on bridge error", async () => {
+    bridge.setLanguages.mutate.mockRejectedValue(new Error("nope"));
+    const s = useSpellCheckerStore();
+    s.enabledLanguages = [toLanguage("en-US")];
+    const ok = await s.toggleLanguage("de");
+    expect(ok).toBe(false);
+    expect(s.lastError).toBe("nope");
+  });
+
   it("deleteWord removes the word locally + calls the bridge", async () => {
     const s = useSpellCheckerStore();
     s.dictionaryWords = ["teh", "recieve"];

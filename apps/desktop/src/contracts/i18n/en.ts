@@ -157,7 +157,11 @@ export default {
       spellOn: "On",
       spellOnOne: "On — 1 language",
       spellOnMany: "On — {n} languages",
-      spellError: "Error: {error}"
+      spellError: "Error: {error}",
+      spellLanguages: "Spell check languages",
+      spellLanguagesHint: "Independent of the interface language. Spell checking uses all selected languages.",
+      noLanguages: "(none selected)",
+      spellMacosAuto: "On macOS, spelling is checked automatically using your system languages. Language selection isn't available here."
     },
     notes: {
       title: "Notes",

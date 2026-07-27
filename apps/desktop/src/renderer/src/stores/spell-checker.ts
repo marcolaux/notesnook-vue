@@ -116,6 +116,19 @@ export const useSpellCheckerStore = defineStore("spellChecker", () => {
     }
   }
 
+  /** Toggle membership of `code` in the enabled-languages set (add when not
+   *  present, remove when present), then persist via {@link setLanguages}. The
+   *  spellcheck languages are independent of the interface locale — this store
+   *  owns only the spellcheck language set. Returns `true` on success. Never
+   *  throws. */
+  async function toggleLanguage(code: string): Promise<boolean> {
+    const current = enabledLanguages.value.map((l) => l.code);
+    const next = current.includes(code)
+      ? current.filter((c) => c !== code)
+      : [...current, code];
+    return setLanguages(next);
+  }
+
   /** Remove a word from the custom dictionary. Returns `true` on success.
    *  Never throws. */
   async function deleteWord(word: string): Promise<boolean> {
@@ -147,6 +160,7 @@ export const useSpellCheckerStore = defineStore("spellChecker", () => {
     refresh,
     toggleSpellCheck,
     setLanguages,
+    toggleLanguage,
     deleteWord
   };
 });
