@@ -5,6 +5,19 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-07-27
+
+### 🧠 Vector Search Inference Offloaded to a Web Worker (Phase A)
+- **Embedding generation moved off the renderer main thread**:
+  - `@huggingface/transformers` (`Xenova/all-MiniLM-L6-v2`, fp32) inference now runs in a dedicated renderer-side Web Worker (`vector-search.worker.ts`) instead of on the main thread, so the ONNX pipeline never blocks UI rendering or input.
+  - Eliminates the previously un-gated per-keystroke query-time inference path: `searchVectorEmbeddings` → `computeEmbedding(queryText)` ran synchronous inference on every omnibar keystroke, causing search-input stutter on large notebooks. Search typing is now lag-free.
+  - Background indexing (note open / autosave / boot catch-up) likewise stops contending for the main thread; the existing idle-scheduling, activity-gating, and frame-yielding mitigations remain as a second layer.
+- **Minimal blast radius**:
+  - Only `computeEmbedding`'s body changes — it delegates to a thin promise-RPC worker client (`worker-embedding-client.ts`) and preserves its signature and `readSemanticSearchEnabled` guard. All six call sites are unchanged (query-time search, per-chunk indexing, and the four on-demand embedding paths in the clustering visualizer).
+  - The worker is inference-only (text → transferable `Float32Array`); all SQL/IPC writes, the debounced/activity-gated queue, and centroid math stay in the renderer. Web Workers spawned from the Electron renderer run in a pure-web context (no Node), so the worker uses the `onnxruntime-web` WASM backend.
+  - The worker is constructed lazily on first `computeEmbedding` call (never at module import), keeping the Node-based vitest contract suite green.
+- **Verification**: typecheck (node + web + contracts) clean; 1514 contract tests pass; `electron-vite build` emits the worker chunk and the `ort-wasm-simd-threaded.asyncify-*.wasm` asset, cross-referenced via `new URL(...)`. On-device gates pending: packaged-app runtime WASM fetch, query-time smoothness, background indexing, clustering visualizer label embeddings.
+
 ## [0.9.0] - 2026-07-27
 
 ### 🪟 Detach-Pane-into-Window & Tab/Pane Context Menus

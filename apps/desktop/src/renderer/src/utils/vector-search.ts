@@ -1,18 +1,11 @@
 import { ref } from "vue";
-import { pipeline, env } from "@huggingface/transformers";
 import { chunkText } from "@notesnook-vue/shared";
 import { desktop } from "@/platform/desktop-bridge";
 import { readSemanticSearchEnabled } from "@/stores/settings";
+import { embed } from "@/utils/worker-embedding-client";
 import type { SQLiteParameter } from "@contracts/router";
 
-// Configure local cache & execution defaults
-env.allowRemoteModels = true;
-
 export const isIndexing = ref(false);
-
-let extractorInstance: any = null;
-let isInitializing = false;
-let initPromise: Promise<void> | null = null;
 
 async function runSql<R = any>(sql: string, parameters: SQLiteParameter[] = []): Promise<R[]> {
   try {
@@ -27,46 +20,18 @@ async function runSql<R = any>(sql: string, parameters: SQLiteParameter[] = []):
   }
 }
 
-async function getExtractor(): Promise<any> {
-  if (extractorInstance) return extractorInstance;
-  if (isInitializing && initPromise) {
-    await initPromise;
-    return extractorInstance;
-  }
-
-  isInitializing = true;
-  initPromise = (async () => {
-    try {
-      extractorInstance = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
-        dtype: "fp32"
-      });
-    } catch (err) {
-      console.error("[vector-search] Failed to initialize embedding pipeline:", err);
-      extractorInstance = null;
-    } finally {
-      isInitializing = false;
-    }
-  })();
-
-  await initPromise;
-  return extractorInstance;
-}
-
 /**
  * Generate a 384-dimensional normalized Float32Array embedding for a given text prompt.
+ *
+ * Inference runs in a dedicated Web Worker (`vector-search.worker.ts` via the
+ * `worker-embedding-client`), so the ONNX pipeline never blocks the renderer
+ * main thread — including the un-gated per-keystroke query-time path. The
+ * worker is lazily constructed on first use; if it is unavailable, this
+ * resolves to `null` (callers skip the chunk / fall back to lexical search).
  */
 export async function computeEmbedding(text: string): Promise<Float32Array | null> {
   if (!readSemanticSearchEnabled()) return null;
-  const extractor = await getExtractor();
-  if (!extractor) return null;
-
-  try {
-    const output = await extractor(text, { pooling: "mean", normalize: true });
-    return new Float32Array(output.data);
-  } catch (err) {
-    console.error("[vector-search] Failed to compute embedding:", err);
-    return null;
-  }
+  return embed(text);
 }
 
 export interface VectorSearchResult {
