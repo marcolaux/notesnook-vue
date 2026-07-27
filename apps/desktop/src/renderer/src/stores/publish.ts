@@ -10,6 +10,7 @@ import {
 } from "@/utils/publish";
 import { buildSyncOptions } from "@/utils/sync";
 import { EV, EVENTS, type Monograph } from "@notesnook-vue/contracts";
+import { logger } from "@/utils/logger";
 
 /**
  * Publish store (Phase 5.1) — the publish-to-web state for the active note's
@@ -82,7 +83,7 @@ export const usePublishStore = defineStore("publish", () => {
       await db.sync(buildSyncOptions({ type: "send" }));
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[publish] attachment upload (send-sync) failed:", e);
+      logger.error("[publish] attachment upload (send-sync) failed:", e);
     }
   }
 
@@ -115,7 +116,7 @@ export const usePublishStore = defineStore("publish", () => {
       }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[publish] refresh failed:", e);
+      logger.error("[publish] refresh failed:", e);
     } finally {
       loading.value = false;
     }
@@ -164,7 +165,7 @@ export const usePublishStore = defineStore("publish", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[publish] publish failed:", e);
+      logger.error("[publish] publish failed:", e);
       return false;
     } finally {
       publishing.value = false;
@@ -185,7 +186,7 @@ export const usePublishStore = defineStore("publish", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[publish] unpublish failed:", e);
+      logger.error("[publish] unpublish failed:", e);
       return false;
     } finally {
       publishing.value = false;

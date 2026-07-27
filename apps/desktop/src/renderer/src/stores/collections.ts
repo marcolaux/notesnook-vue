@@ -20,6 +20,7 @@ import {
   type SortDir
 } from "@/utils/collections";
 import { moveIdTo } from "@/utils/sidebar-order";
+import { logger } from "@/utils/logger";
 
 /**
  * Sidebar collections store (Phase 3.2). Loads notebooks, tags and the trash
@@ -190,7 +191,7 @@ export const useCollectionsStore = defineStore("collections", () => {
       children.value = { ...children.value, [id]: sortCollections(kids.map(toNotebookListItem), sortKey.value, sortDir.value) };
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[collections] loadChildren failed:", e);
+      logger.error("[collections] loadChildren failed:", e);
     }
   }
 
@@ -243,7 +244,7 @@ export const useCollectionsStore = defineStore("collections", () => {
       return childId;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[collections] createSubNotebook failed:", e);
+      logger.error("[collections] createSubNotebook failed:", e);
       return null;
     }
   }
@@ -282,7 +283,7 @@ export const useCollectionsStore = defineStore("collections", () => {
       return id;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[collections] createSubTag failed:", e);
+      logger.error("[collections] createSubTag failed:", e);
       return null;
     }
   }
@@ -327,7 +328,7 @@ export const useCollectionsStore = defineStore("collections", () => {
       return id;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[collections] createTag failed:", e);
+      logger.error("[collections] createTag failed:", e);
       return null;
     }
   }
@@ -396,7 +397,7 @@ export const useCollectionsStore = defineStore("collections", () => {
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[collections] renameNotebook failed:", e);
+      logger.error("[collections] renameNotebook failed:", e);
       return false;
     }
   }
@@ -422,7 +423,7 @@ export const useCollectionsStore = defineStore("collections", () => {
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[collections] deleteNotebook failed:", e);
+      logger.error("[collections] deleteNotebook failed:", e);
       return false;
     }
   }
@@ -442,7 +443,7 @@ export const useCollectionsStore = defineStore("collections", () => {
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[collections] toggleNotebookPinned failed:", e);
+      logger.error("[collections] toggleNotebookPinned failed:", e);
       return false;
     }
   }
@@ -508,7 +509,7 @@ export const useCollectionsStore = defineStore("collections", () => {
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[collections] renameTag failed:", e);
+      logger.error("[collections] renameTag failed:", e);
       return false;
     }
   }
@@ -526,7 +527,7 @@ export const useCollectionsStore = defineStore("collections", () => {
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[collections] deleteTag failed:", e);
+      logger.error("[collections] deleteTag failed:", e);
       return false;
     }
   }

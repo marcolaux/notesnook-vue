@@ -9,6 +9,7 @@ import {
 } from "@/utils/updater";
 import type { UpdateStatus } from "@contracts/router";
 import { formatBundledChangelog, getLatestChangelogVersion } from "@/utils/markdown";
+import { logger } from "@/utils/logger";
 
 let initialized = false;
 let ipcUnsub: (() => void) | undefined;
@@ -120,7 +121,7 @@ export const useUpdaterStore = defineStore("updater", () => {
       return true;
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
-      console.error("[updater] check failed:", e);
+      logger.error("[updater] check failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -140,7 +141,7 @@ export const useUpdaterStore = defineStore("updater", () => {
       return ok;
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
-      console.error("[updater] download failed:", e);
+      logger.error("[updater] download failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -155,7 +156,7 @@ export const useUpdaterStore = defineStore("updater", () => {
       return ok;
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
-      console.error("[updater] install failed:", e);
+      logger.error("[updater] install failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -169,7 +170,7 @@ export const useUpdaterStore = defineStore("updater", () => {
       return true;
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
-      console.error("[updater] status failed:", e);
+      logger.error("[updater] status failed:", e);
       return false;
     }
   }

@@ -8,6 +8,7 @@ import {
   type HistoryEntry
 } from "@/utils/note-history";
 import type { HistorySession } from "@notesnook-vue/contracts";
+import { logger } from "@/utils/logger";
 
 /**
  * Note-history store (Phase 5.1) — the per-note revision history for the
@@ -67,7 +68,7 @@ export const useNoteHistoryStore = defineStore("note-history", () => {
       sessions.value = sortHistoryByDateDesc(rows.map(toHistoryEntry));
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[note-history] refresh failed:", e);
+      logger.error("[note-history] refresh failed:", e);
     } finally {
       loading.value = false;
     }
@@ -96,7 +97,7 @@ export const useNoteHistoryStore = defineStore("note-history", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[note-history] loadPreview failed:", e);
+      logger.error("[note-history] loadPreview failed:", e);
       preview.value = "";
       previewSessionId.value = null;
     } finally {
@@ -123,7 +124,7 @@ export const useNoteHistoryStore = defineStore("note-history", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[note-history] restore failed:", e);
+      logger.error("[note-history] restore failed:", e);
       return false;
     } finally {
       busy.value = false;

@@ -102,20 +102,28 @@ class SQLite {
   }
 
   /**
+   * Synchronous cache-or-prepare. Returns the cached prepared statement for
+   * `sql` or prepares + caches it. No retry — used inside `better-sqlite3`'s
+   * `db.transaction(fn)` (whose `fn` must be synchronous) by `runBatch`. The
+   * async retry path lives in `prepare` below.
+   */
+  private prepareCached(sql: string): SqliteStatement {
+    if (!this.sqlite) throw new Error("Database is not initialized.");
+    const cached = this.preparedStatements.get(sql);
+    if (cached !== undefined) return cached;
+    const prepared = this.sqlite.prepare(sql) as SqliteStatement;
+    this.preparedStatements.set(sql, prepared);
+    this.retryCounter[sql] = 0;
+    return prepared;
+  }
+
+  /**
    * Prepare a statement, caching it. Retries up to 5 times on flaky failures.
    */
   private async prepare(sql: string): Promise<SqliteStatement | undefined> {
     if (!this.sqlite) throw new Error("Database is not initialized.");
     try {
-      const cached = this.preparedStatements.get(sql);
-      if (cached !== undefined) return cached;
-
-      const prepared = this.sqlite.prepare(sql) as SqliteStatement;
-      if (!prepared) return;
-
-      this.preparedStatements.set(sql, prepared);
-      this.retryCounter[sql] = 0;
-      return prepared;
+      return this.prepareCached(sql);
     } catch (ex) {
       console.error(ex);
       // A held lock (another instance) is not a flaky transient — fail fast
@@ -132,6 +140,17 @@ class SQLite {
       this.retryCounter[sql] = 0;
       if (ex instanceof Error) ex.message += ` (query: ${sql})`;
       throw ex;
+    }
+  }
+
+  /**
+   * Lazy FTS5/sqlite-vec extension load: SQLite3MC v2 needs the DB decrypted
+   * before the loadable extensions can attach, so we defer until the first
+   * `run`/`runBatch` finds the DB ready. Idempotent via `extensionsLoaded`.
+   */
+  private async maybeLoadExtensions(): Promise<void> {
+    if (LOAD_FTS5_EXTENSIONS && !this.extensionsLoaded && (await this.isDatabaseReady())) {
+      this.loadExtensions();
     }
   }
 
@@ -166,10 +185,50 @@ class SQLite {
     } catch (e) {
       throw wrapSqliteError(e, sql);
     } finally {
-      // SQLite3MC v2 needs the DB decrypted before FTS5 extensions can load.
-      if (LOAD_FTS5_EXTENSIONS && !this.extensionsLoaded && (await this.isDatabaseReady())) {
-        this.loadExtensions();
+      await this.maybeLoadExtensions();
+    }
+  }
+
+  /**
+   * Run multiple write statements in one SQLite transaction (`BEGIN … COMMIT`,
+   * `ROLLBACK` on any statement error) — collapses N per-statement IPC
+   * round-trips into one and N auto-committed WAL fsyncs into one. Used by the
+   * vector-search indexer for multi-chunk `vec_notes` writes (Phase B).
+   *
+   * `better-sqlite3`'s `db.transaction(fn)` wraps `fn` in BEGIN/COMMIT and
+   * issues ROLLBACK when `fn` throws; `fn` must be synchronous, so each
+   * statement is prepared via the synchronous `prepareCached` and run inline.
+   * `vec0` virtual tables participate in transactions, so a mixed
+   * `DELETE`/`INSERT`/`UPDATE` batch on `vec_notes` is atomic.
+   */
+  async runBatch<R>(
+    id: string,
+    statements: { sql: string; parameters?: SQLiteParameter[] | undefined }[]
+  ): Promise<SQLiteQueryResult<R>> {
+    if (!this.sqlite) throw new Error("No database is opened.");
+    const db = this.sqlite;
+    const exec = db.transaction(() => {
+      let changes = 0;
+      for (const { sql, parameters = [] } of statements) {
+        const prepared = this.prepareCached(sql);
+        const res = prepared.run(parameters);
+        if (typeof res.changes === "number") changes += res.changes;
       }
+      return changes;
+    });
+    try {
+      const totalChanges = exec();
+      return {
+        numAffectedRows:
+          totalChanges !== undefined && !Number.isNaN(totalChanges)
+            ? BigInt(totalChanges)
+            : undefined,
+        rows: [] as R[]
+      };
+    } catch (e) {
+      throw wrapSqliteError(e, "(runBatch)");
+    } finally {
+      await this.maybeLoadExtensions();
     }
   }
 
@@ -365,6 +424,11 @@ export const sqliteServer: SQLiteServer = {
     const sqlite = databases.get(id);
     if (!sqlite) throw new Error("Database not found for id: " + id);
     return sqlite.run(id, sql, parameters);
+  },
+  async runBatch(id, statements) {
+    const sqlite = databases.get(id);
+    if (!sqlite) throw new Error("Database not found for id: " + id);
+    return sqlite.runBatch(id, statements);
   },
   async close(id) {
     const sqlite = databases.get(id);

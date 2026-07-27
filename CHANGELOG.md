@@ -5,6 +5,32 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-07-27
+
+### ⚡ Vector Search Transaction Batching (Phase B) + Diagnostic Logging Gate
+
+#### Vector Search — Multi-Statement Transaction Batching (Phase B)
+- **Multi-chunk `vec_notes` writes collapsed into one transactional IPC**:
+  - New `sqlite.runBatch` tRPC mutation runs an array of `{sql, parameters}` write statements in a single `better-sqlite3` transaction (`BEGIN … COMMIT`, `ROLLBACK` on any statement error), replacing the previous one-IPC-round-trip-per-chunk loop in `indexNoteEmbeddings`.
+  - For an N-chunk note re-index this cuts **N IPC hops → 1** and **N auto-committed WAL fsyncs → 1**, the remaining per-chunk overhead after Phase A offloaded inference to a Web Worker.
+  - `indexNoteEmbeddings` now **collects** per-chunk `UPDATE`/`INSERT` statements (plus the optional trailing-chunk `DELETE` as the first batched statement — order-safe: it targets `chunk_index >= chunks.length` while the loop targets `< chunks.length`) and flushes once via `runSqlBatch`. The activity-gated interrupt early-return flushes partial progress before re-queueing (safe — the next run skips matched chunk hashes). The 30ms frame yield and `isUserRecentlyActive` interrupt checks are preserved, so UI-smoothness/interruptibility semantics are unchanged.
+- **Main-process refactor (`main/sqlite.ts`)**:
+  - Extracted a synchronous `prepareCached(sql)` (cache-or-prepare, no retry) for use inside `better-sqlite3`'s `db.transaction(fn)` callback (which must be synchronous); the async retry path stays in `prepare`.
+  - Factored `maybeLoadExtensions()` out of `run`'s `finally` and shared it with `runBatch`, keeping the lazy FTS5/sqlite-vec extension-load invariant identical.
+  - `vec0` virtual tables participate in transactions, so a mixed `DELETE`/`INSERT`/`UPDATE` batch on `vec_notes` is atomic.
+
+#### Diagnostic Logging Gate (Settings → Updates → Logging)
+- **A single toggle controls all renderer diagnostic `console.log/warn/info` output**:
+  - New `utils/logger.ts` leaf util (no store imports → no import cycle; Web-Worker-safe). `readLoggingEnabled()` checks `import.meta.env.DEV` **first** — a compile-time constant, so logging is **forced ON in dev** and the branch is dead code in packaged builds — then reads `localStorage` (`notesnook.loggingEnabled`, default off). `logger.error` **always prints**, so genuine failures still surface in packaged builds with logging off. Reads fresh each call → the Settings toggle takes effect live without a reload.
+  - New **Logging** section inside Settings → Updates (toggle locked ON in dev with a "Forced on in development mode" hint; off by default in packaged builds).
+- **Migrated all 31 renderer `stores/` + `utils/` files** (incl. both Web Workers) — 172 `console.*` call sites — to `logger.*`, preserving the existing `[tag] …` prefix convention.
+- **Vector-search diagnostic logs** (gated) added so Phase B is observable on-site: `[vector-search] indexNoteEmbeddings {noteId, chunks, existing}` → `[vector-search] runSqlBatch flushing {statements: N}` confirms a single batched transactional flush.
+
+#### Verification
+- `npm run typecheck --workspace=apps/desktop` (node + web) — clean.
+- `npm run test:contract` — **1515/1515 tests pass** across 104 files (new `sqlite-engine` `db.transaction` atomicity + rollback case; `bridge-router` `sqlite.runBatch` shape pin).
+- On-site gates pending: packaged-build runtime confirm that a multi-chunk re-index shows one `sqlite.runBatch` flush in the renderer console (Logging is forced ON in dev).
+
 ## [0.9.1] - 2026-07-27
 
 ### 🧠 Vector Search Inference Offloaded to a Web Worker (Phase A)

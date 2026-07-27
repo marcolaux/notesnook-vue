@@ -52,6 +52,7 @@ import {
 import { filterCommands } from "@/commands/menu";
 import { searchVectorEmbeddings } from "@/utils/vector-search";
 import { readSemanticSearchEnabled } from "@/stores/settings";
+import { logger } from "@/utils/logger";
 
 export type OmnibarMode = "notes" | "commands" | "tags" | "notebooks" | "tabs";
 
@@ -356,7 +357,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
 
       return blended.slice(0, MAX_RESULTS);
     } catch (e) {
-      console.error("[omnibar] Vector RRF blend failed, falling back to FTS5:", e);
+      logger.error("[omnibar] Vector RRF blend failed, falling back to FTS5:", e);
       return ftsResults;
     }
   }
@@ -379,7 +380,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
       bumpCache(q, list);
       open.value = true;
     } catch (e) {
-      console.error("[omnibar] search failed:", e);
+      logger.error("[omnibar] search failed:", e);
     } finally {
       if (q === query.value.trim()) loading.value = false;
     }
@@ -393,7 +394,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
       bumpCache(q, list);
       return list;
     } catch (e) {
-      console.error("[omnibar] loadResults failed:", e);
+      logger.error("[omnibar] loadResults failed:", e);
       return [];
     }
   }

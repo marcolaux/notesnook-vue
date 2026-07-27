@@ -17,12 +17,15 @@ describe("contract: AppRouter (main↔renderer bridge)", () => {
     expect(typeof res.ts).toBe("number");
   });
 
-  it("sqlite router exposes open/run/close/delete", () => {
+  it("sqlite router exposes open/run/runBatch/close/delete", () => {
     // Shape only — real behaviour lands in M2. tRPC flattens nested routers to
     // dotted paths, so the procedures appear as `sqlite.open`, `sqlite.run`, …
+    // `sqlite.runBatch` runs multiple write statements in one transaction
+    // (Phase B vector-search batching).
     const procedures = appRouter._def.procedures as Record<string, unknown>;
     expect(procedures).toHaveProperty("sqlite.open");
     expect(procedures).toHaveProperty("sqlite.run");
+    expect(procedures).toHaveProperty("sqlite.runBatch");
     expect(procedures).toHaveProperty("sqlite.close");
   });
 

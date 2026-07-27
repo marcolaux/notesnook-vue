@@ -30,6 +30,7 @@ import {
   ATTACHMENT_FILTERS,
   type AttachmentFilter
 } from "@/utils/attachments";
+import { logger } from "@/utils/logger";
 
 export const useAttachmentsStore = defineStore("attachments", () => {
   const items = ref<Attachment[]>([]);
@@ -109,7 +110,7 @@ export const useAttachmentsStore = defineStore("attachments", () => {
       orphanedIds.value = new Set(orphIds);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[attachments] load failed:", e);
+      logger.error("[attachments] load failed:", e);
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
       loading.value = false;
@@ -146,7 +147,7 @@ export const useAttachmentsStore = defineStore("attachments", () => {
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[attachments] remove failed:", e);
+      logger.error("[attachments] remove failed:", e);
       error.value = e instanceof Error ? e.message : String(e);
       return false;
     }
@@ -170,7 +171,7 @@ export const useAttachmentsStore = defineStore("attachments", () => {
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[attachments] removeOrphaned failed:", e);
+      logger.error("[attachments] removeOrphaned failed:", e);
       error.value = e instanceof Error ? e.message : String(e);
       return false;
     }
@@ -195,7 +196,7 @@ export const useAttachmentsStore = defineStore("attachments", () => {
       return notes;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[attachments] loadUsage failed:", e);
+      logger.error("[attachments] loadUsage failed:", e);
       usage.value = { ...usage.value, [attachment.hash]: [] };
       return [];
     } finally {
@@ -212,7 +213,7 @@ export const useAttachmentsStore = defineStore("attachments", () => {
       await desktop.window.openNote.mutate({ noteId });
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[attachments] openNote failed:", e);
+      logger.error("[attachments] openNote failed:", e);
     }
   }
 

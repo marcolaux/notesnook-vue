@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { getDatabase } from "@/platform/bootstrap";
 import type { TimeFormat, TrashCleanupInterval, Profile, DayFormat, WeekFormat } from "@notesnook-vue/contracts";
 import { ThemeDark, ThemeLight, type VueTheme } from "@notesnook-vue/theme-vue";
+import { logger, readLoggingEnabled, writeLoggingEnabled } from "@/utils/logger";
 
 /**
  * Settings store (Phase 7) — the headless data backend for `SettingsView`.
@@ -282,6 +283,9 @@ export const useSettingsStore = defineStore("settings", () => {
   const transparencyChangeSignal = ref(0);
   /** Whether on-device Semantic Vector Search is enabled. */
   const semanticSearchEnabled = ref<boolean>(readSemanticSearchEnabled());
+  /** Whether diagnostic `logger.log/warn/info` output is enabled (forced on in
+   *  dev; off by default in packaged builds). Errors always print regardless. */
+  const loggingEnabled = ref<boolean>(readLoggingEnabled());
   /** Whether the user has been prompted via dialog about vector search onboarding. */
   const semanticSearchPrompted = ref<boolean>(readSemanticSearchPrompted());
   /** The two theme slots. Default to the vendored built-ins until a theme is
@@ -311,7 +315,7 @@ export const useSettingsStore = defineStore("settings", () => {
       profile.value = s.getProfile();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] load failed:", e);
+      logger.error("[settings] load failed:", e);
     }
   }
 
@@ -321,7 +325,7 @@ export const useSettingsStore = defineStore("settings", () => {
       dateFormat.value = format;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] setDateFormat failed:", e);
+      logger.error("[settings] setDateFormat failed:", e);
     }
   }
 
@@ -331,7 +335,7 @@ export const useSettingsStore = defineStore("settings", () => {
       timeFormat.value = format;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] setTimeFormat failed:", e);
+      logger.error("[settings] setTimeFormat failed:", e);
     }
   }
 
@@ -341,7 +345,7 @@ export const useSettingsStore = defineStore("settings", () => {
       titleFormat.value = format;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] setTitleFormat failed:", e);
+      logger.error("[settings] setTitleFormat failed:", e);
     }
   }
 
@@ -351,7 +355,7 @@ export const useSettingsStore = defineStore("settings", () => {
       dayFormat.value = format;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] setDayFormat failed:", e);
+      logger.error("[settings] setDayFormat failed:", e);
     }
   }
 
@@ -361,7 +365,7 @@ export const useSettingsStore = defineStore("settings", () => {
       weekFormat.value = format;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] setWeekFormat failed:", e);
+      logger.error("[settings] setWeekFormat failed:", e);
     }
   }
 
@@ -371,7 +375,7 @@ export const useSettingsStore = defineStore("settings", () => {
       trashCleanupInterval.value = interval;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] setTrashCleanupInterval failed:", e);
+      logger.error("[settings] setTrashCleanupInterval failed:", e);
     }
   }
 
@@ -381,7 +385,7 @@ export const useSettingsStore = defineStore("settings", () => {
       defaultNotebook.value = notebookId;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] setDefaultNotebook failed:", e);
+      logger.error("[settings] setDefaultNotebook failed:", e);
     }
   }
 
@@ -391,7 +395,7 @@ export const useSettingsStore = defineStore("settings", () => {
       defaultTag.value = tagId;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] setDefaultTag failed:", e);
+      logger.error("[settings] setDefaultTag failed:", e);
     }
   }
 
@@ -402,7 +406,7 @@ export const useSettingsStore = defineStore("settings", () => {
       vaultLockAfter.value = ms;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] setVaultLockAfter failed:", e);
+      logger.error("[settings] setVaultLockAfter failed:", e);
     }
   }
 
@@ -412,7 +416,7 @@ export const useSettingsStore = defineStore("settings", () => {
       profile.value = getDatabase().settings.getProfile();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[settings] setProfile failed:", e);
+      logger.error("[settings] setProfile failed:", e);
     }
   }
 
@@ -535,6 +539,11 @@ export const useSettingsStore = defineStore("settings", () => {
     writeSemanticSearchPrompted(prompted);
   }
 
+  function setLoggingEnabled(enabled: boolean): void {
+    loggingEnabled.value = enabled;
+    writeLoggingEnabled(enabled);
+  }
+
   return {
     dateFormat,
     timeFormat,
@@ -554,6 +563,7 @@ export const useSettingsStore = defineStore("settings", () => {
     transparencyChangeSignal,
     semanticSearchEnabled,
     semanticSearchPrompted,
+    loggingEnabled,
     darkTheme,
     lightTheme,
     load,
@@ -575,6 +585,7 @@ export const useSettingsStore = defineStore("settings", () => {
     syncTransparencyEnabled,
     setSemanticSearchEnabled,
     setSemanticSearchPrompted,
+    setLoggingEnabled,
     setActiveTheme,
     restoreStockThemes,
     isThemeApplied,

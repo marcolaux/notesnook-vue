@@ -46,6 +46,7 @@ import { ref } from "vue";
 import { getDatabase } from "@/platform/bootstrap";
 import { makeId, type SettingItem } from "@notesnook-vue/contracts";
 import { ICONS, loadAllIcons } from "@notesnook-vue/ui-vue";
+import { logger } from "@/utils/logger";
 
 /** Synced settings key holding the notebook→icon map (namespaced to avoid a
  *  future upstream collision). */
@@ -86,7 +87,7 @@ export const useNotebookIconsStore = defineStore("notebookIcons", () => {
       }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notebook-icons] load failed:", e);
+      logger.error("[notebook-icons] load failed:", e);
     }
   }
 
@@ -113,7 +114,7 @@ export const useNotebookIconsStore = defineStore("notebookIcons", () => {
       });
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notebook-icons] save failed:", e);
+      logger.error("[notebook-icons] save failed:", e);
     }
   }
 

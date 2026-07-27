@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { getDatabase } from "@/platform/bootstrap";
+import { logger } from "@/utils/logger";
 
 /**
  * Trash store (Phase 3.2 — real-views headless slice) — the trashed-items list
@@ -62,7 +63,7 @@ export const useTrashStore = defineStore("trash", () => {
       items.value = all.map(toTrashListItem);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[trash] load failed:", e);
+      logger.error("[trash] load failed:", e);
     } finally {
       loading.value = false;
     }
@@ -77,7 +78,7 @@ export const useTrashStore = defineStore("trash", () => {
       await load();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[trash] restore failed:", e);
+      logger.error("[trash] restore failed:", e);
     }
   }
 
@@ -90,7 +91,7 @@ export const useTrashStore = defineStore("trash", () => {
       await load();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[trash] remove failed:", e);
+      logger.error("[trash] remove failed:", e);
     }
   }
 
@@ -102,7 +103,7 @@ export const useTrashStore = defineStore("trash", () => {
       await load();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[trash] clear failed:", e);
+      logger.error("[trash] clear failed:", e);
     }
   }
 

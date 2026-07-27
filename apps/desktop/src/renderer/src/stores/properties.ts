@@ -17,6 +17,7 @@ import {
   type ToggleKey,
   type ToggleState
 } from "@/utils/properties";
+import { logger } from "@/utils/logger";
 
 /**
  * Properties store (Phase 5.1) — the data backing the right-side properties
@@ -112,7 +113,7 @@ export const usePropertiesStore = defineStore("properties", () => {
       }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[properties] loadNote failed:", e);
+      logger.error("[properties] loadNote failed:", e);
     } finally {
       loadingNote.value = false;
     }
@@ -147,7 +148,7 @@ export const usePropertiesStore = defineStore("properties", () => {
       color.value = c ? toAssignedColor(c) : null;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[properties] loadAssignments failed:", e);
+      logger.error("[properties] loadAssignments failed:", e);
     } finally {
       loadingAssignments.value = false;
     }
@@ -174,7 +175,7 @@ export const usePropertiesStore = defineStore("properties", () => {
       return (items as Tag[]).map((t) => t.id);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[properties] getAssignedTagIds failed:", e);
+      logger.error("[properties] getAssignedTagIds failed:", e);
       return [];
     }
   }
@@ -215,7 +216,7 @@ export const usePropertiesStore = defineStore("properties", () => {
         current = note ? Boolean(note[key]) : false;
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.error("[properties] toggle(loadNote) failed:", e);
+        logger.error("[properties] toggle(loadNote) failed:", e);
         return null;
       }
     }
@@ -232,7 +233,7 @@ export const usePropertiesStore = defineStore("properties", () => {
       return isActive ? toggles.value[key] : next;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[properties] toggle failed:", e);
+      logger.error("[properties] toggle failed:", e);
       return null;
     }
   }
@@ -261,7 +262,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] addTag failed:", e);
+      logger.error("[properties] addTag failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -289,7 +290,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] removeTag failed:", e);
+      logger.error("[properties] removeTag failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -326,7 +327,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] createTag failed:", e);
+      logger.error("[properties] createTag failed:", e);
       return null;
     } finally {
       busy.value = false;
@@ -351,7 +352,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] addNotebook failed:", e);
+      logger.error("[properties] addNotebook failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -377,7 +378,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] removeNotebook failed:", e);
+      logger.error("[properties] removeNotebook failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -406,7 +407,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] createNotebook failed:", e);
+      logger.error("[properties] createNotebook failed:", e);
       return null;
     } finally {
       busy.value = false;
@@ -441,7 +442,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] setColor failed:", e);
+      logger.error("[properties] setColor failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -466,7 +467,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] clearColor failed:", e);
+      logger.error("[properties] clearColor failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -501,7 +502,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] setToggleMany failed:", e);
+      logger.error("[properties] setToggleMany failed:", e);
     } finally {
       busy.value = false;
     }
@@ -521,7 +522,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] addToNotebookMany failed:", e);
+      logger.error("[properties] addToNotebookMany failed:", e);
     } finally {
       busy.value = false;
     }
@@ -542,7 +543,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] removeFromNotebookMany failed:", e);
+      logger.error("[properties] removeFromNotebookMany failed:", e);
     } finally {
       busy.value = false;
     }
@@ -566,7 +567,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] addTagToMany failed:", e);
+      logger.error("[properties] addTagToMany failed:", e);
     } finally {
       busy.value = false;
     }
@@ -590,7 +591,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] removeTagToMany failed:", e);
+      logger.error("[properties] removeTagToMany failed:", e);
     } finally {
       busy.value = false;
     }
@@ -615,7 +616,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] createTagMany failed:", e);
+      logger.error("[properties] createTagMany failed:", e);
     } finally {
       busy.value = false;
     }
@@ -636,7 +637,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] createNotebookMany failed:", e);
+      logger.error("[properties] createNotebookMany failed:", e);
     } finally {
       busy.value = false;
     }
@@ -662,7 +663,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] setColorMany failed:", e);
+      logger.error("[properties] setColorMany failed:", e);
     } finally {
       busy.value = false;
     }
@@ -684,7 +685,7 @@ export const usePropertiesStore = defineStore("properties", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[properties] clearColorMany failed:", e);
+      logger.error("[properties] clearColorMany failed:", e);
     } finally {
       busy.value = false;
     }

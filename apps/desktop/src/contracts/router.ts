@@ -55,6 +55,17 @@ export interface SQLiteServer {
   open(filePath: string): Promise<string>;
   /** Execute a compiled SQL statement with the given parameters. */
   run<R = unknown>(id: string, sql: string, parameters?: SQLiteParameter[]): Promise<SQLiteQueryResult<R>>;
+  /**
+   * Execute multiple write statements in a single SQL transaction
+   * (`BEGIN … COMMIT`, `ROLLBACK` on any statement error). Collapses N
+   * per-statement IPC round-trips into one and N auto-committed WAL fsyncs
+   * into one. Used by the vector-search indexer for multi-chunk
+   * `INSERT`/`UPDATE`/`DELETE` on `vec_notes` (Phase B transaction batching).
+   */
+  runBatch<R = unknown>(
+    id: string,
+    statements: { sql: string; parameters?: SQLiteParameter[] | undefined }[]
+  ): Promise<SQLiteQueryResult<R>>;
   close(id: string): Promise<void>;
   /** Close and remove the underlying database file. */
   delete(id: string): Promise<void>;
@@ -782,6 +793,21 @@ export const appRouter = t.router({
       )
       .mutation(({ input }) =>
         requireSQLite().run(input.id, input.sql, input.parameters)
+      ),
+    runBatch: t.procedure
+      .input(
+        z.object({
+          id: z.string(),
+          statements: z.array(
+            z.object({
+              sql: z.string(),
+              parameters: z.array(z.custom<SQLiteParameter>()).optional()
+            })
+          )
+        })
+      )
+      .mutation(({ input }) =>
+        requireSQLite().runBatch(input.id, input.statements)
       ),
     close: t.procedure
       .input(z.object({ id: z.string() }))

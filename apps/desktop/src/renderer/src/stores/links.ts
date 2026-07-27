@@ -3,6 +3,7 @@ import { ref, computed, watch } from "vue";
 import type { Note } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
 import { useNotesStore } from "@/stores/notes";
+import { logger } from "@/utils/logger";
 
 /**
  * Note-links store — incoming (backlinks) + outgoing note-to-note relations
@@ -70,7 +71,7 @@ export const useLinksStore = defineStore("links", () => {
       incoming.value = (inc as Note[]).map(toLinkRef);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[links] load failed:", e);
+      logger.error("[links] load failed:", e);
       outgoing.value = [];
       incoming.value = [];
     } finally {
@@ -102,7 +103,7 @@ export const useLinksStore = defineStore("links", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[links] link failed:", e);
+      logger.error("[links] link failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -127,7 +128,7 @@ export const useLinksStore = defineStore("links", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[links] unlink failed:", e);
+      logger.error("[links] unlink failed:", e);
       return false;
     } finally {
       busy.value = false;

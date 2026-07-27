@@ -18,12 +18,17 @@
 import { computed, onMounted } from "vue";
 import { Surface, Flex, Text, Button } from "@notesnook-vue/ui-vue";
 import { useUpdaterStore } from "@/stores/updater";
+import { useSettingsStore } from "@/stores/settings";
 
 const updater = useUpdaterStore();
+const settings = useSettingsStore();
 
 const currentVersion = `v${__APP_VERSION__}`;
 const downloading = computed(() => updater.phase === "downloading");
 const isDev = import.meta.env.DEV;
+/** In dev the Logging gate is forced on (see `readLoggingEnabled`), so the
+ *  toggle is locked — shown for visibility, not interactive. */
+const loggingLocked = computed(() => isDev);
 
 // Kick a check the moment the section is opened so the user sees a fresh
 // "Up to date" / "Update available" verdict rather than the stale pre-check
@@ -113,6 +118,40 @@ onMounted(() => {
         {{ updater.lastError }}
         <button type="button" class="ml-1 underline" @click="updater.clearError">Dismiss</button>
       </Text>
+    </Flex>
+  </Surface>
+
+  <!-- Logging — diagnostic console output gate (forced on in dev) -->
+  <Surface class="mt-6 rounded-xl border border-border p-5">
+    <Flex direction="column" :gap="4">
+      <Flex direction="column" :gap="1">
+        <Text as="h2" variant="heading" size="md">Logging</Text>
+        <Text variant="body" size="xs" class="text-text-muted">
+          Toggle diagnostic console output (sync, vector-search indexing, search, etc.).
+          Errors always print regardless of this setting.
+        </Text>
+      </Flex>
+
+      <Flex direction="column" :gap="3" class="rounded-lg border border-border bg-surface-muted/30 p-4">
+        <Flex align="center" justify="between">
+          <Flex direction="column" :gap="1">
+            <Text variant="body" size="sm" class="font-medium text-text">Enable diagnostic logging</Text>
+            <Text variant="body" size="xs" class="text-text-muted max-w-md">
+              {{ loggingLocked ? "Forced on in development mode." : "Off by default in packaged builds." }}
+            </Text>
+          </Flex>
+          <label class="relative inline-flex cursor-pointer items-center" :class="{ 'opacity-60': loggingLocked }">
+            <input
+              type="checkbox"
+              :checked="settings.loggingEnabled"
+              :disabled="loggingLocked"
+              class="sr-only peer"
+              @change="settings.setLoggingEnabled(($event.target as HTMLInputElement).checked)"
+            />
+            <div class="w-9 h-5 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-accent"></div>
+          </label>
+        </Flex>
+      </Flex>
     </Flex>
   </Surface>
 </template>

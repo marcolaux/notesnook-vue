@@ -28,6 +28,7 @@ import { useSettingsStore } from "@/stores/settings";
 import { useConfigStore } from "@/stores/config";
 import { desktop } from "@/platform/desktop-bridge";
 import { queueIndexNoteEmbeddings, deleteNoteEmbeddings } from "@/utils/vector-search";
+import { logger } from "@/utils/logger";
 
 /** A collection filter applied to the notes list (sidebar selection). The
  * `noteIds` set is resolved up-front from `@notesnook/core` (notebooks via
@@ -134,7 +135,7 @@ export const useNotesStore = defineStore("notes", () => {
       publishedIds.value = new Set(ids);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] loadPublishedIds failed:", e);
+      logger.error("[notes] loadPublishedIds failed:", e);
     }
   }
 
@@ -661,7 +662,7 @@ export const useNotesStore = defineStore("notes", () => {
       }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn("[notes] resolveThumbnail failed for hash:", hash, e);
+      logger.warn("[notes] resolveThumbnail failed for hash:", hash, e);
     }
     return { ...preview, thumbnail: null };
   }
@@ -692,7 +693,7 @@ export const useNotesStore = defineStore("notes", () => {
       if (data) queueIndexNoteEmbeddings(noteId, data, titleOf(noteId));
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] loadPreview failed:", e);
+      logger.error("[notes] loadPreview failed:", e);
       previews.value = { ...previews.value, [noteId]: EMPTY_PREVIEW };
     } finally {
       pendingPreviews.delete(noteId);
@@ -719,7 +720,7 @@ export const useNotesStore = defineStore("notes", () => {
       if (item) item.tags = titles;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] loadTags failed:", e);
+      logger.error("[notes] loadTags failed:", e);
     }
   }
 
@@ -738,7 +739,7 @@ export const useNotesStore = defineStore("notes", () => {
       if (item) item.color = colorItems[0] ? toColorListItem(colorItems[0]) : null;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] loadColor failed:", e);
+      logger.error("[notes] loadColor failed:", e);
     }
   }
 
@@ -804,7 +805,7 @@ export const useNotesStore = defineStore("notes", () => {
       await properties.loadAssignments();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] applyActiveFilterToNote failed:", e);
+      logger.error("[notes] applyActiveFilterToNote failed:", e);
     }
   }
 
@@ -858,7 +859,7 @@ export const useNotesStore = defineStore("notes", () => {
       return typeof item.data === "string" ? item.data : "";
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] readTemplateHtml failed:", e);
+      logger.error("[notes] readTemplateHtml failed:", e);
       return null;
     }
   }
@@ -905,7 +906,7 @@ export const useNotesStore = defineStore("notes", () => {
       await applyActiveFilterToNote(id);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] createDraft failed:", e);
+      logger.error("[notes] createDraft failed:", e);
       return null;
     }
     await load();
@@ -968,7 +969,7 @@ export const useNotesStore = defineStore("notes", () => {
         // newer version)? dateModified ~now => we touched it locally; synced
         // false => unsynced local edit; conflicted true => conflict.
         // eslint-disable-next-line no-console
-        console.log(
+        logger.log(
           "[sync] loadContent meta:",
           noteId,
           "contentId:", n?.contentId,
@@ -989,7 +990,7 @@ export const useNotesStore = defineStore("notes", () => {
       }
       const data = item && typeof item.data === "string" ? item.data : "";
       // eslint-disable-next-line no-console
-      console.log(
+      logger.log(
         "[sync] content served:",
         "itemId:", item?.id,
         "len:", data.length,
@@ -998,7 +999,7 @@ export const useNotesStore = defineStore("notes", () => {
       contentCache.value = { ...contentCache.value, [noteId]: { html: data, state: "loaded" } };
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] loadContent failed:", e);
+      logger.error("[notes] loadContent failed:", e);
       contentCache.value = { ...contentCache.value, [noteId]: { html: "", state: "error" } };
     }
   }
@@ -1028,11 +1029,11 @@ export const useNotesStore = defineStore("notes", () => {
       const db = getDatabase();
       void db.attachments.downloadMedia(noteId).catch((e) => {
         // eslint-disable-next-line no-console
-        console.warn("[notes] downloadMedia failed:", e);
+        logger.warn("[notes] downloadMedia failed:", e);
       });
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn("[notes] downloadMedia failed:", e);
+      logger.warn("[notes] downloadMedia failed:", e);
     }
   }
 
@@ -1067,7 +1068,7 @@ export const useNotesStore = defineStore("notes", () => {
       void loadPreview(noteId, true);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] handleRemoteNoteChanged failed:", e);
+      logger.error("[notes] handleRemoteNoteChanged failed:", e);
       return;
     }
     if (item) {
@@ -1169,7 +1170,7 @@ export const useNotesStore = defineStore("notes", () => {
             .selector.fields(["attachments.hash", "attachments.dateUploaded"])
             .items();
           // eslint-disable-next-line no-console
-          console.log(
+          logger.log(
             `[notes] saveContent diag: note ${note.id} linked attachments=${linked.length}`,
             linked.map((a: { hash: string; dateUploaded?: number }) => ({
               hash: a.hash,
@@ -1182,7 +1183,7 @@ export const useNotesStore = defineStore("notes", () => {
       })();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] saveContent failed:", e);
+      logger.error("[notes] saveContent failed:", e);
       saveState.value = "error";
     }
   }
@@ -1228,7 +1229,7 @@ export const useNotesStore = defineStore("notes", () => {
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] moveToTrash failed:", e);
+      logger.error("[notes] moveToTrash failed:", e);
       return false;
     }
   }
@@ -1250,7 +1251,7 @@ export const useNotesStore = defineStore("notes", () => {
       await load();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] moveToTrashMany failed:", e);
+      logger.error("[notes] moveToTrashMany failed:", e);
     }
   }
 
@@ -1266,7 +1267,7 @@ export const useNotesStore = defineStore("notes", () => {
       await load();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] duplicateMany failed:", e);
+      logger.error("[notes] duplicateMany failed:", e);
     }
   }
 
@@ -1286,7 +1287,7 @@ export const useNotesStore = defineStore("notes", () => {
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] archive failed:", e);
+      logger.error("[notes] archive failed:", e);
       return false;
     }
   }
@@ -1304,7 +1305,7 @@ export const useNotesStore = defineStore("notes", () => {
       await load();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] archiveMany failed:", e);
+      logger.error("[notes] archiveMany failed:", e);
     }
   }
 
@@ -1320,7 +1321,7 @@ export const useNotesStore = defineStore("notes", () => {
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] unarchive failed:", e);
+      logger.error("[notes] unarchive failed:", e);
       return false;
     }
   }
@@ -1337,7 +1338,7 @@ export const useNotesStore = defineStore("notes", () => {
       await load();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[notes] unarchiveMany failed:", e);
+      logger.error("[notes] unarchiveMany failed:", e);
     }
   }
 
@@ -1360,7 +1361,7 @@ export const useNotesStore = defineStore("notes", () => {
         broadcastNoteChanged(id);
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.error("[notes] flushTitle failed:", e);
+        logger.error("[notes] flushTitle failed:", e);
       }
     }
   }

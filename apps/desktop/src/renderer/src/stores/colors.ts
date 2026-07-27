@@ -10,6 +10,7 @@ import {
   type ColorInput
 } from "@/utils/colors";
 import { applyManualOrder, moveIdTo } from "@/utils/sidebar-order";
+import { logger } from "@/utils/logger";
 
 /**
  * Colors store (headless) — the color collection for the sidebar's "colors"
@@ -126,7 +127,7 @@ export const useColorsStore = defineStore("colors", () => {
       if (pruned.length !== stored.length) writeColorFavorites(pruned);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[colors] refresh failed:", e);
+      logger.error("[colors] refresh failed:", e);
     } finally {
       loading.value = false;
     }
@@ -167,7 +168,7 @@ export const useColorsStore = defineStore("colors", () => {
       items.value = applyManualOrder(sortColorsByTitle(items.value), ids);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[colors] setOrder failed:", e);
+      logger.error("[colors] setOrder failed:", e);
     }
   }
 
@@ -205,7 +206,7 @@ export const useColorsStore = defineStore("colors", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[colors] add failed:", e);
+      logger.error("[colors] add failed:", e);
       return null;
     } finally {
       busy.value = false;
@@ -225,7 +226,7 @@ export const useColorsStore = defineStore("colors", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[colors] remove failed:", e);
+      logger.error("[colors] remove failed:", e);
     } finally {
       busy.value = false;
     }
@@ -252,7 +253,7 @@ export const useColorsStore = defineStore("colors", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[colors] renameColor failed:", e);
+      logger.error("[colors] renameColor failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -299,7 +300,7 @@ export const useColorsStore = defineStore("colors", () => {
       return n ?? 0;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[colors] noteCount failed:", e);
+      logger.error("[colors] noteCount failed:", e);
       return 0;
     }
   }

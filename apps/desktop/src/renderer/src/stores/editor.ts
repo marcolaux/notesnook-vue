@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { shallowRef, ref, computed } from "vue";
 import type { Editor } from "@tiptap/vue-3";
 import type { SearchOptions } from "@notesnook-vue/editor-vue";
+import { logger } from "@/utils/logger";
 
 /**
  * A staged scroll-to-match target set by the global search before opening a
@@ -162,7 +163,7 @@ export const useEditorStore = defineStore("editor", () => {
       await fn();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[editor] flushFocusedSave failed:", e);
+      logger.error("[editor] flushFocusedSave failed:", e);
     }
   }
 

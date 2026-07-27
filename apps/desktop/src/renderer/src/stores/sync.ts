@@ -6,6 +6,7 @@ import { buildSyncOptions, type SyncControlInput } from "@/utils/sync";
 import { shouldRunAutoSync } from "@contracts/auto-sync-gating";
 import { useAuthStore } from "@/stores/auth";
 import { useConfigStore } from "@/stores/config";
+import { logger } from "@/utils/logger";
 
 /**
  * Sync-control store (Phase 6.1 — headless control slice) — the reactive
@@ -64,14 +65,14 @@ export const useSyncStore = defineStore("syncControl", () => {
       const db = getDatabase();
       db.eventManager.subscribe("file:upload", (p: unknown) => {
         // eslint-disable-next-line no-console
-        console.log("[sync] probe file:upload", p);
+        logger.log("[sync] probe file:upload", p);
       });
       db.eventManager.subscribe(
         "file:uploaded",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         async (p: any) => {
           // eslint-disable-next-line no-console
-          console.log("[sync] probe file:uploaded", p);
+          logger.log("[sync] probe file:uploaded", p);
           if (!p?.success) return;
           // Observe ONLY — do NOT call markAsUploaded here. The bridge in
           // `event-bridge.ts` re-publishes `file:uploaded` to the global `EV`,
@@ -83,7 +84,7 @@ export const useSyncStore = defineStore("syncControl", () => {
             try {
               const a = await db.attachments.attachment(p.filename);
               // eslint-disable-next-line no-console
-              console.log(
+              logger.log(
                 "[sync] probe post-event (bridge-driven):",
                 a ? { dateUploaded: a.dateUploaded, synced: (a as any).synced } : "NOT FOUND"
               );
@@ -109,7 +110,7 @@ export const useSyncStore = defineStore("syncControl", () => {
       const ok = await db.sync(buildSyncOptions(input));
       // TEMP-DIAG sync-pull: does db.sync() return true and did it complete?
       // eslint-disable-next-line no-console
-      console.log("[sync] db.sync returned:", ok, "input:", input);
+      logger.log("[sync] db.sync returned:", ok, "input:", input);
       // TEMP-DIAG: dump local attachment records after sync so we can see
       // whether our just-uploaded attachment is marked synced + uploaded (i.e.
       // actually collected/pushed) and not localOnly/deleted. The web app
@@ -121,7 +122,7 @@ export const useSyncStore = defineStore("syncControl", () => {
           try {
             const items = await db.attachments.all.items();
             // eslint-disable-next-line no-console
-            console.log(
+            logger.log(
               `[sync] diag: ${items.length} local attachment(s)`,
               items.map((a) => ({
                 hash: a.hash,
@@ -144,7 +145,7 @@ export const useSyncStore = defineStore("syncControl", () => {
       lastError.value = e instanceof Error ? e.message : String(e);
       lastResult.value = false;
       // eslint-disable-next-line no-console
-      console.error("[sync] start failed:", e);
+      logger.error("[sync] start failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -161,7 +162,7 @@ export const useSyncStore = defineStore("syncControl", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[sync] stop failed:", e);
+      logger.error("[sync] stop failed:", e);
       return false;
     }
   }
@@ -177,7 +178,7 @@ export const useSyncStore = defineStore("syncControl", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[sync] cancel failed:", e);
+      logger.error("[sync] cancel failed:", e);
       return false;
     }
   }
@@ -263,14 +264,14 @@ export const useSyncStore = defineStore("syncControl", () => {
   function scheduleAutoSync(): void {
     const gated = autoSyncGated();
     // eslint-disable-next-line no-console
-    console.log("[sync] scheduleAutoSync called; gated=", gated);
+    logger.log("[sync] scheduleAutoSync called; gated=", gated);
     if (!gated) return;
     if (autoSyncTimer) clearTimeout(autoSyncTimer);
     autoSyncTimer = setTimeout(() => {
       autoSyncTimer = undefined;
       const stillGated = autoSyncGated();
       // eslint-disable-next-line no-console
-      console.log("[sync] autoSync timer fired; gated=", stillGated);
+      logger.log("[sync] autoSync timer fired; gated=", stillGated);
       if (!stillGated) return;
       void startSync();
     }, AUTO_SYNC_DEBOUNCE_MS);

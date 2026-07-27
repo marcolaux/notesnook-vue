@@ -12,6 +12,7 @@ import {
   LOCAL_CONTEXT,
   type ContextId
 } from "@/platform/account-context";
+import { logger } from "@/utils/logger";
 
 /**
  * Auth store — wraps `@notesnook/core`'s `UserManager` (`db.user.*`) and drives
@@ -135,7 +136,7 @@ export const useAuthStore = defineStore("auth", () => {
     const onLoggedOut = (cause?: unknown): void => {
       const wasLoggedIn = status.value === "logged-in";
       // eslint-disable-next-line no-console
-      console.warn("[auth] logout event cleared session:", {
+      logger.warn("[auth] logout event cleared session:", {
         cause,
         wasLoggedIn,
         skipped: skippedLogin.value
@@ -186,7 +187,7 @@ export const useAuthStore = defineStore("auth", () => {
       }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[auth] init failed:", e);
+      logger.error("[auth] init failed:", e);
       status.value = "logged-out";
     }
     // Reconcile the local-mode skip flag with the durable main-side store
@@ -248,7 +249,7 @@ export const useAuthStore = defineStore("auth", () => {
       return false;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[auth] failed to send MFA code:", e);
+      logger.error("[auth] failed to send MFA code:", e);
       throw e;
     }
   }
@@ -409,7 +410,7 @@ export const useAuthStore = defineStore("auth", () => {
         await switchContext(LOCAL_CONTEXT);
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.error("[auth] logout switch to local failed:", e);
+        logger.error("[auth] logout switch to local failed:", e);
       }
     }
     writeCurrentContext(LOCAL_CONTEXT);

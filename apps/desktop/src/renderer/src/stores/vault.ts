@@ -9,6 +9,7 @@ import {
   VAULT_ERROR_MESSAGES,
   type VaultErrorCode
 } from "@/utils/vault";
+import { logger } from "@/utils/logger";
 
 /**
  * Vault store (Phase 6.3 — headless data backend) — the reactive surface for
@@ -79,7 +80,7 @@ export const useVaultStore = defineStore("vault", () => {
       unlocked.value = db.vault.unlocked;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[vault] refresh failed:", e);
+      logger.error("[vault] refresh failed:", e);
     }
   }
 
@@ -96,7 +97,7 @@ export const useVaultStore = defineStore("vault", () => {
     } catch (e) {
       recordError(e);
       // eslint-disable-next-line no-console
-      console.error("[vault] create failed:", e);
+      logger.error("[vault] create failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -115,7 +116,7 @@ export const useVaultStore = defineStore("vault", () => {
     } catch (e) {
       recordError(e);
       // eslint-disable-next-line no-console
-      console.error("[vault] unlock failed:", e);
+      logger.error("[vault] unlock failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -134,7 +135,7 @@ export const useVaultStore = defineStore("vault", () => {
     } catch (e) {
       recordError(e);
       // eslint-disable-next-line no-console
-      console.error("[vault] lock failed:", e);
+      logger.error("[vault] lock failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -155,7 +156,7 @@ export const useVaultStore = defineStore("vault", () => {
     } catch (e) {
       recordError(e);
       // eslint-disable-next-line no-console
-      console.error("[vault] changePassword failed:", e);
+      logger.error("[vault] changePassword failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -175,7 +176,7 @@ export const useVaultStore = defineStore("vault", () => {
     } catch (e) {
       recordError(e);
       // eslint-disable-next-line no-console
-      console.error("[vault] lockNote failed:", e);
+      logger.error("[vault] lockNote failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -198,7 +199,7 @@ export const useVaultStore = defineStore("vault", () => {
     } catch (e) {
       recordError(e);
       // eslint-disable-next-line no-console
-      console.error("[vault] unlockNotePermanently failed:", e);
+      logger.error("[vault] unlockNotePermanently failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -220,7 +221,7 @@ export const useVaultStore = defineStore("vault", () => {
     } catch (e) {
       recordError(e);
       // eslint-disable-next-line no-console
-      console.error("[vault] openNote failed:", e);
+      logger.error("[vault] openNote failed:", e);
       return undefined;
     } finally {
       busy.value = false;
@@ -238,7 +239,7 @@ export const useVaultStore = defineStore("vault", () => {
     } catch (e) {
       recordError(e);
       // eslint-disable-next-line no-console
-      console.error("[vault] saveNote failed:", e);
+      logger.error("[vault] saveNote failed:", e);
       return undefined;
     } finally {
       busy.value = false;
@@ -256,7 +257,7 @@ export const useVaultStore = defineStore("vault", () => {
     } catch (e) {
       recordError(e);
       // eslint-disable-next-line no-console
-      console.error("[vault] clear failed:", e);
+      logger.error("[vault] clear failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -278,7 +279,7 @@ export const useVaultStore = defineStore("vault", () => {
     } catch (e) {
       recordError(e);
       // eslint-disable-next-line no-console
-      console.error("[vault] deleteVault failed:", e);
+      logger.error("[vault] deleteVault failed:", e);
       return false;
     } finally {
       busy.value = false;

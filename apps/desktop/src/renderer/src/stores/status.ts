@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { EV, EVENTS } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
 import type { EditorStats, SyncState } from "@/utils/status";
+import { logger } from "@/utils/logger";
 
 /**
  * Status store (Phase 3.4) — the reactive backing for the distributed status
@@ -73,7 +74,7 @@ export const useStatusStore = defineStore("status", () => {
     EV.subscribe(EVENTS.syncCompleted, () => {
       // TEMP-DIAG sync-pull: did core emit syncCompleted at all?
       // eslint-disable-next-line no-console
-      console.log("[sync] syncCompleted event fired");
+      logger.log("[sync] syncCompleted event fired");
       void refreshSync().then(() => {
         if (syncState.value === "syncing") syncState.value = "synced";
         // Bump after refresh so watchers (App.vue) reload notes/collections
@@ -82,7 +83,7 @@ export const useStatusStore = defineStore("status", () => {
         // + whether the local DB still has unsynced local changes (a dirty
         // local note can block pulling the server's newer version).
         // eslint-disable-next-line no-console
-        console.log("[sync] syncCompleted -> lastSynced:", lastSynced.value, "hasUnsyncedChanges:", hasUnsyncedChanges.value);
+        logger.log("[sync] syncCompleted -> lastSynced:", lastSynced.value, "hasUnsyncedChanges:", hasUnsyncedChanges.value);
         syncCompletedSignal.value += 1;
       });
     });
@@ -109,7 +110,7 @@ export const useStatusStore = defineStore("status", () => {
       }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[status] refreshSync failed:", e);
+      logger.error("[status] refreshSync failed:", e);
     }
   }
 

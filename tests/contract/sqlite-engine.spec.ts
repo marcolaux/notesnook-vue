@@ -72,4 +72,40 @@ describe("better-sqlite3-multiple-ciphers (native module)", () => {
     ).toThrowError(/no such tokenizer: html/i);
     db.close();
   });
+
+  it("db.transaction batches multiple statements atomically (Phase B primitive)", () => {
+    // `SQLite.runBatch` (apps/desktop/src/main/sqlite.ts) wraps its statements
+    // in `better-sqlite3`'s `db.transaction(fn)`, which this case exercises
+    // directly (the `SQLite` class itself imports Electron's `app` and can't
+    // run in Node). Pins the transaction primitive runBatch relies on: all
+    // statements commit together, and a throwing statement rolls back the lot.
+    const db = new Database(":memory:").unsafeMode(true);
+    db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)");
+    const insert = db.prepare("INSERT INTO t (v) VALUES (?)");
+
+    // Commit path: 3 inserts in one transaction → 3 rows.
+    const commitBatch = db.transaction(() => {
+      insert.run("a");
+      insert.run("b");
+      insert.run("c");
+      return 3;
+    });
+    expect(commitBatch()).toBe(3);
+    expect(
+      (db.prepare("SELECT COUNT(*) AS n FROM t").get() as { n: number }).n
+    ).toBe(3);
+
+    // Rollback path: a throwing statement undoes the earlier ones in the batch.
+    const rollbackBatch = db.transaction(() => {
+      insert.run("d");
+      insert.run("e");
+      throw new Error("boom");
+    });
+    expect(() => rollbackBatch()).toThrow("boom");
+    expect(
+      (db.prepare("SELECT COUNT(*) AS n FROM t").get() as { n: number }).n
+    ).toBe(3); // still 3 — d/e rolled back
+
+    db.close();
+  });
 });

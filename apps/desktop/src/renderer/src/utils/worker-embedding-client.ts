@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 // Thin promise-based RPC client for the inference Web Worker.
 //
 // Singleton. The Worker is constructed LAZILY on the first `embed()` call —
@@ -38,7 +39,7 @@ function getWorker(): Worker | null {
       }
     };
     worker.onerror = (err): void => {
-      console.error("[vector-search] embedding worker error:", err);
+      logger.error("[vector-search] embedding worker error:", err);
       // Reject all in-flight requests so callers get null (via the try/catch
       // wrapping `embed`); mark the worker as failed so we stop retrying.
       for (const resolve of pending.values()) resolve(null);
@@ -47,7 +48,7 @@ function getWorker(): Worker | null {
     };
     return worker;
   } catch (err) {
-    console.error("[vector-search] Failed to construct embedding worker:", err);
+    logger.error("[vector-search] Failed to construct embedding worker:", err);
     workerFailed = true;
     return null;
   }

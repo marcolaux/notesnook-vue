@@ -8,6 +8,7 @@ import {
   sortRemindersByCreatedDesc,
   type ReminderInput
 } from "@/utils/reminders";
+import { logger } from "@/utils/logger";
 
 /**
  * Reminders store (headless) — the reminders list + create / edit / snooze /
@@ -92,14 +93,14 @@ export const useRemindersStore = defineStore("reminders", () => {
           }
         } catch (e) {
           // eslint-disable-next-line no-console
-          console.error("[reminders] noteLinks load failed:", e);
+          logger.error("[reminders] noteLinks load failed:", e);
         }
       }
       noteLinks.value = links;
       items.value = sorted;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[reminders] refresh failed:", e);
+      logger.error("[reminders] refresh failed:", e);
     } finally {
       loading.value = false;
     }
@@ -128,7 +129,7 @@ export const useRemindersStore = defineStore("reminders", () => {
           );
         } catch (e) {
           // eslint-disable-next-line no-console
-          console.error("[reminders] link reminder→note failed:", e);
+          logger.error("[reminders] link reminder→note failed:", e);
         }
       }
       lastError.value = null;
@@ -137,7 +138,7 @@ export const useRemindersStore = defineStore("reminders", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[reminders] add failed:", e);
+      logger.error("[reminders] add failed:", e);
       return null;
     } finally {
       busy.value = false;
@@ -156,7 +157,7 @@ export const useRemindersStore = defineStore("reminders", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[reminders] remove failed:", e);
+      logger.error("[reminders] remove failed:", e);
     } finally {
       busy.value = false;
     }
@@ -184,7 +185,7 @@ export const useRemindersStore = defineStore("reminders", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[reminders] toggleDisabled failed:", e);
+      logger.error("[reminders] toggleDisabled failed:", e);
     } finally {
       busy.value = false;
     }
@@ -202,7 +203,7 @@ export const useRemindersStore = defineStore("reminders", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[reminders] update failed:", e);
+      logger.error("[reminders] update failed:", e);
     } finally {
       busy.value = false;
     }

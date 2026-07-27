@@ -12,6 +12,7 @@ import {
   type BackupAttachmentProgress,
   type BackupExportResult
 } from "@/utils/backup";
+import { logger } from "@/utils/logger";
 
 /**
  * Backups store (Phase 6.7 — headless data backend) — the reactive surface
@@ -69,7 +70,7 @@ export const useBackupsStore = defineStore("backups", () => {
       lastBackup.value = await db.backup.lastBackupTime();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[backups] refresh failed:", e);
+      logger.error("[backups] refresh failed:", e);
     }
   }
 
@@ -107,7 +108,7 @@ export const useBackupsStore = defineStore("backups", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[backups] export failed:", e);
+      logger.error("[backups] export failed:", e);
       return undefined;
     } finally {
       busy.value = false;
@@ -142,7 +143,7 @@ export const useBackupsStore = defineStore("backups", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[backups] import failed:", e);
+      logger.error("[backups] import failed:", e);
       return false;
     } finally {
       busy.value = false;

@@ -29,6 +29,7 @@ import { getDatabase } from "@/platform/bootstrap";
 import { toListItem, type NoteListItem } from "@/stores/notes";
 import { useNotesStore } from "@/stores/notes";
 import type { Note } from "@notesnook-vue/contracts";
+import { logger } from "@/utils/logger";
 
 /** The reserved tag title that marks a note as a template. Case-sensitive
  *  (upstream `db.tags.find` uses `COLLATE BINARY`). */
@@ -82,7 +83,7 @@ export const useTemplatesStore = defineStore("templates", () => {
         return again.id;
       }
       // eslint-disable-next-line no-console
-      console.error("[templates] ensureTemplateTag failed:", e);
+      logger.error("[templates] ensureTemplateTag failed:", e);
       throw e;
     }
   }
@@ -108,7 +109,7 @@ export const useTemplatesStore = defineStore("templates", () => {
       }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[templates] load failed:", e);
+      logger.error("[templates] load failed:", e);
       templates.value = [];
     }
     // Lazily import to avoid a circular dep with the command modules.
@@ -132,7 +133,7 @@ export const useTemplatesStore = defineStore("templates", () => {
       return typeof item.data === "string" ? item.data : "";
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[templates] getTemplateHtml failed:", e);
+      logger.error("[templates] getTemplateHtml failed:", e);
       return null;
     }
   }
@@ -156,7 +157,7 @@ export const useTemplatesStore = defineStore("templates", () => {
       return id;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[templates] createTemplate failed:", e);
+      logger.error("[templates] createTemplate failed:", e);
       return null;
     }
   }
@@ -186,7 +187,7 @@ export const useTemplatesStore = defineStore("templates", () => {
       return making;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[templates] toggleTemplate failed:", e);
+      logger.error("[templates] toggleTemplate failed:", e);
       return isTemplate(noteId);
     }
   }

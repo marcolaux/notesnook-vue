@@ -30,6 +30,7 @@ import {
   type ToolbarDefinition
 } from "@notesnook-vue/editor-vue";
 import type { ToolbarConfig, ToolbarConfigPlatforms } from "@notesnook-vue/contracts";
+import { logger } from "@/utils/logger";
 
 /**
  * Mirrors upstream's `CURRENT_TOOLBAR_VERSION` in
@@ -105,7 +106,7 @@ export const useToolbarStore = defineStore("toolbar", () => {
       // `default` / `minimal` / unknown → keep DEFAULT_TOOLBAR (preset stays).
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[toolbar] load failed:", e);
+      logger.error("[toolbar] load failed:", e);
     }
   }
 
@@ -144,7 +145,7 @@ export const useToolbarStore = defineStore("toolbar", () => {
       await getDatabase().settings.setToolbarConfig(PLATFORM, cfg);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[toolbar] save failed:", e);
+      logger.error("[toolbar] save failed:", e);
     }
   }
 

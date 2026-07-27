@@ -4,6 +4,7 @@ import { getDatabase } from "@/platform/bootstrap";
 import { formatPublishUrl } from "@/utils/publish";
 import { useNotesStore } from "@/stores/notes";
 import type { Note, Monograph } from "@notesnook-vue/contracts";
+import { logger } from "@/utils/logger";
 
 /**
  * Monographs store — the published-notes list + unpublish action, backed by
@@ -107,7 +108,7 @@ export const useMonographsStore = defineStore("monographs", () => {
       void loadAnalytics();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[monographs] load failed:", e);
+      logger.error("[monographs] load failed:", e);
     } finally {
       loading.value = false;
     }
@@ -125,7 +126,7 @@ export const useMonographsStore = defineStore("monographs", () => {
       void useNotesStore().load();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[monographs] unpublish failed:", e);
+      logger.error("[monographs] unpublish failed:", e);
     }
   }
 

@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 import { desktop } from "@/platform/desktop-bridge";
 import { useSettingsStore } from "@/stores/settings";
 import type { UpstreamReleaseStatus } from "@contracts/router";
+import { logger } from "@/utils/logger";
 
 /**
  * Upstream-release notifier store — the reactive surface for the main-process
@@ -122,7 +123,7 @@ export const useUpstreamNotifierStore = defineStore("upstream-notifier", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[upstream-notifier] check failed:", e);
+      logger.error("[upstream-notifier] check failed:", e);
       return false;
     } finally {
       busy.value = false;

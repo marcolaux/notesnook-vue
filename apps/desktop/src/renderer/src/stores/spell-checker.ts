@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { desktop } from "@/platform/desktop-bridge";
 import type { Language } from "@contracts/spell-checker";
+import { logger } from "@/utils/logger";
 
 /**
  * Spell-checker store (Phase 6.6 — headless control slice) — the reactive
@@ -65,7 +66,7 @@ export const useSpellCheckerStore = defineStore("spellChecker", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[spell-checker] refresh failed:", e);
+      logger.error("[spell-checker] refresh failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -84,7 +85,7 @@ export const useSpellCheckerStore = defineStore("spellChecker", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[spell-checker] toggle failed:", e);
+      logger.error("[spell-checker] toggle failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -108,7 +109,7 @@ export const useSpellCheckerStore = defineStore("spellChecker", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[spell-checker] setLanguages failed:", e);
+      logger.error("[spell-checker] setLanguages failed:", e);
       return false;
     } finally {
       busy.value = false;
@@ -128,7 +129,7 @@ export const useSpellCheckerStore = defineStore("spellChecker", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[spell-checker] deleteWord failed:", e);
+      logger.error("[spell-checker] deleteWord failed:", e);
       return false;
     } finally {
       busy.value = false;

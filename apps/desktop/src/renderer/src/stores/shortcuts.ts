@@ -12,6 +12,7 @@ import {
   type ResolvedShortcut,
   type ShortcutItemType
 } from "@/utils/shortcuts";
+import { logger } from "@/utils/logger";
 
 /**
  * Shortcuts store (headless) — the sidebar's "Shortcuts" section: pin/unpin
@@ -67,7 +68,7 @@ export const useShortcutsStore = defineStore("shortcuts", () => {
       order.value = readShortcutOrder();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[shortcuts] refresh failed:", e);
+      logger.error("[shortcuts] refresh failed:", e);
     } finally {
       loading.value = false;
     }
@@ -90,7 +91,7 @@ export const useShortcutsStore = defineStore("shortcuts", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[shortcuts] add failed:", e);
+      logger.error("[shortcuts] add failed:", e);
       return null;
     } finally {
       busy.value = false;
@@ -110,7 +111,7 @@ export const useShortcutsStore = defineStore("shortcuts", () => {
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
-      console.error("[shortcuts] remove failed:", e);
+      logger.error("[shortcuts] remove failed:", e);
     } finally {
       busy.value = false;
     }

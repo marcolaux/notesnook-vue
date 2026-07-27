@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { getDatabase } from "@/platform/bootstrap";
 import type { Note } from "@notesnook-vue/contracts";
+import { logger } from "@/utils/logger";
 
 /**
  * Archive store — the archived-notes list + unarchive / move-to-trash actions,
@@ -57,7 +58,7 @@ export const useArchiveStore = defineStore("archive", () => {
       items.value = all.map(toArchiveListItem);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[archive] load failed:", e);
+      logger.error("[archive] load failed:", e);
     } finally {
       loading.value = false;
     }
@@ -72,7 +73,7 @@ export const useArchiveStore = defineStore("archive", () => {
       await load();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[archive] unarchive failed:", e);
+      logger.error("[archive] unarchive failed:", e);
     }
   }
 
@@ -85,7 +86,7 @@ export const useArchiveStore = defineStore("archive", () => {
       await load();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[archive] moveToTrash failed:", e);
+      logger.error("[archive] moveToTrash failed:", e);
     }
   }
 

@@ -4,6 +4,7 @@ import { desktop } from "@/platform/desktop-bridge";
 import { readSemanticSearchEnabled } from "@/stores/settings";
 import { embed } from "@/utils/worker-embedding-client";
 import type { SQLiteParameter } from "@contracts/router";
+import { logger } from "./logger";
 
 export const isIndexing = ref(false);
 
@@ -17,6 +18,25 @@ async function runSql<R = any>(sql: string, parameters: SQLiteParameter[] = []):
     return (result.rows ?? []) as R[];
   } catch {
     return [];
+  }
+}
+
+/**
+ * Run multiple write statements in a single transactional IPC round-trip
+ * (`sqlite.runBatch` → main `db.transaction(BEGIN…COMMIT)`). Replaces the
+ * per-chunk `runSql` writes inside `indexNoteEmbeddings` so an N-chunk re-index
+ * costs one IPC hop + one WAL fsync instead of N (Phase B). Errors are logged
+ * and swallowed to match `runSql`'s resilient-by-default contract.
+ */
+async function runSqlBatch(
+  statements: { sql: string; parameters: SQLiteParameter[] }[]
+): Promise<void> {
+  if (statements.length === 0) return;
+  logger.log("[vector-search] runSqlBatch flushing", { statements: statements.length });
+  try {
+    await desktop.sqlite.runBatch.mutate({ id: "db", statements });
+  } catch (err) {
+    logger.error("[vector-search] runSqlBatch failed:", err);
   }
 }
 
@@ -73,7 +93,7 @@ export async function searchVectorEmbeddings(
       distance: Number(row.distance)
     }));
   } catch (err) {
-    console.error("[vector-search] searchVectorEmbeddings query failed:", err);
+    logger.error("[vector-search] searchVectorEmbeddings query failed:", err);
     return [];
   }
 }
@@ -136,20 +156,45 @@ export async function indexNoteEmbeddings(
       return; // Already up-to-date
     }
 
-    // Delete obsolete chunks if note length shortened
+    logger.log("[vector-search] indexNoteEmbeddings", {
+      noteId,
+      chunks: chunks.length,
+      existing: existingMap.size
+    });
+
+    // Collect all write statements for a single transactional flush (Phase B):
+    // one IPC round-trip + one WAL fsync instead of N per-chunk writes.
+    const statements: { sql: string; parameters: SQLiteParameter[] }[] = [];
+
+    // Delete obsolete chunks if note length shortened. Runs first in the batch;
+    // it targets chunk_index >= chunks.length while the loop below targets
+    // chunk_index < chunks.length, so the two never overlap.
     if (existingMap.size > chunks.length) {
-      await runSql("DELETE FROM vec_notes WHERE note_id = ? AND chunk_index >= ?", [
-        noteId,
-        BigInt(chunks.length)
-      ]);
+      statements.push({
+        sql: "DELETE FROM vec_notes WHERE note_id = ? AND chunk_index >= ?",
+        parameters: [noteId, BigInt(chunks.length)]
+      });
     }
 
-    if (chunks.length === 0) return;
+    if (chunks.length === 0) {
+      // Nothing to add — just flush the trailing-chunk DELETE (if any).
+      await runSqlBatch(statements);
+      return;
+    }
 
-    // 2. Incremental chunk processing with interruptibility & frame yielding
+    // 2. Incremental chunk processing with interruptibility & frame yielding.
+    // Embeddings are still computed serially (inference runs in the Web Worker
+    // from Phase A); the writes are deferred and flushed as one batch.
     for (const chunk of chunks) {
-      // Check if user is actively typing/interacting. If so, suspend indexing
+      // Check if user is actively typing/interacting. If so, suspend indexing.
+      // Flush whatever was collected so far — partial progress is safe: the
+      // next run's `existingMap` will match the new hashes and skip them.
       if (isUserRecentlyActive(5000)) {
+        logger.log("[vector-search] indexing interrupted (user active), re-queueing", {
+          noteId,
+          collected: statements.length
+        });
+        await runSqlBatch(statements);
         indexQueue.set(noteId, { rawContent, title });
         return;
       }
@@ -163,23 +208,26 @@ export async function indexNoteEmbeddings(
       if (!vec) continue;
 
       if (existingHash !== undefined) {
-        await runSql(
-          `UPDATE vec_notes SET chunk_hash = ?, embedding = ? WHERE note_id = ? AND chunk_index = ?`,
-          [chunk.hash, vec, noteId, BigInt(chunk.index)]
-        );
+        statements.push({
+          sql: `UPDATE vec_notes SET chunk_hash = ?, embedding = ? WHERE note_id = ? AND chunk_index = ?`,
+          parameters: [chunk.hash, vec, noteId, BigInt(chunk.index)]
+        });
       } else {
-        await runSql(
-          `INSERT INTO vec_notes(note_id, chunk_index, chunk_hash, embedding)
-           VALUES (?, ?, ?, ?)`,
-          [noteId, BigInt(chunk.index), chunk.hash, vec]
-        );
+        statements.push({
+          sql: `INSERT INTO vec_notes(note_id, chunk_index, chunk_hash, embedding)
+                VALUES (?, ?, ?, ?)`,
+          parameters: [noteId, BigInt(chunk.index), chunk.hash, vec]
+        });
       }
 
       // Yield frame briefly to ensure main UI thread remains 100% smooth
       await new Promise((res) => setTimeout(res, 30));
     }
+
+    // 3. Flush the collected writes as one transactional batch.
+    await runSqlBatch(statements);
   } catch (err) {
-    console.error(`[vector-search] indexNoteEmbeddings failed for note ${noteId}:`, err);
+    logger.error(`[vector-search] indexNoteEmbeddings failed for note ${noteId}:`, err);
   }
 }
 
@@ -226,6 +274,7 @@ export function queueIndexNoteEmbeddings(
 
       const pending = Array.from(indexQueue.entries());
       indexQueue.clear();
+      logger.log("[vector-search] idle drain — indexing", { notes: pending.length });
 
       for (const [id, item] of pending) {
         if (isUserRecentlyActive(5000)) {
@@ -278,7 +327,7 @@ export async function deleteNoteEmbeddings(noteId: string): Promise<void> {
   try {
     await runSql("DELETE FROM vec_notes WHERE note_id = ?", [noteId]);
   } catch (err) {
-    console.error(`[vector-search] deleteNoteEmbeddings failed for note ${noteId}:`, err);
+    logger.error(`[vector-search] deleteNoteEmbeddings failed for note ${noteId}:`, err);
   }
 }
 
@@ -289,7 +338,7 @@ export async function purgeVectorIndex(): Promise<void> {
   try {
     await runSql("DELETE FROM vec_notes;", []);
   } catch (err) {
-    console.error("[vector-search] purgeVectorIndex failed:", err);
+    logger.error("[vector-search] purgeVectorIndex failed:", err);
   }
 }
 
@@ -326,7 +375,7 @@ export async function indexUnindexedNotes(): Promise<void> {
       }
     }
   } catch (err) {
-    console.error("[vector-search] indexUnindexedNotes failed:", err);
+    logger.error("[vector-search] indexUnindexedNotes failed:", err);
   }
 }
 
@@ -414,7 +463,7 @@ export async function getAllNoteCentroidEmbeddings(): Promise<Map<string, NoteCe
 
     return centroids;
   } catch (err) {
-    console.error("[vector-search] getAllNoteCentroidEmbeddings failed:", err);
+    logger.error("[vector-search] getAllNoteCentroidEmbeddings failed:", err);
     return new Map();
   }
 }

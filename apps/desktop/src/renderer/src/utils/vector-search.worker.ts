@@ -17,6 +17,7 @@
 // redeclare `self`/`postMessage` and conflict with DOM).
 
 import { pipeline, env } from "@huggingface/transformers";
+import { logger } from "./logger";
 
 // Preserve prior behavior: fetch the model from the Hugging Face Hub on first
 // use and rely on the transformers.js browser Cache API for subsequent loads.
@@ -40,7 +41,7 @@ async function getExtractor(): Promise<any> {
         dtype: "fp32"
       });
     } catch (err) {
-      console.error("[vector-search.worker] Failed to initialize embedding pipeline:", err);
+      logger.error("[vector-search.worker] Failed to initialize embedding pipeline:", err);
       extractorInstance = null;
     }
   })();
@@ -85,7 +86,7 @@ ctx.onmessage = async (event: MessageEvent<EmbedRequest>): Promise<void> => {
     // worker side after this call, which is fine since we don't reuse it.
     ctx.postMessage({ id, embedding }, [embedding.buffer]);
   } catch (err) {
-    console.error("[vector-search.worker] computeEmbedding failed:", err);
+    logger.error("[vector-search.worker] computeEmbedding failed:", err);
     ctx.postMessage({ id, embedding: null }, []);
   }
 };

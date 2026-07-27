@@ -42,6 +42,7 @@
 import type { Editor } from "@tiptap/vue-3";
 import { TextSelection } from "@tiptap/pm/state";
 import { findMatches, scrollPosIntoView, type SearchOptions } from "@notesnook-vue/editor-vue";
+import { logger } from "./logger";
 
 function scrollToPos(editor: Editor, pos: number): boolean {
   return scrollPosIntoView(editor.view, pos);
@@ -64,7 +65,7 @@ export function scrollEditorToMatch(
   const matches = findMatches(editor.state.doc, query, options);
   const m = matches[matchIndex] ?? matches[matches.length - 1] ?? matches[0];
   // eslint-disable-next-line no-console
-  console.log(
+  logger.log(
     "[search-scroll] matches",
     matches.length,
     "query=",
@@ -96,7 +97,7 @@ export function scrollEditorToMatch(
     const scrolled = scrollToPos(editor, from);
     if (log) {
       // eslint-disable-next-line no-console
-      console.log("[search-scroll] dispatched scroll-to", from, to, "scrolled=", scrolled);
+      logger.log("[search-scroll] dispatched scroll-to", from, to, "scrolled=", scrolled);
     }
   };
 
