@@ -5,6 +5,40 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-07-28
+
+### 📥 Import from Standard Notes (lossless, via Lexical JSON)
+
+A new **Settings → Import** section migrates Standard Notes notes into a Notesnook account losslessly — reading the **Lexical editor-state JSON** each Super note serialises (`note.text` = `editor.getEditorState().toJSON()`), **not** the lossy `.md` export. The markdown export silently drops formatting the JSON keeps (multi-paragraph table cells collapse to a literal `\n`, underline is dropped entirely, row-header cells / `snfile.zoomLevel` / link metadata are lost); the JSON preserves all of it, and the Notesnook editor supports nearly all of it (tables with multi-block cells, task lists, headings, bold/italic/strike/**underline**/**highlight**, links, hard breaks, code blocks).
+
+- **Pure converter** (`packages/editor-vue/src/sn-importer/lexicalToTipTap.ts`): an async tree-walk `lexicalToTipTapHtml(editorState, resolvers, title)` that emits the TipTap HTML Notesnook persists (`db.notes.add({ content: { type: "tiptap", data: html } })`). Every editor extension round-trips via its `parseHTML` rules, so the emitted HTML re-parses to the same document the editor would produce. Schema-agnostic and unit-testable with stub resolvers (no db/editor deps). Lexical text `format` bitmask → marks in a fixed nesting order (`strong>em>u>s>sub>sup>code>mark`).
+- **Account picker**: Settings is a single shared window, so the user picks which account to import into. The importer builds a **throwaway account-scoped `Database`** via the existing `createDesktopPlatform(ctx)` + `initDatabase(...)` factory pair (the same one `bootstrap`/`switchContext` use) **without** assigning the singleton — no live-swap, no core changes, no UI reload. Account contexts are already authenticated (cached User + master key); local is bootstrapped via `ensureLocalUser`.
+- **Recursive scan + global media lookup**: the chosen folder is walked recursively (`importFs.listRecursive`) for every `.json` note in subfolders, and a media index is built over the **whole tree** so a `snfile`'s attachment is resolved anywhere under the root (first match wins), even in a different subfolder than the note that references it.
+- **Legacy-extensionless fallback**: some SN exports name attachment files by the FileItem's *content* uuid, not the `snfile.fileUuid` (item uuid), and the note JSON carries no manifest mapping them. The companion `.md` lists the on-disk files in the same document order as the JSON's `snfile` nodes, so `augmentMediaIndexFromMarkdown` maps any unresolved `snfile` positionally to the next `./<file>` reference (prefixed with the note's folder). The markdown is used **only** for the file-name mapping; all content still comes from the JSON.
+- **Attachments + hashtags**: media is ingested as encrypted Notesnook attachments (`db.attachments.save`) and routed by sniffed MIME to image / audio / video / file-chip nodes. SN hashtags (Lexical `hashtag`, no id) become real Notesnook tags (`db.tags.add` + `db.relations`), rendered as inline tag-mention chips.
+- **One new main-process capability**: `importFs` tRPC router (`list`/`listRecursive`/`readBytes`/`readUtf8`) in `src/main/import-fs.ts` — directory-scoped bulk read with a path-traversal guard. Existing `db.notes.add` / `db.attachments.save` / `db.tags` are reused.
+
+#### New: inline Audio + Video editor nodes
+Notesnook had no native audio/video node — only `<img>` and `<iframe>` embed. Two new atom block extensions (`packages/editor-vue/src/extensions/{audio,video}/`) mirror `ImageNode` (same `data-hash` attribute surface) and render styled `<audio controls>` / `<video controls>` players that lazy-load the encrypted blob via the existing `editor.storage.getAttachmentData({ hash })` hook (no new storage wiring). Registered in `Editor.vue` alongside `ImageNode`. The importer emits hash-only `<audio data-hash …>` / `<video data-hash …>` nodes for SN audio/video attachments (e.g. the MP4s in the sample export), which the players resolve on view.
+
+#### Nested checklists flatten, not nest
+Standard Notes checklists are header-less (just checkboxes); Notesnook's `taskList` renders a full header (title / progress / clear-completed) at **every** nesting level. A check list nested in a check item would therefore stack two headers — "a checklist within a checklist" with an empty wrapper item. The converter now flattens nested check lists into their parent `taskList` using `data-indent` (Notesnook's own task-item indentation mechanism): nested check items become indented sibling `taskItem`s under a single header, checkboxes preserved, and an empty check item that merely wraps a nested check list is dropped.
+
+### 🎨 Block Colorize (port of sn-super-colors)
+A faithful port of the Standard Notes `sn-super-colors` theme, adapted to TipTap/ProseMirror. Colorizes block and inline elements by type (headings, bold, italic, links, list items by nesting depth, code syntax tokens) using the host theme's `--*-static` categorical palette (theme-invariant — no re-tinting). The visual rules live in `style.css`, gated by a `.block-colorize` class on `.ProseMirror`; the `BlockColorize` ProseMirror plugin stamps a `data-list-level` attribute on each `<li>` (CSS can't count nesting depth). A global default + per-note override (localStorage) drive the effective state; a toolbar toggle (palette icon) in the editor toolbar flips it for the current note, and Settings → Notes has the global default. A host bridge (`editor/block-colorize-bridge.ts`) keeps `editor.storage.blockColorize` in sync — `isActive` reads storage, so the toggle re-evaluates via a no-op meta-transaction (the toolbar bumps its `version` on every editor transaction).
+
+### 📒 Per-Template Notebook Policy + Notebook Picker
+A per-template "notebook on creation" policy (None / Ask / Fixed) stored as a JSON map in one `db.settings` row under `custom:templateNotebook` (upstream Notesnook has no per-template-metadata concept; a notes-table column would be stripped by the schema sanitizer, so a settings row is used). Settings → Notes shows a per-template row to choose the mode (and the fixed notebook). When a template's policy is "Ask", `notes.create` opens a headless **notebook picker** (`NotebookPickerDialog.vue` + `useNotebookPickerStore`) — a single-select overlay (Cancel = abort, "None" = create with no notebook, a notebook = file into it). The policy fires for the default-template fallback too.
+
+### 🐛 Bug Fixes
+- **Vector search targeted the wrong database after an account switch.** The `vec0` `vec_notes` virtual table is created in the *active account's* SQLite handle on open, but vector-search was still keyed to the previous context's handle after `switchContext`/login live-swapped the `Database`. Fixed by resolving the active context (`getCurrentContext()` + `dbFileName(ctx)`) so vector search targets the `notesnook-<contextId>` handle that actually holds `vec_notes`.
+
+#### Verification
+- `npm run typecheck` (node + web + contracts) — clean.
+- `npm run test:contract` — **1645/1645 tests pass** across 111 files (54 importer tests: 36 converter unit + 18 fixture/recursive/markdown-fallback).
+- `npm run build` — clean (7.0s).
+- On-site gate pending: run the importer against a real export folder (images/video inline, multi-paragraph table cells, nested checklists flattened to one header) and confirm block-colorize + per-template notebook policy in Settings.
+
 ## [0.11.1] - 2026-07-27
 
 ### 🐛 Fix: `no such module: vec0` in the packaged build
