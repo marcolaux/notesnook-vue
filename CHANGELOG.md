@@ -5,6 +5,39 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-07-28
+
+### 👤 Per-account Settings + Settings Window Restructure
+The Settings window is now organised as a **Global** group (device-wide sections — Sync, Backup, Import, Attachments, Updates) plus **one group per account** (Local + every logged-in account), each exposing the five per-account sections — Appearance, Language, Notes, Search, Vault. Clicking a per-account section live-swaps the window's context in place (no reload) so each account keeps its own values; the titlebar account dropdown is removed (the sidebar lists every account).
+
+Previously device-global client preferences are now **per-account**: appearance (theme mode, transparency, the dark/light theme slots), language (locale), Notes (default note/task templates + block-colorize default + per-note overrides), and Search (semantic-search enable/prompted toggles). Vault and the `db.settings`-backed Notes fields (formats, default notebook/tag, `vaultLockAfter`) were already per-account.
+
+- **New client-only + per-account storage tier** (`platform/per-context-prefs.ts`): namespaces localStorage keys as `notesnook.<base>.<ctx>` where `ctx` is `"local"` or the 16-hex email hash. **Lazy legacy migration** — reads fall back to the un-suffixed key and copy it into the ctx key on first contact, so an upgrading user's existing preference carries forward. Pure + headless-testable (callers pass `ctx` explicitly).
+- **Context-gated cross-window sync** (`App.vue` storage listener): a theme/locale/template change for account A no longer flips account B's window. `matchCtxKey` parses the event key and validates the suffix is a real context id (`isCtxId`) so a base that is a string-prefix of another base (`notesnook.theme` vs `notesnook.theme.dark`) never swallows the longer key. A legacy un-suffixed write (ctx null) is applied to the current context as a transitional safety net.
+- **Context-switch reload**: the main window's `contextChangeSignal` watch and the Settings window's `switchContext` both re-run `loadClientPrefs` / `reloadLocale` / `reloadBlockColorize` for the now-active account; `loadClientPrefs` bumps the theme/transparency signals only on change so every window's existing watches re-apply.
+- **Deep-link pinning**: `openSettings({ contextId })` opens (or reloads) the Settings window pinned to a caller's account via `?ctx=<id>`; the app menu, sidebar, command palette, and `Cmd/Ctrl+,` all pass the focused window's context. Same section + same ctx → just focus (no reload).
+
+**Decisions (by design):**
+- Per-account prefs are **local-only, not synced** across devices — they live in namespaced localStorage, never in `db.settings`, so no upstream sync-schema change. They travel with the account on *this device*, not across devices.
+- Theme + locale are **renderer-only per-account**. Electron keeps `nativeTheme` and the app-menu/tray locale process-global, so two simultaneously-open account windows cannot show different OS chrome; in-app CSS theme + vue-i18n labels are fully per-account, and OS chrome follows the focused/main window best-effort (`setLocale` notifies main; an in-window account switch's `reloadLocale` deliberately does not).
+
+### 💾 Per-account Auto-Backup Scheduler
+A per-account automatic backup that runs in the main window. On a tick it enumerates **every** context (Local + all logged-in accounts) and writes each account's backup into its own subdirectory of the configured `backupDirectory`, honouring both cadences (partial = notes/content; full = with attachments), the `encryptBackups` toggle, and rotating to keep the last `backupRetentionCount` per account per mode.
+
+- **Main window only** (timers die with the window, matching the updater/notifier/reminders pattern); `init()` re-arms on the next boot. An `inFlight` guard prevents tick overlap; `initialized` guards reload re-entry.
+- **Per-context isolation**: a failure backing up one account never aborts the tick or skips the next — each context is wrapped in try/catch.
+- **Throwaway account DBs**: non-active contexts use a throwaway `Database` (`openAccountDb`, the same factory pair the importer uses) — no `bindEventBridge`, no live-swap; the active context reuses the singleton (its exclusive SQLite lock would contend if re-opened). Core has no `Database.close`, so the throwaway ref is simply dropped (GC).
+- **Dual-cadence stamps**: core's `db.backup.lastBackupTime` is a single per-context KV that can't distinguish last-partial from last-full, so the scheduler keeps its own per-context per-mode last-run timestamps in localStorage for gating.
+- **Full mode = directory tree** `<sanitized>/full/<stamp>-full/` with the `.nnbackup` marker, `attachments/.attachments_key`, the data chunks, and each cached attachment's raw **encrypted** bytes at `attachments/<hash>` (read via a new `readAttachmentStream` raw-read on the desktop file storage — NOT decrypted). Dormant accounts (expired login) back up notes + only their locally-cached attachments; uncached ones are skipped silently.
+- **Partial = single `.nnbackup`** mirroring the manual "Back up now" flow; a multi-chunk partial (>10MB, the `.nnbackupz` case) writes the first chunk + warns rather than silently truncating.
+- **New main-process capability**: `backupFs` tRPC router (`src/main/backup-fs.ts`) — directory-scoped writes (mkdir, write text/bytes, list, delete file/dir) with a stateless path-containment guard (`safeChild`, exported for a unit test) so a crafted `path` cannot escape `root`.
+- **Backup settings UI**: a retention-count selector (1–10) and explanatory notes ("runs for every account into its own subfolder"; "dormant accounts back up notes plus only their locally-cached attachments") in Settings → Backup.
+
+#### Verification
+- `npm run typecheck` (node + web) — clean.
+- `npm run test:contract` — **1686/1705 tests pass**; the 19 failures are a pre-existing `better-sqlite3-multiple-ciphers` native-module ABI mismatch (built for a different Node version), confirmed against baseline and unrelated to these changes. New: `per-context-prefs.spec.ts` (18), `auto-backup.spec.ts` (18); extended `settings`/`config`/`block-colorize`/`i18n` with per-context cases.
+- On-site gate pending: GUI dev verification of the Settings sidebar restructure (Global + per-account groups; account-A vs account-B theme/language isolation; ctx-gated cross-window sync; deep-link reload-on-ctx-diff; legacy migration in DevTools) and a real-backup-directory run of the auto-backup scheduler across two accounts.
+
 ## [0.12.0] - 2026-07-28
 
 ### 📥 Import from Standard Notes (lossless, via Lexical JSON)
