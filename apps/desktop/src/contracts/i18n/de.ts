@@ -39,6 +39,13 @@ export default {
     never: "Nie",
     noAdditionalText: "Kein zusätzlicher Text"
   },
+  notebookPicker: {
+    title: "Notizbuch wählen",
+    forTemplate: "Notizbuch für „{title}“ wählen",
+    searchPlaceholder: "Notizbücher durchsuchen…",
+    none: "Kein Notizbuch",
+    cancel: "Abbrechen"
+  },
   history: {
     title: "Notizverlauf",
     empty: "Noch keine gespeicherten Versionen",
@@ -139,6 +146,7 @@ export default {
       sync: "Sync",
       backup: "Backup & Export",
       attachments: "Anhänge",
+      import: "Import",
       updates: "Updates"
     },
     appearance: {
@@ -190,6 +198,14 @@ export default {
       noTemplates: "Noch keine Vorlagen — führe „Neue Vorlage“ in der Befehlspalette aus oder versehe eine Notiz mit dem Tag „template“.",
       defaultTemplateNotes: "Standardvorlage für Notizen",
       defaultTemplateTasks: "Standardvorlage für Aufgaben",
+      templateNotebook: "Notizbuch bei Erstellung",
+      templateNotebookHint: "Wähle, wohin Notizen aus dieser Vorlage abgelegt werden.",
+      templateNotebookNone: "Keine",
+      templateNotebookAsk: "Jedes Mal fragen",
+      templateNotebookFixed: "Immer verwenden",
+      templateNotebookMode: "Modus",
+      blockColorize: "Blöcke nach Typ einfärben",
+      blockColorizeHint: "Färbt Überschriften, Fett, Kursiv, Links, Listenebenen und Code-Token nach Typ. Pro Notiz über die Editor-Symbolleiste überschreibbar.",
       trash1Day: "1 Tag",
       trash7Days: "7 Tage",
       trash30Days: "30 Tage",
@@ -307,6 +323,23 @@ export default {
       nnbackupzUnsupported: "Die Wiederherstellung von .nnbackupz (Zip)-Backups wird noch nicht unterstützt.",
       invalidBackup: "Diese Datei ist kein gültiges Backup.",
       backupRestored: "Backup wiederhergestellt."
+    },
+    import: {
+      title: "Von Standard Notes importieren",
+      hint: "Notizen aus einem Standard-Notes-Exportordner importieren (Lexical-`.json` je Notiz + zugehörige Medien). Die Formatierung wird verlustfrei aus dem JSON übernommen — einschließlich Tabellenzellen, Unterstreichung und Hervorhebung, die der `.md`-Export verwirft.",
+      account: "In Konto importieren",
+      localAccount: "Lokal",
+      chooseFolder: "Ordner wählen",
+      folderHint: "Wähle den exportierten Standard-Notes-Ordner — den mit den .json-Dateien je Notiz und den dazugehörigen Bild-Medien. Unterordner werden rekursiv durchsucht; Anhänge werden überall im Baum gesucht.",
+      folderPlaceholder: "Kein Ordner gewählt",
+      run: "Importieren",
+      running: "Importiere…",
+      progress: "{done} / {total} Notizen · {attachments} Anhänge · {tags} Tags",
+      done: "{n} Notizen importiert ({attachments} Anhänge, {tags} Tags).",
+      none: "Im gewählten Ordner wurden keine importierbaren Notizen gefunden.",
+      noFolder: "Bitte zuerst einen Ordner wählen.",
+      failures: "Fehler",
+      noFailures: "Keine Fehler."
     },
     attachments: {
       title: "Anhänge",
@@ -643,6 +676,7 @@ export default {
     highlight: "Hervorheben",
     textColor: "Textfarbe",
     clearFormatting: "Formatierung entfernen",
+    blockColorize: "Blöcke einfärben",
     undo: "Rückgängig",
     redo: "Wiederholen",
     "headings-1": "Überschrift 1",

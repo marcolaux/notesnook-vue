@@ -100,7 +100,9 @@ import {
   Map,
   Rows3,
   // Pane detach grip (Phase 4.6) — tab-strip drag handle, chrome, first paint.
-  GripVertical
+  GripVertical,
+  // Block-colorize toolbar toggle (port of sn-super-colors) — chrome, first paint.
+  Palette
 } from "@lucide/vue";
 
 
@@ -158,6 +160,7 @@ export const ICONS: Record<string, Component> = {
   "remove-formatting": RemoveFormatting,
   "undo-2": Undo2,
   "redo-2": Redo2,
+  palette: Palette,
   heading: Heading,
   "case-sensitive": CaseSensitive,
   "align-left": AlignLeft,

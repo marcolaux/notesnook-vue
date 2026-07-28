@@ -28,6 +28,7 @@ import { registerSpellChecker } from "./spell-checker";
 import { registerAppMenu } from "./menu";
 import { registerWindow, setMainWindow } from "./window";
 import { registerDialog } from "./dialog";
+import { registerImportFs } from "./import-fs";
 import { registerShell } from "./shell";
 import { registerReminders } from "./reminders";
 import { registerAppState } from "./app-state";
@@ -43,6 +44,29 @@ const isDev = !app.isPackaged;
 // Register navigation security & deep-link listeners BEFORE `app.whenReady()`
 registerNavigationSecurity();
 registerDeepLinkListeners();
+
+// Single-instance lock: prevent a second instance (e.g. launching `npm run dev`
+// while the packaged app is open, or vice-versa) from opening the SAME
+// per-account SQLite database — that collides with SQLITE_BUSY and hangs the
+// renderer on the "initializing database" modal (the `.code` is lost crossing
+// IPC; see the DB_LOCKED_MARKER path in the renderer). The lock is keyed on the
+// userData dir, so it catches cross-binary collisions (dev vs packaged) too,
+// not just same-app relaunches. MUST run before `app.whenReady()` and before
+// any DB access. The second instance exits silently; the first focuses a window.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const win =
+      BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+}
 
 function createMainWindow(
   bounds?: WindowBounds | undefined,
@@ -217,6 +241,10 @@ void app.whenReady().then(() => {
   // File dialogs (save/open a user-chosen file) for Backup & Export. Parented
   // to the focused window at call time (app-modal when none is focused).
   registerDialog(() => BrowserWindow.getFocusedWindow() ?? undefined);
+  // Import-FS — directory-scoped bulk read for the Settings → Import section
+  // (Standard Notes import): list the user-picked export folder + read note
+  // files and sibling media. Reads are confined to the picked directory.
+  registerImportFs();
   // Shell — write decrypted attachment bytes to a temp file + open with the OS
   // handler, for the attachment preview's "Open externally" action.
   registerShell();

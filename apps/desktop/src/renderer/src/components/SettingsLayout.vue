@@ -30,6 +30,7 @@ import SearchSection from "./settings-sections/SearchSection.vue";
 import VaultSection from "./settings-sections/VaultSection.vue";
 import SyncSection from "./settings-sections/SyncSection.vue";
 import BackupSection from "./settings-sections/BackupSection.vue";
+import ImportSection from "./settings-sections/ImportSection.vue";
 import AttachmentsSection from "./settings-sections/AttachmentsSection.vue";
 import UpdatesSection from "./settings-sections/UpdatesSection.vue";
 
@@ -69,6 +70,7 @@ const groups: SectionGroup[] = [
     items: [
       { id: "sync", label: "settings.sections.sync", component: SyncSection },
       { id: "backup", label: "settings.sections.backup", component: BackupSection },
+      { id: "import", label: "settings.sections.import", component: ImportSection },
       { id: "attachments", label: "settings.sections.attachments", component: AttachmentsSection }
     ]
   },

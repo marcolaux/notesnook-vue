@@ -302,6 +302,23 @@ export const EDITOR_ACTIONS: EditorAction[] = [
       c.run();
     }
   },
+  // Block-colorize (port of sn-super-colors): a host-driven toggle, not a TipTap
+  // mark. `isActive` reads the storage flag the host bridge maintains; `run`
+  // calls the host `toggle` the bridge installs on `editor.storage`. The bridge
+  // dispatches a no-op meta-transaction on flip so this `isActive` re-evaluates
+  // (the toolbar bumps its `version` on every editor transaction).
+  {
+    id: "blockColorize",
+    title: "Colorize blocks",
+    keywords: ["colour", "color", "tint", "sn-super-colors"],
+    glyph: "palette",
+    isActive: (e) =>
+      !!(e.storage as { blockColorize?: { enabled?: boolean } }).blockColorize
+        ?.enabled,
+    run: (e) =>
+      (e.storage as { blockColorize?: { toggle?: () => void } }).blockColorize
+        ?.toggle?.()
+  },
   { id: "undo", title: "Undo", glyph: "undo-2", isDisabled: (e) => !e.can().undo(), run: (e) => chain(e).undo().run() },
   { id: "redo", title: "Redo", glyph: "redo-2", isDisabled: (e) => !e.can().redo(), run: (e) => chain(e).redo().run() },
 

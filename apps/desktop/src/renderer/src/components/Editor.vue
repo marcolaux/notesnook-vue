@@ -36,6 +36,8 @@ import {
   TaskListNode,
   EmbedNode,
   ImageNode,
+  AudioNode,
+  VideoNode,
   CodeBlock,
   Table,
   TableRow,
@@ -64,6 +66,10 @@ import {
   // picker; its own PluginKey so it doesn't collide with `SlashCommands`/`tagSuggest`).
   Link,
   NoteSuggest,
+  // Block-colorize (port of sn-super-colors): a ProseMirror decoration plugin
+  // stamping `data-list-level` on list items; the host bridge toggles the
+  // `.block-colorize` root class + `storage.blockColorize.enabled`.
+  BlockColorize,
   filterByKey
 } from "@notesnook-vue/editor-vue";
 import { recordUserActivity, flushVectorIndexQueue } from "@/utils/vector-search";
@@ -93,6 +99,7 @@ import {
 import { wireEditorColorPicker } from "@/editor/color-bridge";
 import { wireTagMention } from "@/editor/tag-mention-bridge";
 import { wireNoteLink } from "@/editor/note-link-bridge";
+import { wireBlockColorize } from "@/editor/block-colorize-bridge";
 import { goToCollection } from "@/utils/collection-nav";
 import { scrollTopFromFraction } from "@/utils/minimap";
 import { findHeading } from "@/utils/toc";
@@ -619,6 +626,8 @@ const editor = useEditor({
     TaskItemNode.configure({ nested: true }),
     EmbedNode,
     ImageNode,
+    AudioNode,
+    VideoNode,
     CodeBlock,
     // Inline marks (Phase 5.3/5.5) — pure toggles, no node-view. Underline
     // round-trips as <u>. Highlight is multicolor so the toolbar colour
@@ -654,7 +663,11 @@ const editor = useEditor({
     // before `NoteSuggest` inserts links; `NoteSuggest` is the `@`/`[[`-triggered
     // picker (own PluginKey — no collision with SlashCommands/tagSuggest).
     Link,
-    NoteSuggest
+    NoteSuggest,
+    // Block-colorize: list-depth `data-list-level` decorations, gated by
+    // `storage.blockColorize.enabled` (set by the host bridge). Harmless when
+    // off (no decorations emitted); the colour rules live in style.css.
+    BlockColorize
   ],
   // NOTE: `content` is intentionally empty. The note's content is loaded after
   // mount via `loadCurrentNote()` (see below). Initialising with the note's
@@ -1087,6 +1100,7 @@ function refreshStatus(): void {
 
 let disposeTagMention: (() => void) | null = null;
 let disposeNoteLink: (() => void) | null = null;
+let disposeBlockColorize: (() => void) | null = null;
 
 /** The editor surface currently registered for this pane (rebuilt on editor
  *  swap, unregistered on unmount — kept so `unregisterSurface` can pass the
@@ -1180,6 +1194,14 @@ watch(
       // a disposer captured for cleanup on the next editor swap / unmount.
       disposeNoteLink?.();
       disposeNoteLink = wireNoteLink(e, () => myNoteId.value, () => myGroupId.value, footer);
+      // Wire the block-colorize hook + reactive re-apply: the `blockColorize`
+      // toolbar toggle calls `storage.blockColorize.toggle()`, and the watch
+      // keeps the editor's `.block-colorize` root class + list-depth
+      // decorations in sync with this note's effective state (override or
+      // global default). `getNoteId` is a getter so it stays valid across
+      // draft→promote. Re-wired per editor instance; returns a disposer.
+      disposeBlockColorize?.();
+      disposeBlockColorize = wireBlockColorize(e, () => myNoteId.value);
       refreshStatus();
       // If the id watch fired before the editor existed, the load was
       // skipped — do it now that the editor is ready. Also force a load when a
@@ -1311,6 +1333,10 @@ onBeforeUnmount(() => {
   // so a future transaction listener / reconcile watcher plugs in cleanly).
   disposeNoteLink?.();
   disposeNoteLink = null;
+  // Tear down the block-colorize bridge (reactive watch) so a per-tab editor
+  // doesn't leak its store subscription on unmount.
+  disposeBlockColorize?.();
+  disposeBlockColorize = null;
   void flushSave();
   void notes.flushTitle(myNoteId.value ?? undefined);
   flushVectorIndexQueue();

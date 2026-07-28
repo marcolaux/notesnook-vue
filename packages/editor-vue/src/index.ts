@@ -26,6 +26,17 @@ export type { EmbedOptions, EmbedAttributes, EmbedAlignmentOptions, EmbedSizeOpt
 export { ImageNode } from "./extensions/image/image";
 export type { ImageOptions, ImageAttributes, ImageAlignmentOptions, ImageSize, ImageAttachment } from "./extensions/image/types";
 
+// Audio node-view — inline-playable `<audio controls>` player for audio
+// attachments (SN import). Same attribute surface as the image node; the blob
+// is lazy-loaded via `editor.storage.getAttachmentData({ hash })`.
+export { AudioNode } from "./extensions/audio/audio";
+export type { AudioOptions, AudioAttributes, AudioAlignmentOptions, AudioSize, AudioAttachment } from "./extensions/audio/types";
+
+// Video node-view — inline-playable `<video controls>` player for video
+// attachments (SN import, e.g. example1's MP4). Mirrors the image node.
+export { VideoNode } from "./extensions/video/video";
+export type { VideoOptions, VideoAttributes, VideoAlignmentOptions, VideoSize, VideoAttachment } from "./extensions/video/types";
+
 export { CodeBlock, backtickInputRegex, tildeInputRegex, setLastUsedLanguage } from "./extensions/code-block/code-block";
 export type { CodeBlockAttributes, CodeBlockOptions } from "./extensions/code-block/code-block";
 
@@ -57,6 +68,13 @@ export { OutlineList } from "./extensions/outline-list/outline-list";
 export type { OutlineListOptions } from "./extensions/outline-list/outline-list";
 export { OutlineListItem } from "./extensions/outline-list/outline-list-item";
 export type { OutlineListItemOptions } from "./extensions/outline-list/outline-list-item";
+
+// Block-colorize (port of the sn-super-colors Standard Notes theme): a pure
+// ProseMirror decoration plugin that stamps `data-list-level` on list items so
+// the host's gated CSS can colour them by nesting depth. The visual rules +
+// the on/off toggle live in the host (style.css + editor/block-colorize-bridge).
+export { BlockColorize, blockColorizePluginKey } from "./extensions/block-colorize/block-colorize";
+export type { BlockColorizeStorage } from "./extensions/block-colorize/block-colorize";
 
 // Slash-commands (2.5). A TipTap extension wiring `@tiptap/suggestion` to a Vue
 // render menu (`SlashMenu.vue`) driven by the vendored slash items below.
@@ -185,3 +203,18 @@ export type { TextAlignOptions } from "./extensions/text-align/text-align";
 export { getSandboxFeatures } from "./utils/sandbox";
 export { filterByKey, subsequenceMatch, cycleIndex } from "./utils/filter";
 export { toBlobURL, revokeBloburl } from "./utils/downloader";
+
+// Standard Notes (Lexical) → TipTap HTML importer (pure converter). See
+// `sn-importer/lexicalToTipTap.ts` for the node mapping table.
+export { lexicalToTipTapHtml } from "./sn-importer/lexicalToTipTap";
+export type {
+  Resolvers,
+  ConvertResult,
+  ConvertStats,
+  AttachmentInput,
+  AttachmentRef,
+  TagRef,
+  StandardNotesItem,
+  LexicalEditorState,
+  LexicalNode
+} from "./sn-importer/types";

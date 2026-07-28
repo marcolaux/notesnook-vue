@@ -1,6 +1,8 @@
 import { ref } from "vue";
 import { chunkText } from "@notesnook-vue/shared";
 import { desktop } from "@/platform/desktop-bridge";
+import { getCurrentContext } from "@/platform/bootstrap";
+import { dbFileName } from "@/platform/account-context";
 import { readSemanticSearchEnabled } from "@/stores/settings";
 import { embed } from "@/utils/worker-embedding-client";
 import type { SQLiteParameter } from "@contracts/router";
@@ -8,10 +10,25 @@ import { logger } from "./logger";
 
 export const isIndexing = ref(false);
 
+/**
+ * The active account's SQLite handle id. Main's `databases` map is keyed by the
+ * `filePath` passed to `sqlite.open` — the per-account DB filename
+ * `notesnook-<contextId>` (see `account-context.ts` `dbFileName`). The vec0
+ * `vec_notes` virtual table is created in THAT db on open (main `sqlite.ts`
+ * `loadExtensions`). So vector-search MUST target the active context's handle,
+ * not a hardcoded `"db"` (which is never registered → "Database not found for
+ * id: db" on every call → writes never persist → notes re-queue on every sync
+ * reload → a runaway indexing loop). Resolved at call time so an account switch
+ * (login swap) retargets to the new context's db automatically.
+ */
+function vectorDbId(): string {
+  return dbFileName(getCurrentContext());
+}
+
 async function runSql<R = any>(sql: string, parameters: SQLiteParameter[] = []): Promise<R[]> {
   try {
     const result = await desktop.sqlite.run.mutate({
-      id: "db",
+      id: vectorDbId(),
       sql,
       parameters
     });
@@ -34,7 +51,7 @@ async function runSqlBatch(
   if (statements.length === 0) return;
   logger.log("[vector-search] runSqlBatch flushing", { statements: statements.length });
   try {
-    await desktop.sqlite.runBatch.mutate({ id: "db", statements });
+    await desktop.sqlite.runBatch.mutate({ id: vectorDbId(), statements });
   } catch (err) {
     logger.error("[vector-search] runSqlBatch failed:", err);
   }

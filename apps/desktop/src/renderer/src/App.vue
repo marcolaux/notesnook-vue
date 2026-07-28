@@ -22,6 +22,7 @@ import { useShortcutsStore } from "@/stores/shortcuts";
 import { useRemindersStore } from "@/stores/reminders";
 import { useToolbarStore } from "@/stores/toolbar";
 import { useNotebookIconsStore } from "@/stores/notebook-icons";
+import { useTemplateNotebooksStore } from "@/stores/template-notebooks";
 import { useTemplatesStore } from "@/stores/templates";
 import { useMonographsStore } from "@/stores/monographs";
 import { bootstrap, getCurrentContext } from "@/platform/bootstrap";
@@ -45,6 +46,7 @@ import { useReminderNotifications } from "@/composables/use-reminder-notificatio
 import { useTabShortcuts } from "@/composables/use-tab-shortcuts";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import NotebookPickerDialog from "@/components/NotebookPickerDialog.vue";
 import ColorEditorDialog from "@/components/ColorEditorDialog.vue";
 import IconEditorDialog from "@/components/IconEditorDialog.vue";
 import ReminderEditorDialog from "@/components/ReminderEditorDialog.vue";
@@ -672,6 +674,11 @@ onMounted(async () => {
       // and `load()` swaps in custom icons if any are stored. Decorative only,
       // so safe to run alongside the list fan-out (no IPC dependency).
       void useNotebookIconsStore().load();
+      // Load the per-template "notebook on creation" policy map (db.settings,
+      // synced per account). Fire-and-forget — `notes.create` reads the in-memory
+      // map; an empty map (no stored policies) means every template uses the
+      // default (active-filter) behavior.
+      void useTemplateNotebooksStore().load();
       // Load the templates list (notes tagged "template") so the command
       // palette's per-template commands + the Notes settings pickers populate.
       // Fire-and-forget like the neighboring fan-out calls.
@@ -776,6 +783,7 @@ if (!isSettingsWindow) {
         void useShortcutsStore().refresh();
         void useRemindersStore().refresh();
         void useNotebookIconsStore().load();
+        void useTemplateNotebooksStore().load();
         void status.refreshSync();
         void vault.refresh();
         void backups.refresh();
@@ -841,6 +849,7 @@ if (!isSettingsWindow) {
       void useShortcutsStore().refresh();
       void useRemindersStore().refresh();
       void useNotebookIconsStore().load();
+      void useTemplateNotebooksStore().load();
       // Refresh the active note's publish state (core's sync `stop()` already
       // refreshed the monographs cache) + the Monographs list so cross-device
       // publish/unpublish changes appear without a manual reload.
@@ -887,6 +896,7 @@ if (!isSettingsWindow) {
       void useColorsStore().refresh();
       void useRemindersStore().refresh();
       void useNotebookIconsStore().load();
+      void useTemplateNotebooksStore().load();
       // Re-bind the main window to the new context (main-side geometry writes
       // must land under the new account) and restore its saved session.
       bindContextToSession();
@@ -953,6 +963,7 @@ if (!isSettingsWindow) {
       <!-- Generic confirm dialog (destructive context-menu actions). Teleports
            to <body>; driven by useDialogStore. -->
       <ConfirmDialog />
+      <NotebookPickerDialog />
 
       <!-- Color-editor dialog (note-row menu "New color…"). Teleports to
            <body>; driven by useColorDialogStore. -->

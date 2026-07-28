@@ -863,3 +863,102 @@ html[data-transparency="off"] .editor-tab-inactive {
   outline: 1.5px dashed color-mix(in oklab, var(--color-accent) 65%, transparent);
   outline-offset: -2px;
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+   Block-colorize (port of the sn-super-colors Standard Notes theme).
+   Text-COLOUR only — no backgrounds/borders/highlights. Gated by a
+   `.block-colorize` class the host bridge toggles on `.ProseMirror`
+   (`editor.view.dom`) from the per-note effective state. The colours come
+   from the theme system's `--*-static` categorical palette (emitted in every
+   theme, including 3rd-party, by `theme-vue/theme-to-css.ts`), exposed here as
+   `--bc-*` intermediates so a future re-tinting palette can override them
+   without touching the rules.
+
+   Mapping (faithful to the original):
+     headings → yellow, bold → red, italic → green, links → purple,
+     list items cycle by nesting depth → blue/red/yellow/green/orange,
+     code-block syntax tokens by token type.
+
+   List nesting depth is stamped as a `data-list-level` attribute on each
+   `<li>` by the `BlockColorize` ProseMirror plugin (CSS can't count depth);
+   the plugin emits NO decorations when colorize is off, so the attributes
+   vanish entirely. The root class is belt-and-suspenders. ──────────────── */
+.ProseMirror.block-colorize {
+  --bc-heading: var(--yellow-static);
+  --bc-bold: var(--red-static);
+  --bc-italic: var(--green-static);
+  --bc-link: var(--purple-static);
+  --bc-list-1: var(--blue-static);
+  --bc-list-2: var(--red-static);
+  --bc-list-3: var(--yellow-static);
+  --bc-list-4: var(--green-static);
+  --bc-list-5: var(--orange-static);
+}
+
+/* Headings */
+.ProseMirror.block-colorize h1,
+.ProseMirror.block-colorize h2,
+.ProseMirror.block-colorize h3,
+.ProseMirror.block-colorize h4,
+.ProseMirror.block-colorize h5,
+.ProseMirror.block-colorize h6 {
+  color: var(--bc-heading);
+}
+
+/* Inline marks */
+.ProseMirror.block-colorize strong {
+  color: var(--bc-bold);
+}
+.ProseMirror.block-colorize em {
+  color: var(--bc-italic);
+}
+/* Links: purple keeps them distinct from the list-depth cycle (the original
+   reserved cyan for links and skipped it in the list cycle). */
+.ProseMirror.block-colorize a {
+  color: var(--bc-link);
+}
+
+/* List items by nesting depth (data-list-level cycles 1..5). Each `<li>`
+   carries its own colour; a nested `<li>` overrides for its subtree, matching
+   the original's per-level semantics. ::marker inherits `color`, so bullets /
+   numbers / checkboxes tint too. */
+.ProseMirror.block-colorize li[data-list-level="1"] { color: var(--bc-list-1); }
+.ProseMirror.block-colorize li[data-list-level="2"] { color: var(--bc-list-2); }
+.ProseMirror.block-colorize li[data-list-level="3"] { color: var(--bc-list-3); }
+.ProseMirror.block-colorize li[data-list-level="4"] { color: var(--bc-list-4); }
+.ProseMirror.block-colorize li[data-list-level="5"] { color: var(--bc-list-5); }
+
+/* Code-block syntax tokens (refractor/Prism classes, applied as inline
+   decoration spans inside `<pre>`). Only the common token types are tinted;
+   everything else inherits the code block's default text colour. */
+.ProseMirror.block-colorize pre .keyword,
+.ProseMirror.block-colorize pre .builtin,
+.ProseMirror.block-colorize pre .class-name {
+  color: var(--purple-static);
+}
+.ProseMirror.block-colorize pre .string,
+.ProseMirror.block-colorize pre .char,
+.ProseMirror.block-colorize pre .regex,
+.ProseMirror.block-colorize pre .attr-value,
+.ProseMirror.block-colorize pre .inserted {
+  color: var(--green-static);
+}
+.ProseMirror.block-colorize pre .comment,
+.ProseMirror.block-colorize pre .doctype,
+.ProseMirror.block-colorize pre .cdata {
+  color: var(--gray-static);
+}
+.ProseMirror.block-colorize pre .function,
+.ProseMirror.block-colorize pre .selector,
+.ProseMirror.block-colorize pre .tag {
+  color: var(--blue-static);
+}
+.ProseMirror.block-colorize pre .number,
+.ProseMirror.block-colorize pre .operator,
+.ProseMirror.block-colorize pre .symbol,
+.ProseMirror.block-colorize pre .constant,
+.ProseMirror.block-colorize pre .property,
+.ProseMirror.block-colorize pre .attr-name,
+.ProseMirror.block-colorize pre .deleted {
+  color: var(--orange-static);
+}

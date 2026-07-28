@@ -59,6 +59,7 @@ patches/*.orig
 
 # Local working notes (personal scratch/planning doc — not part of the repo)
 NEXT_STEPS.md
+/import-data
 
 # Local planning docs (implementation plans — scratch, not part of the repo)
 plans/

@@ -41,7 +41,8 @@ import { useAuthStore } from "@/stores/auth";
 import { useDialogStore } from "@/stores/dialog";
 import { useContextMenuStore } from "@/stores/context-menu";
 import { type MenuItem } from "@/utils/context-menu";
-import { NoteLinkPicker, insertNoteLink, type NoteLinkLabels, type NoteSuggestionItem, type ContentBlockItem } from "@notesnook-vue/editor-vue";
+import { NoteLinkPicker, insertNoteLink, type NoteLinkLabels, type NoteSuggestionItem, type ContentBlockItem, EDITOR_ACTION_BY_ID } from "@notesnook-vue/editor-vue";
+import { editorToolTitle } from "@/composables/use-editor-labels";
 import ToolbarGroup from "./ToolbarGroup.vue";
 
 const props = defineProps<{
@@ -231,6 +232,26 @@ onBeforeUnmount(() => {
     e.off("update", refresh);
   }
 });
+
+// Block-colorize toggle (port of sn-super-colors) — a trailing first-level
+// button in the right cluster (next to ToC / history), NOT a formatting action
+// in the toolbar groups. Resolved via `EDITOR_ACTION_BY_ID` so the icon/title/
+// toggle/active state stay single-source with the editor-vue registry; the
+// host bridge (`wireBlockColorize`) installs `storage.blockColorize.toggle` +
+// keeps `storage.blockColorize.enabled` in sync. `isActive` reads storage, so
+// this computed tracks `editorVersion` (bumped on every transaction — the
+// bridge dispatches a no-op meta-transaction on flip) to re-evaluate.
+const blockColorizeAction = EDITOR_ACTION_BY_ID.get("blockColorize");
+const blockColorizeActive = computed(() => {
+  void editorVersion.value;
+  const e = props.editor;
+  return e && blockColorizeAction ? (blockColorizeAction.isActive?.(e) ?? false) : false;
+});
+function toggleBlockColorize(): void {
+  const e = props.editor;
+  if (!e || !blockColorizeAction) return;
+  blockColorizeAction.run(e);
+}
 </script>
 
 <template>
@@ -290,7 +311,17 @@ onBeforeUnmount(() => {
     />
     <button
       type="button"
-      class="ml-auto grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
+      class="ml-auto grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+      :class="{ 'bg-glass-active text-text': blockColorizeActive }"
+      :title="blockColorizeAction ? editorToolTitle(blockColorizeAction) : ''"
+      :disabled="!props.editor"
+      @click="toggleBlockColorize()"
+    >
+      <Icon :name="blockColorizeAction?.glyph ?? 'palette'" :size="16" />
+    </button>
+    <button
+      type="button"
+      class="grid h-6 w-6 shrink-0 place-items-center rounded text-sm text-text-muted hover:bg-glass-hover hover:text-text"
       :class="{ 'bg-glass-active text-text': !!layout.activeTab?.tocVisible }"
       :title="t('toc.title')"
       :disabled="!notes.activeNote"

@@ -35,6 +35,13 @@ export default {
     never: "Never",
     noAdditionalText: "No additional text"
   },
+  notebookPicker: {
+    title: "Choose a notebook",
+    forTemplate: "Choose a notebook for “{title}”",
+    searchPlaceholder: "Search notebooks…",
+    none: "No notebook",
+    cancel: "Cancel"
+  },
   history: {
     title: "Note history",
     empty: "No saved versions yet",
@@ -135,6 +142,7 @@ export default {
       sync: "Sync",
       backup: "Backup & Export",
       attachments: "Attachments",
+      import: "Import",
       updates: "Updates"
     },
     appearance: {
@@ -186,6 +194,14 @@ export default {
       noTemplates: "No templates yet — run “New template” from the command palette, or tag a note with “template”.",
       defaultTemplateNotes: "Default template for notes",
       defaultTemplateTasks: "Default template for tasks",
+      templateNotebook: "Notebook on creation",
+      templateNotebookHint: "Choose where notes created from this template are filed.",
+      templateNotebookNone: "None",
+      templateNotebookAsk: "Ask each time",
+      templateNotebookFixed: "Always use",
+      templateNotebookMode: "Mode",
+      blockColorize: "Colorize blocks by type",
+      blockColorizeHint: "Tint headings, bold, italic, links, list depth and code tokens by type. Override per note from the editor toolbar.",
       trash1Day: "1 day",
       trash7Days: "7 days",
       trash30Days: "30 days",
@@ -303,6 +319,23 @@ export default {
       nnbackupzUnsupported: "Restoring .nnbackupz (zip) backups is not supported yet.",
       invalidBackup: "That file is not a valid backup.",
       backupRestored: "Backup restored."
+    },
+    import: {
+      title: "Import from Standard Notes",
+      hint: "Import notes from a Standard Notes export folder (each note's Lexical `.json` + sibling media). Formatting is preserved losslessly from the JSON — including table cells, underline and highlight that the `.md` export drops.",
+      account: "Import into account",
+      localAccount: "Local",
+      chooseFolder: "Choose folder",
+      folderHint: "Select the exported Standard Notes folder — the one containing the per-note .json files and their image media. Subfolders are scanned recursively; attachments are matched anywhere in the tree.",
+      folderPlaceholder: "No folder selected",
+      run: "Import",
+      running: "Importing…",
+      progress: "{done} / {total} notes · {attachments} attachments · {tags} tags",
+      done: "Imported {n} notes ({attachments} attachments, {tags} tags).",
+      none: "No importable notes found in the selected folder.",
+      noFolder: "Choose a folder first.",
+      failures: "Failures",
+      noFailures: "No failures."
     },
     attachments: {
       title: "Attachments",
@@ -650,6 +683,7 @@ export default {
     highlight: "Highlight",
     textColor: "Text color",
     clearFormatting: "Clear formatting",
+    blockColorize: "Colorize blocks",
     undo: "Undo",
     redo: "Redo",
     "headings-1": "Heading 1",

@@ -147,6 +147,7 @@ export const useTemplatesStore = defineStore("templates", () => {
       const tagId = await ensureTemplateTag();
       const notes = useNotesStore();
       const id = await notes.create({ content: "" });
+      if (!id) return null;
       const db = getDatabase();
       await db.relations.add(
         { id: tagId, type: "tag" },

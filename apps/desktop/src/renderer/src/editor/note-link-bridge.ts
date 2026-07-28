@@ -116,6 +116,7 @@ export function wireNoteLink(
       const notes = useNotesStore();
       const cleanTitle = title.trim() || "Untitled";
       const id = await notes.create({ title: cleanTitle, openNote: false, content: "" });
+      if (!id) return null;
       return { id, title: cleanTitle };
     } catch (e) {
       // eslint-disable-next-line no-console

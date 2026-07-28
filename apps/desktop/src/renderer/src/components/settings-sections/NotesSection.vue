@@ -18,11 +18,20 @@ import { useSettingsStore } from "@/stores/settings";
 import { useCollectionsStore } from "@/stores/collections";
 import { useTemplatesStore } from "@/stores/templates";
 import { useConfigStore } from "@/stores/config";
+import {
+  useTemplateNotebooksStore,
+  type TemplateNotebookMode
+} from "@/stores/template-notebooks";
+import {
+  blockColorizeDefault,
+  setBlockColorizeDefault
+} from "@/stores/block-colorize";
 
 const settings = useSettingsStore();
 const collections = useCollectionsStore();
 const templates = useTemplatesStore();
 const config = useConfigStore();
+const templateNotebooks = useTemplateNotebooksStore();
 const { t } = useI18n();
 
 onMounted(() => {
@@ -31,6 +40,9 @@ onMounted(() => {
   void collections.load();
   // Load templates so the default-note/task-template pickers populate.
   void templates.load();
+  // Load the per-template notebook policy map so the per-template rows below
+  // reflect the synced settings.
+  void templateNotebooks.load();
 });
 
 // Option labels are resolved via `t()` inside computeds so they re-evaluate on
@@ -103,6 +115,48 @@ function pickDefaultNoteTemplate(e: Event): void {
 function pickDefaultTaskTemplate(e: Event): void {
   const v = (e.target as HTMLSelectElement).value;
   config.setDefaultTaskTemplate(v === "" ? null : v);
+}
+
+/** Per-template "notebook on creation" mode options. */
+const templateModeOptions = computed<{ value: TemplateNotebookMode; label: string }[]>(() => [
+  { value: "none", label: t("settings.notes.templateNotebookNone") },
+  { value: "ask", label: t("settings.notes.templateNotebookAsk") },
+  { value: "fixed", label: t("settings.notes.templateNotebookFixed") }
+]);
+
+/** Notebook options for the "fixed" mode — real notebooks only (no leading
+ *  "None", since picking None while in fixed mode is handled by switching the
+ *  mode back to "none" via the mode select). */
+const fixedNotebookOptions = computed(() =>
+  collections.sortedNotebooks.map((n) => ({ value: n.id, label: n.title }))
+);
+
+function pickTemplateMode(templateId: string, e: Event): void {
+  const mode = (e.target as HTMLSelectElement).value as TemplateNotebookMode;
+  if (mode === "none") {
+    templateNotebooks.clearPolicy(templateId);
+    return;
+  }
+  if (mode === "ask") {
+    templateNotebooks.setPolicy(templateId, { mode: "ask", notebookId: null });
+    return;
+  }
+  // fixed: keep an existing fixed notebookId, else default to the first
+  // notebook so the mode has an immediate effect (the user can change it).
+  const cur = templateNotebooks.getPolicy(templateId);
+  let nb = cur.mode === "fixed" ? cur.notebookId : null;
+  if (!nb && collections.sortedNotebooks.length > 0) {
+    nb = collections.sortedNotebooks[0]?.id ?? null;
+  }
+  templateNotebooks.setPolicy(templateId, { mode: "fixed", notebookId: nb });
+}
+
+function pickTemplateNotebook(templateId: string, e: Event): void {
+  const v = (e.target as HTMLSelectElement).value;
+  templateNotebooks.setPolicy(templateId, {
+    mode: "fixed",
+    notebookId: v === "" ? null : v
+  });
 }
 </script>
 
@@ -221,6 +275,62 @@ function pickDefaultTaskTemplate(e: Event): void {
             </select>
           </Flex>
         </div>
+      </Flex>
+
+      <Flex direction="column" :gap="2">
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.templateNotebook") }}</Text>
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.templateNotebookHint") }}</Text>
+        <Text v-if="templates.templates.length === 0" variant="body" size="sm" class="text-text-muted">
+          {{ t("settings.notes.noTemplates") }}
+        </Text>
+        <div
+          v-for="tp in templates.templates"
+          :key="tp.id"
+          class="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface px-3 py-2"
+        >
+          <Text variant="body" size="sm" class="min-w-[8rem] flex-1">{{ tp.title || t("common.untitled") }}</Text>
+          <select
+            :value="templateNotebooks.getPolicy(tp.id).mode"
+            class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            @change="pickTemplateMode(tp.id, $event)"
+          >
+            <option v-for="o in templateModeOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </select>
+          <select
+            v-if="templateNotebooks.getPolicy(tp.id).mode === 'fixed'"
+            :value="templateNotebooks.getPolicy(tp.id).notebookId ?? ''"
+            class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            @change="pickTemplateNotebook(tp.id, $event)"
+          >
+            <option v-for="o in fixedNotebookOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </select>
+        </div>
+      </Flex>
+
+      <Flex direction="column" :gap="1">
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.notes.blockColorize") }}</Text>
+        <div class="flex rounded-md border border-border p-0.5 text-sm">
+          <button
+            v-for="opt in [
+              { value: true, labelKey: 'common.on' },
+              { value: false, labelKey: 'common.off' }
+            ]"
+            :key="opt.labelKey"
+            type="button"
+            class="flex-1 rounded px-3 py-1 transition-colors"
+            :class="
+              blockColorizeDefault === opt.value
+                ? 'bg-accent text-accent-foreground'
+                : 'text-text-muted hover:bg-hover'
+            "
+            @click="setBlockColorizeDefault(opt.value)"
+          >
+            {{ t(opt.labelKey) }}
+          </button>
+        </div>
+        <Text variant="body" size="xs" class="text-text-muted"
+          >{{ t("settings.notes.blockColorizeHint") }}</Text
+        >
       </Flex>
     </Flex>
   </Surface>

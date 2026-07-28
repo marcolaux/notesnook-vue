@@ -347,6 +347,45 @@ function requireDialog(): DialogServer {
 }
 
 // ---------------------------------------------------------------------------
+// Import-FS server — directory-scoped bulk read for the Settings → Import
+// section (Standard Notes import). Implemented in `src/main/import-fs.ts` via
+// node `fs/promises`. Unlike the `dialog` server (single user-picked UTF-8
+// file) and the `fs` server (fixed-location attachment chunk store), this
+// enumerates a user-chosen export folder and reads entries as bytes or UTF-8.
+// Paths are enforced to stay inside the picked directory (traversal guard).
+// ---------------------------------------------------------------------------
+export interface ImportFsEntry {
+  name: string;
+  size: number;
+  isDir: boolean;
+}
+
+export interface ImportFsServer {
+  /** List entries directly under `dir` (non-recursive). Dotfiles are skipped. */
+  list(dir: string): Promise<ImportFsEntry[]>;
+  /** Recursively list every file under `dir`, with `name` as a path RELATIVE to
+   *  `dir` (using `/` separators). Dotfiles are skipped at every level. The
+   *  relative paths feed back into `readBytes`/`readUtf8`. Used by the importer
+   *  to find note `.json` files and sibling media anywhere in the export tree. */
+  listRecursive(dir: string): Promise<ImportFsEntry[]>;
+  /** Read `dir/name` as bytes. `name` is enforced to stay inside `dir` (may be
+   *  a relative subpath from `listRecursive`). */
+  readBytes(dir: string, name: string): Promise<Uint8Array>;
+  /** Read `dir/name` as UTF-8. `name` is enforced to stay inside `dir` (may be
+   *  a relative subpath from `listRecursive`). */
+  readUtf8(dir: string, name: string): Promise<string>;
+}
+
+let importFsServer: ImportFsServer | undefined;
+export function registerImportFsServer(server: ImportFsServer): void {
+  importFsServer = server;
+}
+function requireImportFs(): ImportFsServer {
+  if (!importFsServer) throw new Error("Import-FS server not registered (main boot incomplete)");
+  return importFsServer;
+}
+
+// ---------------------------------------------------------------------------
 // Window server — native window/theme controls implemented in `src/main/window.ts`
 // (Electron `nativeTheme`). Injected via `registerWindowServer`.
 // ---------------------------------------------------------------------------
@@ -1016,6 +1055,23 @@ export const appRouter = t.router({
       .mutation(({ input }) =>
         requireDialog().saveFileToDir(input.dir, input.defaultName, input.data)
       )
+  }),
+
+  // Import-FS — directory-scoped bulk read for the Settings → Import section
+  // (Standard Notes import). Implemented in `src/main/import-fs.ts`.
+  importFs: t.router({
+    list: t.procedure
+      .input(z.object({ dir: z.string() }))
+      .query(({ input }) => requireImportFs().list(input.dir)),
+    listRecursive: t.procedure
+      .input(z.object({ dir: z.string() }))
+      .query(({ input }) => requireImportFs().listRecursive(input.dir)),
+    readBytes: t.procedure
+      .input(z.object({ dir: z.string(), name: z.string() }))
+      .query(({ input }) => requireImportFs().readBytes(input.dir, input.name)),
+    readUtf8: t.procedure
+      .input(z.object({ dir: z.string(), name: z.string() }))
+      .query(({ input }) => requireImportFs().readUtf8(input.dir, input.name))
   }),
 
   // Shell — OS-interaction for the attachment preview's "Open externally"

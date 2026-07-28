@@ -26,6 +26,13 @@ import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useShellStore } from "@/stores/shell";
 import { useSettingsStore } from "@/stores/settings";
 import { useConfigStore } from "@/stores/config";
+import { useTemplatesStore } from "@/stores/templates";
+import {
+  useTemplateNotebooksStore,
+  type TemplateNotebookPolicy
+} from "@/stores/template-notebooks";
+import { useNotebookPickerStore } from "@/stores/notebook-picker";
+import i18n from "@/i18n";
 import { desktop } from "@/platform/desktop-bridge";
 import { queueIndexNoteEmbeddings, deleteNoteEmbeddings } from "@/utils/vector-search";
 import { logger } from "@/utils/logger";
@@ -774,8 +781,16 @@ export const useNotesStore = defineStore("notes", () => {
   /**
    * Automatically attach the active list filter context (notebook, tag, or color)
    * to a newly created note so it immediately matches the current view.
+   *
+   * `opts.skipNotebook` skips the `notebook` branch only — used by {@link create}
+   * when a per-template notebook policy (fixed or "ask"-chosen) has already
+   * filed the note (or the user explicitly chose "None"). Tag/color branches
+   * still apply so a template notebook + an active tag filter compose.
    */
-  async function applyActiveFilterToNote(noteId: string): Promise<void> {
+  async function applyActiveFilterToNote(
+    noteId: string,
+    opts?: { skipNotebook?: boolean }
+  ): Promise<void> {
     const filter = collectionFilter.value ?? (
       useCollectionsStore().selected
         ? { type: useCollectionsStore().selected!.type, id: useCollectionsStore().selected!.id }
@@ -788,7 +803,7 @@ export const useNotesStore = defineStore("notes", () => {
       const properties = usePropertiesStore();
 
       if (filter.type === "notebook") {
-        await db.notes.addToNotebook(filter.id, noteId);
+        if (!opts?.skipNotebook) await db.notes.addToNotebook(filter.id, noteId);
       } else if (filter.type === "color") {
         await properties.setColor(filter.id, noteId);
       } else if (filter.type === "tag") {
@@ -811,21 +826,87 @@ export const useNotesStore = defineStore("notes", () => {
 
   async function create(
     opts?: { task?: boolean; templateId?: string; content?: string; title?: string; openNote?: boolean }
-  ): Promise<string> {
+  ): Promise<string | undefined> {
     const db = getDatabase();
     const data = await resolveCreateContent(opts);
     const addArg: { title?: string; content: { type: "tiptap"; data: string } } = {
       content: { type: "tiptap", data }
     };
     if (opts?.title) addArg.title = opts.title;
+
+    // Per-template notebook policy (see stores/template-notebooks.ts). Computed
+    // from the *effective* template id — the same precedence
+    // `resolveCreateContent` uses to pick the body — so the policy follows the
+    // template that actually supplied the content (explicit `templateId`, else
+    // the configured default for notes/tasks; content-only calls like duplicate
+    // use no template).
+    const effectiveTemplateId = resolveEffectiveTemplateId(opts);
+    const { notebookId, skipActiveNotebook, cancel } =
+      await resolveTemplateNotebookOverride(effectiveTemplateId);
+    if (cancel) return undefined; // user dismissed the "ask" picker → abort
+
     const id = await db.notes.add(addArg);
-    await applyActiveFilterToNote(id);
+    if (notebookId) {
+      try {
+        await db.notes.addToNotebook(notebookId, id);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        logger.error("[notes] template notebook assignment failed:", e);
+      }
+    }
+    await applyActiveFilterToNote(id, skipActiveNotebook ? { skipNotebook: true } : undefined);
     await load();
     if (opts?.openNote !== false) {
       pendingTitleFocus.value = "select";
       layout.openNote(id);
     }
     return id;
+  }
+
+  /** The template id whose body `resolveCreateContent` will apply, or `null`
+   *  when none (content-only / no default configured). Kept in sync with
+   *  `resolveCreateContent`'s precedence so the notebook policy matches the
+   *  template that actually seeds the note. */
+  function resolveEffectiveTemplateId(
+    opts?: { task?: boolean; templateId?: string; content?: string }
+  ): string | null {
+    if (opts?.templateId) return opts.templateId;
+    // A content-bearing call (e.g. duplicate, or `createTemplate`'s explicit
+    // empty body) uses the given content verbatim and no template, so no policy
+    // applies. Checked by presence (not truthiness) so `content: ""` counts.
+    if (opts?.content !== undefined) return null;
+    const config = useConfigStore();
+    const def = opts?.task ? config.defaultTaskTemplate : config.defaultNoteTemplate;
+    return def ?? null;
+  }
+
+  /** Resolve a notebook override from a template's policy. `cancel` is `true`
+   *  when the user dismissed the "ask" picker — the caller aborts creation.
+   *  `notebookId` is the notebook to file into (`null` = the user chose
+   *  "None" → create with no template notebook). `skipActiveNotebook` tells
+   *  {@link applyActiveFilterToNote} to skip the active-filter notebook branch
+   *  (the template supplied the notebook, or the user explicitly chose None). */
+  async function resolveTemplateNotebookOverride(templateId: string | null): Promise<{
+    notebookId: string | null;
+    skipActiveNotebook: boolean;
+    cancel: boolean;
+  }> {
+    if (!templateId) return { notebookId: null, skipActiveNotebook: false, cancel: false };
+    const policy: TemplateNotebookPolicy =
+      useTemplateNotebooksStore().getPolicy(templateId);
+    if (policy.mode === "fixed" && policy.notebookId) {
+      return { notebookId: policy.notebookId, skipActiveNotebook: true, cancel: false };
+    }
+    if (policy.mode === "ask") {
+      const title = useTemplatesStore().templates.find((tp) => tp.id === templateId)?.title;
+      const pickerTitle = title
+        ? i18n.global.t("notebookPicker.forTemplate", { title })
+        : i18n.global.t("notebookPicker.title");
+      const choice = await useNotebookPickerStore().pick({ title: pickerTitle });
+      if (choice === undefined) return { notebookId: null, skipActiveNotebook: false, cancel: true };
+      return { notebookId: choice, skipActiveNotebook: true, cancel: false };
+    }
+    return { notebookId: null, skipActiveNotebook: false, cancel: false };
   }
 
   /** Resolve the HTML body for a new note created via {@link create}. See the
