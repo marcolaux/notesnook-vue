@@ -24,6 +24,7 @@ import {
 import { registerTray } from "./tray";
 import { registerUpdater } from "./updater";
 import { registerUpstreamChecker } from "./upstream-checker";
+import { registerChangelogFetcher } from "./changelog-fetcher";
 import { registerSpellChecker } from "./spell-checker";
 import { registerAppMenu } from "./menu";
 import { registerWindow, setMainWindow } from "./window";
@@ -232,6 +233,9 @@ void app.whenReady().then(() => {
   // forward `updater:status` state changes to the renderer (on-site UI).
   registerUpdater(window);
   registerUpstreamChecker();
+  // Remote changelog fetcher — fetches the raw `CHANGELOG.md` from the app's
+  // GitHub repo so the What's New window can show the newest version's notes.
+  registerChangelogFetcher();
   // System tray (New Note / New Notebook / Show / Quit). The tray forwards
   // new-note/new-notebook to the renderer over `app:tray-action`.
   registerTray(window);

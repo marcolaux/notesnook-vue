@@ -5,6 +5,19 @@ All notable changes to **Notesnook Vue Desktop** will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ✨ What's New window shows the newest release notes
+The Changelog / What's New window now fetches the latest `CHANGELOG.md` from the app's GitHub repo at runtime and shows the **newest** version's release notes, instead of being limited to the installed version's notes (which are baked into the renderer at build time and so only ever contain entries up to the shipped version). When the newest published version is newer than the installed one and the auto-updater hasn't flagged an update (e.g. in dev), the window surfaces a subtle "Version X is available" hint with a link to the GitHub release.
+
+- **New main-process capability**: `changelog` tRPC router (`src/main/changelog-fetcher.ts`) — fetches raw `CHANGELOG.md` from `raw.githubusercontent.com/marcolaux/notesnook-vue/main`. Plain `fetch` (no Electron import → works in dev + packaged, unit-testable by stubbing `global.fetch`); never throws across the bridge (network/parse failures report an `error` status with `text: null`); ~10-minute in-memory success cache so repeated window opens don't re-hit the network. Uses raw (CDN-served) not the GitHub Releases API → no 60/hour unauthenticated rate limit. Mirrors the `upstream-checker.ts` pattern.
+- **Renderer**: `ChangelogLayout.vue` fetches on mount; content resolution is **provider release notes → remote newest section → baked installed-version fallback** (silent on failure — no error banner, the baked notes still show). The version label follows the newest version.
+- **No new privacy toggle**: this contacts the app's own public repo (the same one the auto-updater's publish provider reads), on-demand when the window opens — not at boot. The upstream-release notifier keeps its separate toggle because it contacts a *different* repo.
+
+#### Verification
+- `npm run typecheck` (node + web + contracts) — clean.
+- `npm run test:contract` — new `changelog-fetcher.spec.ts` (7) passes; i18n / bridge-router / markdown / updater / upstream-checker suites green.
+
 ## [0.13.0] - 2026-07-28
 
 ### 👤 Per-account Settings + Settings Window Restructure

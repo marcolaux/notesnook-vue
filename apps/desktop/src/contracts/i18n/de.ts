@@ -500,7 +500,10 @@ export default {
     downloadingDots: "Wird heruntergeladen …",
     downloadUpdate: "Herunterladen & aktualisieren",
     closeWindow: "Fenster schließen",
-    closeAttr: "Schließen"
+    closeAttr: "Schließen",
+    fetchingLatest: "Neueste Release-Hinweise werden abgerufen …",
+    newerAvailable: "Version {version} ist verfügbar",
+    viewRelease: "Release ansehen"
   },
   themeDetails: {
     by: "von {authors}",

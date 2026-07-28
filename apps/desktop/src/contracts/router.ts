@@ -269,6 +269,47 @@ function requireUpstreamChecker(): UpstreamCheckerServer {
 }
 
 // ---------------------------------------------------------------------------
+// Remote changelog fetcher — ours (no upstream equivalent)
+// ---------------------------------------------------------------------------
+// The What's New window bakes `CHANGELOG.md` into the renderer at build time
+// (`__CHANGELOG_CONTENT__`), so an installed build only ever knows its own
+// version's notes. This server fetches the raw `CHANGELOG.md` from the app's
+// own GitHub repo at runtime so the window can show the *newest* version's
+// notes. Mirrors `upstream-checker.ts`: a plain `fetch` (no Electron import →
+// works in dev + packaged, unit-testable by stubbing `global.fetch`), and it
+// never throws across the bridge — a network/parse failure is reported as an
+// `error` status with `text: null` so the renderer silently falls back to the
+// baked changelog.
+
+/** Result of a remote changelog fetch. */
+export interface RemoteChangelog {
+  /** Raw `CHANGELOG.md` text from the repo, or `null` on failure. The
+   *  renderer parses the newest version section out of this with
+   *  `formatBundledChangelog` (the regex lives in renderer `utils/markdown.ts`,
+   *  so the main process stays free of cross-layer imports). */
+  text: string | null;
+  /** ISO timestamp the fetch was performed. */
+  fetchedAt: string;
+  /** Failure reason, or `null` on success. */
+  error: "network" | "parse" | null;
+}
+
+export interface ChangelogFetcherServer {
+  /** Fetch the raw `CHANGELOG.md` from the app's GitHub repo. Never throws —
+   *  returns an `error` status on failure. */
+  fetchLatest(): Promise<RemoteChangelog>;
+}
+
+let changelogFetcherServer: ChangelogFetcherServer | undefined;
+export function registerChangelogFetcherServer(server: ChangelogFetcherServer): void {
+  changelogFetcherServer = server;
+}
+function requireChangelogFetcher(): ChangelogFetcherServer {
+  if (!changelogFetcherServer) throw new Error("Changelog fetcher server not registered (main boot incomplete)");
+  return changelogFetcherServer;
+}
+
+// ---------------------------------------------------------------------------
 // Spell-checker — matches upstream apps/desktop/src/api/spell-checker.ts
 // ---------------------------------------------------------------------------
 // Electron's `session` spell-check is a main-process capability. The renderer
@@ -1070,6 +1111,14 @@ export const appRouter = t.router({
   // baseline. See `src/main/upstream-checker.ts`.
   upstreamChecker: t.router({
     check: t.procedure.query(() => requireUpstreamChecker().check())
+  }),
+
+  // Remote changelog fetcher — ours (no upstream equivalent). Fetches the raw
+  // `CHANGELOG.md` from the app's GitHub repo so the What's New window can show
+  // the newest version's notes (the baked `__CHANGELOG_CONTENT__` only knows
+  // the installed version). See `src/main/changelog-fetcher.ts`.
+  changelog: t.router({
+    fetchLatest: t.procedure.query(() => requireChangelogFetcher().fetchLatest())
   }),
 
   // Spell-checker — matches upstream apps/desktop/src/api/spell-checker.ts

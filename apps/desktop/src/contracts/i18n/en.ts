@@ -504,7 +504,10 @@ export default {
     downloadingDots: "Downloading...",
     downloadUpdate: "Download & Update",
     closeWindow: "Close Window",
-    closeAttr: "Close"
+    closeAttr: "Close",
+    fetchingLatest: "Fetching the latest release notes…",
+    newerAvailable: "Version {version} is available",
+    viewRelease: "View release"
   },
   themeDetails: {
     by: "by {authors}",
