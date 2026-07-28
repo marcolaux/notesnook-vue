@@ -39,6 +39,7 @@ const db = {
   content: { findByNoteId: vi.fn(async () => null) }
 };
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => db,
   bootstrap: vi.fn()
 }));

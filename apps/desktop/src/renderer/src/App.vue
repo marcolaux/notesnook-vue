@@ -18,6 +18,7 @@ import { useSettingsStore, THEME_MODE_KEY, TRANSPARENCY_ENABLED_KEY, THEME_DARK_
 import { useConfigStore } from "@/stores/config";
 import { useUpstreamNotifierStore } from "@/stores/upstream-notifier";
 import { useUpdaterStore } from "@/stores/updater";
+import { useAutoBackupStore } from "@/stores/auto-backup";
 import { useShortcutsStore } from "@/stores/shortcuts";
 import { useRemindersStore } from "@/stores/reminders";
 import { useToolbarStore } from "@/stores/toolbar";
@@ -30,13 +31,15 @@ import { desktop } from "@/platform/desktop-bridge";
 import { restoreSession } from "@/platform/session-restore";
 import { readWindowContext, dbFileName } from "@/platform/account-context";
 import { useDialogStore } from "@/stores/dialog";
-import { syncLocale, LOCALE_STORAGE_KEY } from "@/i18n";
+import { syncLocale, reloadLocale, LOCALE_STORAGE_KEY } from "@/i18n";
 import {
   useSessionPersistence,
   flushNow,
   setPersistenceSuppressed
 } from "@/composables/use-session-persistence";
 import { dropZoneFromPoint } from "@/utils/tab-dnd";
+import { reloadBlockColorize } from "@/stores/block-colorize";
+import { matchCtxKey } from "@/platform/per-context-prefs";
 import type { LayoutSnapshot } from "@contracts/session-state";
 import { filterLayoutSnapshot } from "@contracts/session-state";
 import { autoUpdateInstalledThemes } from "@/composables/use-themes-catalog";
@@ -251,43 +254,68 @@ function bindSystemThemeListener(): void {
  */
 function bindCrossWindowThemeListener(): void {
   if (typeof window === "undefined") return;
+  // Per-account client prefs are keyed `notesnook.<base>.<ctx>`; a `storage`
+  // event fires in the *other* same-origin windows when one writes. Match the
+  // event key against the known bases + ctx suffix, and only apply when the
+  // write is for THIS window's context (an account-A theme/locale change must
+  // not flip account-B's window). A legacy un-suffixed key (ctx null) is
+  // applied to the current context as a transitional safety net. The event
+  // does NOT fire in the originating window, so its local refs are already
+  // correct — this only updates *other* windows.
+  const bases = [
+    THEME_MODE_KEY,
+    TRANSPARENCY_ENABLED_KEY,
+    THEME_DARK_KEY,
+    THEME_LIGHT_KEY,
+    LOCALE_STORAGE_KEY
+  ];
   const onStorage = (e: StorageEvent) => {
-    if (e.key === THEME_MODE_KEY && (e.newValue === "light" || e.newValue === "dark" || e.newValue === "system")) {
+    const match = matchCtxKey(e.key ?? "", bases);
+    if (!match) return;
+    if (match.ctx !== null && match.ctx !== getCurrentContext()) return;
+    if (
+      match.base === THEME_MODE_KEY &&
+      (e.newValue === "light" || e.newValue === "dark" || e.newValue === "system")
+    ) {
       // Mirror the new mode into this window's store (no signal bump — see
       // `syncThemeMode`) so the system-mode OS-preference listener etc. see
       // the right value, then re-apply the renderer CSS.
-      settings.syncThemeMode(e.newValue);
+      settings.syncThemeMode(e.newValue, match.ctx);
       applyThemeCss(e.newValue);
-    }
-    if (e.key === TRANSPARENCY_ENABLED_KEY && (e.newValue === "true" || e.newValue === "false")) {
+    } else if (
+      match.base === TRANSPARENCY_ENABLED_KEY &&
+      (e.newValue === "true" || e.newValue === "false")
+    ) {
       // Mirror + re-apply the transparency attr (no signal bump — see
       // `syncTransparencyEnabled`; the originating window already applied it).
       const enabled = e.newValue === "true";
-      settings.syncTransparencyEnabled(enabled);
+      settings.syncTransparencyEnabled(enabled, match.ctx);
       applyTransparency(enabled);
-    }
-    if (e.key === THEME_DARK_KEY || e.key === THEME_LIGHT_KEY) {
+    } else if (match.base === THEME_DARK_KEY || match.base === THEME_LIGHT_KEY) {
       // A theme slot changed in another window (catalog install / file import / restore stock).
       // Mirror the parsed theme into this window's slot and re-apply the active
       // theme in case the changed slot is the active one. Malformed JSON is
       // ignored (the originating window validated before writing).
       try {
-        const fallback = e.key === THEME_DARK_KEY ? ThemeDark : ThemeLight;
+        const fallback = match.base === THEME_DARK_KEY ? ThemeDark : ThemeLight;
         const theme = e.newValue != null ? (JSON.parse(e.newValue) as VueTheme) : fallback;
-        settings.syncStoredTheme(e.key === THEME_DARK_KEY ? "dark" : "light", theme);
+        settings.syncStoredTheme(
+          match.base === THEME_DARK_KEY ? "dark" : "light",
+          theme,
+          match.ctx
+        );
         applyThemeCss(settings.themeMode);
       } catch {
         /* ignore malformed slot value */
       }
-    }
-    if (e.key === LOCALE_STORAGE_KEY) {
+    } else if (match.base === LOCALE_STORAGE_KEY) {
       // A locale change originated in another window (typically the Settings
       // window's language picker). Mirror it into THIS window's vue-i18n ref so
       // every `t()` re-renders live — no persist/IPC, since the originator
       // already did both (and the `storage` event doesn't fire in the
       // originator, so no double-apply there). Before this, other open windows
       // only picked up a locale change after a reload.
-      syncLocale(e.newValue);
+      syncLocale(e.newValue, match.ctx);
     }
   };
   window.addEventListener("storage", onStorage);
@@ -647,6 +675,14 @@ onMounted(async () => {
     // note window from re-checking). Fire-and-forget: a GitHub outage never
     // blocks boot. Privacy-toggle-gated + once-per-24h inside the store.
     if (!isTornOffWindow) void upstreamNotifier.maybeCheck();
+    // Per-account auto-backup scheduler (main window only — core `db.backup`
+    // runs in the renderer, and the timers die with this window, matching the
+    // updater/notifier pattern). Idempotent; no-ops until a backup directory +
+    // a cadence are configured. Fire-and-forget: a backup failure never blocks
+    // boot (each context is isolated inside the tick).
+    if (!isTornOffWindow && !isSettingsWindow && !isChangelogWindow) {
+      useAutoBackupStore().init();
+    }
     if (auth.showShell) {
       // Await shortcuts BEFORE notes.load. SQLite is a single serialized mutex
       // (`sqlite-dialect.ts`) and `notes.load()` fires 3 fire-and-forget queries
@@ -884,6 +920,16 @@ if (!isSettingsWindow) {
     async () => {
       if (!auth.showShell) return;
       const notes = useNotesStore();
+      // Per-account client prefs (theme/transparency/locale/default templates/
+      // block-colorize) are keyed by context in localStorage; reload them for
+      // the now-current account. `loadClientPrefs` bumps the theme/transparency
+      // signals when the values change, so the existing `themeChangeSignal` /
+      // `transparencyChangeSignal` watches re-apply the renderer theme +
+      // transparency below; `reloadLocale` re-applies the in-app locale.
+      settings.loadClientPrefs();
+      config.loadClientPrefs();
+      reloadBlockColorize();
+      reloadLocale();
       // Pause layout persistence across the context switch so the transient
       // empty state (after `resetView` → `closeAllTabs`) is never written to
       // disk for the NEW account — that would clobber its saved session. The

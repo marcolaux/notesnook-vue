@@ -27,6 +27,7 @@ vi.mock("@/platform/desktop-bridge", () => ({
 // so the test never pulls in the real platform graph. `closeTab`/`selectNote`
 // here never touch the db.
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: vi.fn(),
   bootstrap: vi.fn()
 }));

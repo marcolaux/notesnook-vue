@@ -1,5 +1,11 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import { getCurrentContext } from "@/platform/bootstrap";
+import {
+  readCtxStringWithLegacy,
+  writeCtxString,
+  migrateLegacyToCtx
+} from "@/platform/per-context-prefs";
 
 /**
  * Config store (Phase 2) — the **client-only** settings layer: reactive,
@@ -35,7 +41,10 @@ import { ref } from "vue";
  *  - `autoSyncEnabled` gates the post-login auto-sync in `App.vue` (wired now).
  *  - `isRealtimeSyncEnabled` needs core's realtime/SSE hookup — stored now,
  *    wired in a later phase (the toggle is not shown until it does something).
- *  - backup reminder offsets drive the auto-backup scheduler (later phase).
+ *  - backup reminder offsets drive the per-account auto-backup scheduler
+ *    (`stores/auto-backup.ts`): each cadence (partial/full) gates a periodic
+ *    backup of every account into its own subdirectory of `backupDirectory`,
+ *    rotated to keep the last `backupRetentionCount` per account per mode.
  *  - editor/behaviour toggles drive the editor + sidebar (Phase 4).
  */
 
@@ -69,6 +78,7 @@ export type ConfigKey =
   | "backupReminderOffset"
   | "fullBackupReminderOffset"
   | "backupDirectory"
+  | "backupRetentionCount"
   | "doubleSpacedLines"
   | "markdownShortcuts"
   | "fontLigatures"
@@ -93,6 +103,11 @@ export const CONFIG_DEFAULTS: {
   backupReminderOffset: number;
   fullBackupReminderOffset: number;
   backupDirectory: string | null;
+  /** How many auto-backups to keep per account per mode (partial/full). The
+   *  auto-backup scheduler rotates after each write, deleting older backups
+   *  beyond this count. Clamped to a minimum of 1 so rotation never deletes the
+   *  just-written backup. */
+  backupRetentionCount: number;
   doubleSpacedLines: boolean;
   markdownShortcuts: boolean;
   fontLigatures: boolean;
@@ -117,6 +132,7 @@ export const CONFIG_DEFAULTS: {
   backupReminderOffset: 0,
   fullBackupReminderOffset: 0,
   backupDirectory: null,
+  backupRetentionCount: 5,
   doubleSpacedLines: true,
   markdownShortcuts: false,
   fontLigatures: false,
@@ -154,6 +170,37 @@ function writeConfig<T>(suffix: ConfigKey, value: T): void {
   }
 }
 
+/** The config keys that are per-account (namespaced by `ContextId` in
+ *  localStorage) rather than device-global. Currently the default note/task
+ *  template selection — each account picks its own default template (the
+ *  template notes themselves are per-account via the DB). All other config
+ *  keys stay device-global. */
+const PER_CONTEXT_KEYS: ReadonlySet<ConfigKey> = new Set([
+  "defaultNoteTemplate",
+  "defaultTaskTemplate"
+]);
+
+/** Read + parse a per-account config value for `ctx`, falling back to the
+ *  legacy un-suffixed key (lazy migration), then to `fallback`. */
+function readConfigCtx<T>(suffix: ConfigKey, fallback: T, ctx: string): T {
+  const { value: raw, fromLegacy } = readCtxStringWithLegacy(configKey(suffix), ctx);
+  if (fromLegacy && raw !== null) {
+    // Lazy-migrate the legacy value into this ctx's key on first contact.
+    writeCtxString(configKey(suffix), ctx, raw);
+  }
+  if (raw === null) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Write a per-account config value as JSON to `ctx`'s key. Best-effort. */
+function writeConfigCtx<T>(suffix: ConfigKey, value: T, ctx: string): void {
+  writeCtxString(configKey(suffix), ctx, JSON.stringify(value));
+}
+
 export const useConfigStore = defineStore("config", () => {
   // --- sync ------------------------------------------------------------------
   const syncEnabled = ref(readConfig("syncEnabled", CONFIG_DEFAULTS.syncEnabled));
@@ -174,6 +221,9 @@ export const useConfigStore = defineStore("config", () => {
   const backupDirectory = ref(
     readConfig("backupDirectory", CONFIG_DEFAULTS.backupDirectory)
   );
+  const backupRetentionCount = ref(
+    readConfig("backupRetentionCount", CONFIG_DEFAULTS.backupRetentionCount)
+  );
 
   // --- editor / behaviour (Phase 4 consumers) ---------------------------------
   const doubleSpacedLines = ref(
@@ -190,11 +240,12 @@ export const useConfigStore = defineStore("config", () => {
   );
 
   // --- templates (default note/task template note id; null = none) ----------
+  // Per-account: each context keeps its own default-template choice.
   const defaultNoteTemplate = ref(
-    readConfig("defaultNoteTemplate", CONFIG_DEFAULTS.defaultNoteTemplate)
+    readConfigCtx("defaultNoteTemplate", CONFIG_DEFAULTS.defaultNoteTemplate, getCurrentContext())
   );
   const defaultTaskTemplate = ref(
-    readConfig("defaultTaskTemplate", CONFIG_DEFAULTS.defaultTaskTemplate)
+    readConfigCtx("defaultTaskTemplate", CONFIG_DEFAULTS.defaultTaskTemplate, getCurrentContext())
   );
 
   // --- ToC/Minimap sidebar mode (last-used; seeded when a tab opens its sidebar)
@@ -223,6 +274,10 @@ export const useConfigStore = defineStore("config", () => {
       "backupDirectory",
       CONFIG_DEFAULTS.backupDirectory
     );
+    backupRetentionCount.value = readConfig(
+      "backupRetentionCount",
+      CONFIG_DEFAULTS.backupRetentionCount
+    );
     doubleSpacedLines.value = readConfig(
       "doubleSpacedLines",
       CONFIG_DEFAULTS.doubleSpacedLines
@@ -238,15 +293,36 @@ export const useConfigStore = defineStore("config", () => {
       "imageCompression",
       CONFIG_DEFAULTS.imageCompression
     );
-    defaultNoteTemplate.value = readConfig(
+    defaultNoteTemplate.value = readConfigCtx(
       "defaultNoteTemplate",
-      CONFIG_DEFAULTS.defaultNoteTemplate
+      CONFIG_DEFAULTS.defaultNoteTemplate,
+      getCurrentContext()
     );
-    defaultTaskTemplate.value = readConfig(
+    defaultTaskTemplate.value = readConfigCtx(
       "defaultTaskTemplate",
-      CONFIG_DEFAULTS.defaultTaskTemplate
+      CONFIG_DEFAULTS.defaultTaskTemplate,
+      getCurrentContext()
     );
     tocMode.value = readConfig("tocMode", CONFIG_DEFAULTS.tocMode);
+  }
+
+  /** Re-read the per-account config values (the default-template keys) for
+   *  `ctx` into the store refs, with lazy legacy migration. Call after a
+   *  context switch (Settings `switchContext`, main window
+   *  `contextChangeSignal` watch) so the UI reflects the newly-active
+   *  account's template choice. Device-global keys are unaffected. */
+  function loadClientPrefs(ctx: string = getCurrentContext()): void {
+    for (const suffix of PER_CONTEXT_KEYS) migrateLegacyToCtx(configKey(suffix), ctx);
+    defaultNoteTemplate.value = readConfigCtx(
+      "defaultNoteTemplate",
+      CONFIG_DEFAULTS.defaultNoteTemplate,
+      ctx
+    );
+    defaultTaskTemplate.value = readConfigCtx(
+      "defaultTaskTemplate",
+      CONFIG_DEFAULTS.defaultTaskTemplate,
+      ctx
+    );
   }
 
   // --- setters (write-through: persist + update the reactive ref) ------------
@@ -282,6 +358,13 @@ export const useConfigStore = defineStore("config", () => {
     backupDirectory.value = v;
     writeConfig("backupDirectory", v);
   }
+  function setBackupRetentionCount(v: number): void {
+    // Clamp to a minimum of 1 so rotation never deletes the just-written
+    // backup; floor fractional input.
+    const clamped = Math.max(1, Math.floor(v));
+    backupRetentionCount.value = clamped;
+    writeConfig("backupRetentionCount", clamped);
+  }
   function setDoubleSpacedLines(v: boolean): void {
     doubleSpacedLines.value = v;
     writeConfig("doubleSpacedLines", v);
@@ -308,11 +391,11 @@ export const useConfigStore = defineStore("config", () => {
   }
   function setDefaultNoteTemplate(v: string | null): void {
     defaultNoteTemplate.value = v;
-    writeConfig("defaultNoteTemplate", v);
+    writeConfigCtx("defaultNoteTemplate", v, getCurrentContext());
   }
   function setDefaultTaskTemplate(v: string | null): void {
     defaultTaskTemplate.value = v;
-    writeConfig("defaultTaskTemplate", v);
+    writeConfigCtx("defaultTaskTemplate", v, getCurrentContext());
   }
   function setTocMode(v: TocMode): void {
     tocMode.value = v;
@@ -330,6 +413,7 @@ export const useConfigStore = defineStore("config", () => {
     backupReminderOffset,
     fullBackupReminderOffset,
     backupDirectory,
+    backupRetentionCount,
     // editor / behaviour
     doubleSpacedLines,
     markdownShortcuts,
@@ -342,6 +426,7 @@ export const useConfigStore = defineStore("config", () => {
     tocMode,
     // actions
     load,
+    loadClientPrefs,
     setSyncEnabled,
     setAutoSyncEnabled,
     setRealtimeSyncEnabled,
@@ -350,6 +435,7 @@ export const useConfigStore = defineStore("config", () => {
     setBackupReminderOffset,
     setFullBackupReminderOffset,
     setBackupDirectory,
+    setBackupRetentionCount,
     setDoubleSpacedLines,
     setMarkdownShortcuts,
     setFontLigatures,

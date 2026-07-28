@@ -24,7 +24,7 @@ const dbRef = vi.hoisted(() => {
     }
   };
 });
-vi.mock("@/platform/bootstrap", () => ({ getDatabase: dbRef.getDatabase }));
+vi.mock("@/platform/bootstrap", () => ({ getCurrentContext: () => "local", getDatabase: dbRef.getDatabase }));
 
 // Mock the layout store so the `openAttachmentPreview` hook (which lazy-imports
 // it) can be asserted without pulling Pinia + the real store into this test.

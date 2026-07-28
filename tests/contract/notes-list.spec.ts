@@ -17,6 +17,7 @@ import type { NoteListItem } from "@/stores/notes";
 // notes.ts imports `getDatabase` from bootstrap; stub it so the platform
 // graph (sodium/crypto/bridge) isn't loaded for a pure store-logic test.
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => ({}),
   bootstrap: vi.fn()
 }));

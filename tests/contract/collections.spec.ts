@@ -38,6 +38,7 @@ let mockDb: {
   _tags: Tag[];
 };
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => mockDb,
   bootstrap: vi.fn()
 }));

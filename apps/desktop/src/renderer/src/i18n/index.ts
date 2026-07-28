@@ -32,36 +32,53 @@
 import { createI18n } from "vue-i18n";
 import { en, de, LOCALES, DEFAULT_LOCALE, PSEUDO_LOCALE, type Locale } from "@contracts/i18n";
 import pseudo, { toPseudo } from "./locales/pseudo";
+import {
+  LOCAL_CONTEXT,
+  readWindowContext,
+  readCurrentContext
+} from "@/platform/account-context";
+import { getCurrentContext } from "@/platform/bootstrap";
+import {
+  readCtxStringWithLegacy,
+  writeCtxString,
+  migrateLegacyToCtx
+} from "@/platform/per-context-prefs";
 
 export { default as en } from "@contracts/i18n/en";
 export { default as de } from "@contracts/i18n/de";
 export { default as pseudo, toPseudo } from "./locales/pseudo";
 export { LOCALES, DEFAULT_LOCALE, PSEUDO_LOCALE, type Locale } from "@contracts/i18n";
 
-/** `localStorage` key holding the persisted locale choice. Shared across same-
- *  origin Electron windows, so a `storage` event fires in the *other* open
- *  windows when one window changes the locale — the cross-window sync hook
- *  (see `syncLocale` + `App.vue`'s storage listener) uses this to switch every
- *  window's vue-i18n locale live, not just the one that made the change. */
+/** `localStorage` BASE key for the persisted locale choice. The per-account
+ *  value lives at `notesnook.locale.<ctx>`; the legacy un-suffixed key is the
+ *  pre-per-account value (read with fallback, migrated on first contact). A
+ *  `storage` event fires in the *other* same-origin windows when one window
+ *  changes the locale — the cross-window sync hook (see `syncLocale` +
+ *  `App.vue`'s storage listener) uses this, gated by context so an account-A
+ *  locale change does not flip account-B's window. */
 export const LOCALE_STORAGE_KEY = "notesnook.locale";
 
-/** Read the persisted locale choice, falling back to the default. Best-effort. */
-function readLocale(): Locale {
-  try {
-    const v = localStorage.getItem(LOCALE_STORAGE_KEY);
-    return (LOCALES as readonly string[]).includes(v ?? "") ? (v as Locale) : DEFAULT_LOCALE;
-  } catch {
-    return DEFAULT_LOCALE;
-  }
+/** Resolve the context to use for the initial locale read at module load —
+ *  `bootstrap()` may not have run yet (i18n is imported + installed in
+ *  `main.ts` before App.vue boots), so `getCurrentContext()` is still its
+ *  `LOCAL_CONTEXT` default. Prefer the window `?ctx=` pin + the shared
+ *  "last used" pointer, which only need localStorage. */
+function initialCtx(): string {
+  return readWindowContext() ?? readCurrentContext() ?? LOCAL_CONTEXT;
 }
 
-/** Persist the locale choice. Best-effort — persistence is optional. */
-function writeLocale(locale: Locale): void {
-  try {
-    localStorage.setItem(LOCALE_STORAGE_KEY, locale);
-  } catch {
-    /* ignore — persistence is optional */
-  }
+/** Read the persisted locale choice for `ctx`, falling back to the legacy
+ *  un-suffixed key, then to the default. Best-effort. */
+export function readLocale(ctx: string): Locale {
+  const { value } = readCtxStringWithLegacy(LOCALE_STORAGE_KEY, ctx);
+  return (LOCALES as readonly string[]).includes(value ?? "")
+    ? (value as Locale)
+    : DEFAULT_LOCALE;
+}
+
+/** Persist the locale choice for `ctx`. Best-effort — persistence is optional. */
+function writeLocale(locale: Locale, ctx: string): void {
+  writeCtxString(LOCALE_STORAGE_KEY, ctx, locale);
 }
 
 /** Propagate the locale to the main process: (1) mirror it to the main-owned
@@ -90,29 +107,44 @@ function notifyMain(locale: Locale): void {
 
 const i18n = createI18n({
   legacy: false,
-  locale: readLocale(),
+  locale: readLocale(initialCtx()),
   fallbackLocale: DEFAULT_LOCALE,
   messages: { en, de, pseudo }
 });
 
 export default i18n;
 
-/** Switch the active locale + persist the choice + notify main. Best-effort
- *  persistence + IPC. */
+/** Switch the active locale + persist the choice to the current account's key
+ *  + notify main. Best-effort persistence + IPC. Main keeps a single
+ *  `activeLocale` (process-global) — the last window to switch wins; per-window
+ *  OS-chrome locale is not supported (see `main/i18n.ts`). */
 export function setLocale(locale: Locale): void {
   i18n.global.locale.value = locale;
-  writeLocale(locale);
+  writeLocale(locale, getCurrentContext());
   notifyMain(locale);
 }
 
+/** Re-read the locale for `ctx` (with lazy legacy migration) and set this
+ *  window's vue-i18n ref — used after a context switch (main window
+ *  `contextChangeSignal` watch, Settings `switchContext`) so the UI reflects
+ *  the newly-active account's language. Does not persist or notify main (the
+ *  value is already on disk for this ctx; main's OS chrome is best-effort). */
+export function reloadLocale(ctx: string = getCurrentContext()): void {
+  migrateLegacyToCtx(LOCALE_STORAGE_KEY, ctx);
+  i18n.global.locale.value = readLocale(ctx);
+}
+
 /** Apply a locale change that originated in ANOTHER window (cross-window sync
- *  via the `storage` event — `App.vue` listens for `LOCALE_STORAGE_KEY`
- *  writes). Sets THIS window's vue-i18n locale ref ONLY: it does NOT re-persist
- *  to `localStorage` or re-notify main, since the originating window already
- *  did both (and the `storage` event doesn't fire in the originator, so there's
- *  no double-apply there). No-op if `locale` isn't a known locale (e.g. the key
- *  was cleared). */
-export function syncLocale(locale: string | null): void {
+ *  via the `storage` event — `App.vue` listens for `LOCALE_STORAGE_KEY` writes)
+ *  for context `ctx`. Sets THIS window's vue-i18n locale ref ONLY if `ctx` is
+ *  this window's active context — an account-A locale change must not flip
+ *  account-B's window. It does NOT re-persist to `localStorage` or re-notify
+ *  main, since the originating window already did both (and the `storage` event
+ *  doesn't fire in the originator, so there's no double-apply there). `ctx ===
+ *  null` means a legacy un-suffixed write (treated as the current context —
+ *  transitional safety net). No-op if `locale` isn't a known locale. */
+export function syncLocale(locale: string | null, ctx: string | null): void {
+  if (ctx !== null && ctx !== getCurrentContext()) return;
   if (locale != null && (LOCALES as readonly string[]).includes(locale)) {
     i18n.global.locale.value = locale as Locale;
   }

@@ -15,6 +15,7 @@ let mockDb: {
   attachments?: { read: (hash: string, format: string) => Promise<unknown> };
 };
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => mockDb,
   bootstrap: vi.fn()
 }));

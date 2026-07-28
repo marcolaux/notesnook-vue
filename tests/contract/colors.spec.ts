@@ -86,6 +86,7 @@ const db = {
   }
 };
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => db,
   bootstrap: vi.fn()
 }));

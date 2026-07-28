@@ -9,6 +9,12 @@ import en from "@contracts/i18n/en";
 import de from "@contracts/i18n/de";
 import { appStateSetInput } from "@contracts/router";
 
+// `@/i18n` reads the per-account locale via `getCurrentContext()` from
+// bootstrap; mock it so the real (heavy) bootstrap module graph never loads in
+// the headless test env. The current context is fixed to "local" so the
+// per-account key is `notesnook.locale.local`.
+vi.mock("@/platform/bootstrap", () => ({ getCurrentContext: () => "local" }));
+
 // ---------------------------------------------------------------------------
 // Catalog (pure)
 // ---------------------------------------------------------------------------
@@ -148,11 +154,11 @@ describe("setLocale", () => {
     expect(i18n.global.locale.value).toBe("en");
   });
 
-  it("persists the choice to localStorage", () => {
+  it("persists the choice to the per-account localStorage key", () => {
     setLocale("pseudo");
-    expect(storage.getItem("notesnook.locale")).toBe("pseudo");
+    expect(storage.getItem("notesnook.locale.local")).toBe("pseudo");
     setLocale("en");
-    expect(storage.getItem("notesnook.locale")).toBe("en");
+    expect(storage.getItem("notesnook.locale.local")).toBe("en");
   });
 
   it("does not throw when localStorage is unavailable", () => {
@@ -175,9 +181,9 @@ describe("syncLocale (cross-window mirror)", () => {
 
   it("switches this window's vue-i18n ref to a known locale", () => {
     setLocale("en");
-    syncLocale("de");
+    syncLocale("de", "local");
     expect(i18n.global.locale.value).toBe("de");
-    syncLocale("pseudo");
+    syncLocale("pseudo", "local");
     expect(i18n.global.locale.value).toBe("pseudo");
     setLocale("en");
   });
@@ -185,7 +191,7 @@ describe("syncLocale (cross-window mirror)", () => {
   it("does NOT persist to localStorage (the originator already did)", () => {
     // `storage` (the beforeEach fixture) IS globalThis.localStorage here.
     storage.setItem("notesnook.locale", "en");
-    syncLocale("de");
+    syncLocale("de", "local");
     expect(i18n.global.locale.value).toBe("de");
     expect(storage.getItem("notesnook.locale")).toBe("en");
     setLocale("en");
@@ -193,14 +199,27 @@ describe("syncLocale (cross-window mirror)", () => {
 
   it("ignores an unknown locale (no-op)", () => {
     setLocale("en");
-    syncLocale("fr");
+    syncLocale("fr", "local");
     expect(i18n.global.locale.value).toBe("en");
   });
 
   it("ignores null (key cleared in another window)", () => {
     setLocale("en");
-    syncLocale(null);
+    syncLocale(null, "local");
     expect(i18n.global.locale.value).toBe("en");
+  });
+
+  it("applies a legacy (null-ctx) write to the current context", () => {
+    setLocale("en");
+    syncLocale("de", null);
+    expect(i18n.global.locale.value).toBe("de");
+    setLocale("en");
+  });
+
+  it("is ignored when ctx is a different account", () => {
+    setLocale("en");
+    syncLocale("de", "a1b2c3d4e5f60718");
+    expect(i18n.global.locale.value).toBe("en"); // unchanged — not this window's account
   });
 });
 

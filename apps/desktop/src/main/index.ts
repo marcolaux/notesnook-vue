@@ -29,6 +29,7 @@ import { registerAppMenu } from "./menu";
 import { registerWindow, setMainWindow } from "./window";
 import { registerDialog } from "./dialog";
 import { registerImportFs } from "./import-fs";
+import { registerBackupFs } from "./backup-fs";
 import { registerShell } from "./shell";
 import { registerReminders } from "./reminders";
 import { registerAppState } from "./app-state";
@@ -245,6 +246,10 @@ void app.whenReady().then(() => {
   // (Standard Notes import): list the user-picked export folder + read note
   // files and sibling media. Reads are confined to the picked directory.
   registerImportFs();
+  // Backup-FS — directory-scoped writes for the per-account auto-backup
+  // scheduler: lay down each account's backup tree under the shared
+  // `backupDirectory`. Containment-guarded (every path stays inside `root`).
+  registerBackupFs();
   // Shell — write decrypted attachment bytes to a temp file + open with the OS
   // handler, for the attachment preview's "Open externally" action.
   registerShell();

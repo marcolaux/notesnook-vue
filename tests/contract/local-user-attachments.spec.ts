@@ -54,7 +54,7 @@ const dbRef = vi.hoisted(() => {
     }
   };
 });
-vi.mock("@/platform/bootstrap", () => ({ getDatabase: dbRef.getDatabase }));
+vi.mock("@/platform/bootstrap", () => ({ getCurrentContext: () => "local", getDatabase: dbRef.getDatabase }));
 // Import after the mock is registered so the bridge picks up the mock.
 const { wireAttachmentStorage } = await import("@/editor/attachments-bridge");
 

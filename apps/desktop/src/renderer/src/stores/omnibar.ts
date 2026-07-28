@@ -29,7 +29,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { cycleIndex, filterByKey } from "@notesnook-vue/editor-vue";
-import { getDatabase } from "@/platform/bootstrap";
+import { getDatabase, getCurrentContext } from "@/platform/bootstrap";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useEditorStore } from "@/stores/editor";
 import { useNotesStore } from "@/stores/notes";
@@ -321,7 +321,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
     }
 
     // 2. Fall back to pure Lexical FTS5 if Semantic Search is disabled or query fails
-    if (!readSemanticSearchEnabled()) {
+    if (!readSemanticSearchEnabled(getCurrentContext())) {
       return ftsResults;
     }
 

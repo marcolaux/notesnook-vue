@@ -9,6 +9,7 @@ import { useEditorLayoutStore } from "@/stores/editor-layout";
 // toc store reads the notes store (activeNote/activeContent); stub bootstrap
 // so the platform graph isn't loaded.
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => ({
     notes: { all: { items: async () => [] }, note: async () => undefined },
     content: { findByNoteId: async () => null }

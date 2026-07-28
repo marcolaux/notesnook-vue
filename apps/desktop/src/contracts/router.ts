@@ -386,6 +386,48 @@ function requireImportFs(): ImportFsServer {
 }
 
 // ---------------------------------------------------------------------------
+// Backup-FS server — directory-scoped writes for the per-account auto-backup
+// scheduler (`stores/auto-backup.ts`). Implemented in `src/main/backup-fs.ts`.
+// Distinct from `ImportFsServer` (read-only bulk read for the importer) and the
+// `dialog` router (single user-picked UTF-8 file): this is a write-oriented,
+// directory-scoped API (mkdir, write text/bytes, list, delete file/dir) used
+// only by the scheduler to lay down each account's backup tree under the shared
+// `backupDirectory`. Each method takes `root` (the backup directory) plus a
+// relative `path` so the impl re-derives containment statelessly — a crafted
+// `path` ("../../etc/passwd") cannot escape `root` (mirrors `import-fs.ts`).
+// ---------------------------------------------------------------------------
+export interface BackupFsServer {
+  /** Ensure `<root>/<path>` exists as a directory (recursive). `path` is
+   *  enforced to stay inside `root`. */
+  ensureDir(root: string, path: string): Promise<void>;
+  /** Write UTF-8 text to `<root>/<path>` (overwrites). `path` is enforced to
+   *  stay inside `root`. */
+  writeFileText(root: string, path: string, data: string): Promise<void>;
+  /** Write raw bytes to `<root>/<path>` (overwrites). Used for encrypted
+   *  attachment blobs. `path` is enforced to stay inside `root`. */
+  writeFileBytes(root: string, path: string, data: Uint8Array): Promise<void>;
+  /** List entry names directly under `<root>/<path>` (non-recursive). Returns
+   *  `[]` when the directory does not exist. `path` is enforced to stay inside
+   *  `root`. */
+  listDir(root: string, path: string): Promise<string[]>;
+  /** Delete the file at `<root>/<path>`. Swallows a missing file. `path` is
+   *  enforced to stay inside `root`. */
+  deleteFile(root: string, path: string): Promise<void>;
+  /** Recursively remove `<root>/<path>` (a backup directory). Swallows a missing
+   *  directory. `path` is enforced to stay inside `root`. */
+  removeDir(root: string, path: string): Promise<void>;
+}
+
+let backupFsServer: BackupFsServer | undefined;
+export function registerBackupFsServer(server: BackupFsServer): void {
+  backupFsServer = server;
+}
+function requireBackupFs(): BackupFsServer {
+  if (!backupFsServer) throw new Error("Backup-FS server not registered (main boot incomplete)");
+  return backupFsServer;
+}
+
+// ---------------------------------------------------------------------------
 // Window server — native window/theme controls implemented in `src/main/window.ts`
 // (Electron `nativeTheme`). Injected via `registerWindowServer`.
 // ---------------------------------------------------------------------------
@@ -400,8 +442,15 @@ export interface WindowServer {
    * `"updates"`) by appending `?section=<id>` to the loaded URL, which
    * `SettingsLayout.vue` reads on mount to seed its active section. Omitted by
    * callers that just want Settings opened at the default section.
+   *
+   * Optional `contextId` opens (or reloads) the Settings window pinned to a
+   * specific account context via `?ctx=<id>`, so Settings operates on that
+   * account's DB rather than the shared "last used" pointer. When the singleton
+   * is already open on a different context, the window reloads to this one.
+   * Omitted by callers with no known context (e.g. the app menu when no bound
+   * window is focused) → Settings falls back to the shared pointer.
    */
-  openSettings(section: string | undefined): void;
+  openSettings(section: string | undefined, contextId: string | undefined): void;
   /**
    * Open the shared Changelog window (singleton). Focuses the existing window
    * if alive; otherwise creates a dedicated window displaying release notes.
@@ -792,8 +841,8 @@ export const appRouter = t.router({
     // Open the shared Settings window (singleton). Any app window calls this
     // to surface Settings in its own window (see `src/main/settings-window.ts`).
     openSettings: t.procedure
-      .input(z.object({ section: z.string().optional() }).optional())
-      .mutation(({ input }) => requireWindowServer().openSettings(input?.section)),
+      .input(z.object({ section: z.string().optional(), contextId: z.string().optional() }).optional())
+      .mutation(({ input }) => requireWindowServer().openSettings(input?.section, input?.contextId)),
     openChangelog: t.procedure
       .mutation(() => requireWindowServer().openChangelog()),
 
@@ -1072,6 +1121,35 @@ export const appRouter = t.router({
     readUtf8: t.procedure
       .input(z.object({ dir: z.string(), name: z.string() }))
       .query(({ input }) => requireImportFs().readUtf8(input.dir, input.name))
+  }),
+
+  // Backup-FS — directory-scoped writes for the per-account auto-backup
+  // scheduler. Implemented in `src/main/backup-fs.ts`; containment-guarded.
+  backupFs: t.router({
+    ensureDir: t.procedure
+      .input(z.object({ root: z.string(), path: z.string() }))
+      .mutation(({ input }) => requireBackupFs().ensureDir(input.root, input.path)),
+    writeFileText: t.procedure
+      .input(z.object({ root: z.string(), path: z.string(), data: z.string() }))
+      .mutation(({ input }) => requireBackupFs().writeFileText(input.root, input.path, input.data)),
+    writeFileBytes: t.procedure
+      .input(
+        z.object({
+          root: z.string(),
+          path: z.string(),
+          data: z.custom<Uint8Array>((v) => v instanceof Uint8Array)
+        })
+      )
+      .mutation(({ input }) => requireBackupFs().writeFileBytes(input.root, input.path, input.data)),
+    listDir: t.procedure
+      .input(z.object({ root: z.string(), path: z.string() }))
+      .query(({ input }) => requireBackupFs().listDir(input.root, input.path)),
+    deleteFile: t.procedure
+      .input(z.object({ root: z.string(), path: z.string() }))
+      .mutation(({ input }) => requireBackupFs().deleteFile(input.root, input.path)),
+    removeDir: t.procedure
+      .input(z.object({ root: z.string(), path: z.string() }))
+      .mutation(({ input }) => requireBackupFs().removeDir(input.root, input.path))
   }),
 
   // Shell — OS-interaction for the attachment preview's "Open externally"

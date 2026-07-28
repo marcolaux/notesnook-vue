@@ -16,35 +16,55 @@
  */
 import { ref } from "vue";
 import { logger } from "@/utils/logger";
+import { getCurrentContext } from "@/platform/bootstrap";
+import {
+  LOCAL_CONTEXT,
+  readWindowContext,
+  readCurrentContext
+} from "@/platform/account-context";
+import {
+  readCtxStringWithLegacy,
+  writeCtxString,
+  migrateLegacyToCtx,
+  matchCtxKey
+} from "@/platform/per-context-prefs";
 
+/** localStorage BASE key for the global default. The per-account value lives
+ *  at `notesnook.blockColorize.<ctx>`; the legacy un-suffixed key is the
+ *  pre-per-account value (read with fallback, migrated on first contact). */
 const DEFAULT_KEY = "notesnook.blockColorize";
+/** localStorage BASE key for the per-note override map. Per-account because note
+ *  ids are DB-scoped (a given note id only exists under one account). */
 const OVERRIDES_KEY = "notesnook.blockColorizeOverrides";
 const DEFAULT_VALUE = false;
 
-function readBool(key: string, def: boolean): boolean {
-  try {
-    const v = localStorage.getItem(key);
-    if (v === "true") return true;
-    if (v === "false") return false;
-    return def;
-  } catch {
-    return def;
-  }
+/** Resolve the context for the import-time ref init — `bootstrap()` may not
+ *  have run yet, so prefer the window `?ctx=` pin + the shared "last used"
+ *  pointer (localStorage only) over the in-process default. */
+function initialCtx(): string {
+  return readWindowContext() ?? readCurrentContext() ?? LOCAL_CONTEXT;
 }
 
-function writeBool(key: string, value: boolean): void {
+function readBool(base: string, ctx: string, def: boolean): boolean {
+  const { value } = readCtxStringWithLegacy(base, ctx);
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return def;
+}
+
+function writeBool(base: string, ctx: string, value: boolean): void {
   try {
-    localStorage.setItem(key, value ? "true" : "false");
+    writeCtxString(base, ctx, value ? "true" : "false");
   } catch (e) {
     logger.error("[block-colorize] write default failed:", e);
   }
 }
 
-function readOverrides(key: string): Record<string, boolean> {
+function readOverrides(base: string, ctx: string): Record<string, boolean> {
+  const { value: raw } = readCtxStringWithLegacy(base, ctx);
+  if (!raw) return {};
   try {
-    const v = localStorage.getItem(key);
-    if (!v) return {};
-    const parsed = JSON.parse(v) as unknown;
+    const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === "object") {
       const out: Record<string, boolean> = {};
       for (const [k, val] of Object.entries(parsed as Record<string, unknown>)) {
@@ -59,20 +79,20 @@ function readOverrides(key: string): Record<string, boolean> {
   }
 }
 
-function writeOverrides(key: string, value: Record<string, boolean>): void {
+function writeOverrides(base: string, ctx: string, value: Record<string, boolean>): void {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    writeCtxString(base, ctx, JSON.stringify(value));
   } catch (e) {
     logger.error("[block-colorize] write overrides failed:", e);
   }
 }
 
-/** Global default (false = colorize off by default). */
-export const blockColorizeDefault = ref<boolean>(readBool(DEFAULT_KEY, DEFAULT_VALUE));
+/** Global default (false = colorize off by default) for the current account. */
+export const blockColorizeDefault = ref<boolean>(readBool(DEFAULT_KEY, initialCtx(), DEFAULT_VALUE));
 
 /** Per-note overrides: `noteId → enabled`. Absent = fall back to default. */
 export const blockColorizeOverrides = ref<Record<string, boolean>>(
-  readOverrides(OVERRIDES_KEY)
+  readOverrides(OVERRIDES_KEY, initialCtx())
 );
 
 /** Effective on/off state for a note (override if present, else the global
@@ -102,13 +122,14 @@ export function toggleBlockColorize(
     overrides[noteId] = next;
   }
   blockColorizeOverrides.value = overrides;
-  writeOverrides(OVERRIDES_KEY, overrides);
+  writeOverrides(OVERRIDES_KEY, getCurrentContext(), overrides);
 }
 
 /** Set the global default. Prunes overrides that now match the new default. */
 export function setBlockColorizeDefault(value: boolean): void {
+  const ctx = getCurrentContext();
   blockColorizeDefault.value = value;
-  writeBool(DEFAULT_KEY, value);
+  writeBool(DEFAULT_KEY, ctx, value);
   const overrides = { ...blockColorizeOverrides.value };
   let changed = false;
   for (const id of Object.keys(overrides)) {
@@ -119,21 +140,38 @@ export function setBlockColorizeDefault(value: boolean): void {
   }
   if (changed) {
     blockColorizeOverrides.value = overrides;
-    writeOverrides(OVERRIDES_KEY, overrides);
+    writeOverrides(OVERRIDES_KEY, ctx, overrides);
   }
+}
+
+/** Re-read the per-account default + overrides for `ctx` (with lazy legacy
+ *  migration) into the module refs. Call after a context switch (Settings
+ *  `switchContext`, main window `contextChangeSignal` watch) so open editors
+ *  re-apply the newly-active account's colorize state. */
+export function reloadBlockColorize(ctx: string = getCurrentContext()): void {
+  migrateLegacyToCtx(DEFAULT_KEY, ctx);
+  migrateLegacyToCtx(OVERRIDES_KEY, ctx);
+  blockColorizeDefault.value = readBool(DEFAULT_KEY, ctx, DEFAULT_VALUE);
+  blockColorizeOverrides.value = readOverrides(OVERRIDES_KEY, ctx);
 }
 
 // Cross-window live sync: the Settings window is a separate renderer process;
 // when it writes these keys the `storage` event fires here, so we refresh the
-// refs and the open editors re-apply via the bridge's reactive watch. (The
-// storage event does NOT fire in the window that performed the write, so the
-// local refs above are already correct there.)
+// refs and the open editors re-apply via the bridge's reactive watch. The
+// event is ctx-gated — an account-A write must not flip account-B's window —
+// and a legacy un-suffixed write (ctx null) is applied to the current context
+// as a transitional safety net. (The storage event does NOT fire in the window
+// that performed the write, so the local refs above are already correct there.)
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
-    if (e.key === DEFAULT_KEY) {
+    const match = matchCtxKey(e.key ?? "", [DEFAULT_KEY, OVERRIDES_KEY]);
+    if (!match) return;
+    const ctx = match.ctx;
+    if (ctx !== null && ctx !== getCurrentContext()) return;
+    if (match.base === DEFAULT_KEY) {
       blockColorizeDefault.value = e.newValue === "true";
-    } else if (e.key === OVERRIDES_KEY) {
-      blockColorizeOverrides.value = readOverrides(OVERRIDES_KEY);
+    } else if (match.base === OVERRIDES_KEY) {
+      blockColorizeOverrides.value = readOverrides(OVERRIDES_KEY, getCurrentContext());
     }
   });
 }

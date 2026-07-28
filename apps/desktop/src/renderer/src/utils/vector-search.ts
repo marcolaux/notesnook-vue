@@ -67,7 +67,7 @@ async function runSqlBatch(
  * resolves to `null` (callers skip the chunk / fall back to lexical search).
  */
 export async function computeEmbedding(text: string): Promise<Float32Array | null> {
-  if (!readSemanticSearchEnabled()) return null;
+  if (!readSemanticSearchEnabled(getCurrentContext())) return null;
   return embed(text);
 }
 
@@ -84,7 +84,7 @@ export async function searchVectorEmbeddings(
   queryText: string,
   limit = 20
 ): Promise<VectorSearchResult[]> {
-  if (!readSemanticSearchEnabled() || !queryText.trim()) return [];
+  if (!readSemanticSearchEnabled(getCurrentContext()) || !queryText.trim()) return [];
 
   const queryVector = await computeEmbedding(queryText);
   if (!queryVector) return [];
@@ -149,7 +149,7 @@ export async function indexNoteEmbeddings(
   rawContent: string,
   title?: string
 ): Promise<void> {
-  if (!readSemanticSearchEnabled() || !noteId) return;
+  if (!readSemanticSearchEnabled(getCurrentContext()) || !noteId) return;
 
   const fullText = title && title.trim() ? `${title.trim()}\n\n${rawContent}` : rawContent;
   const chunks = chunkText(fullText);
@@ -266,7 +266,7 @@ export function queueIndexNoteEmbeddings(
   rawContent: string,
   title?: string
 ): void {
-  if (!readSemanticSearchEnabled() || !noteId || !rawContent) return;
+  if (!readSemanticSearchEnabled(getCurrentContext()) || !noteId || !rawContent) return;
 
   bindUserActivityListeners();
   indexQueue.set(noteId, { rawContent, title });
@@ -364,7 +364,7 @@ export async function purgeVectorIndex(): Promise<void> {
  * and queues them for vector embedding generation during idle CPU time.
  */
 export async function indexUnindexedNotes(): Promise<void> {
-  if (!readSemanticSearchEnabled()) return;
+  if (!readSemanticSearchEnabled(getCurrentContext())) return;
   try {
     const indexedRows = await runSql<{ note_id: string }>(
       "SELECT DISTINCT note_id FROM vec_notes"
@@ -380,7 +380,7 @@ export async function indexUnindexedNotes(): Promise<void> {
     if (unindexed.length === 0) return;
 
     for (const note of unindexed) {
-      if (!readSemanticSearchEnabled()) break;
+      if (!readSemanticSearchEnabled(getCurrentContext())) break;
       try {
         const item = await db.content.findByNoteId(note.id);
         const data = item && typeof item.data === "string" ? item.data : "";
@@ -419,7 +419,7 @@ export interface NoteCentroidEmbedding {
  * to return a normalized 384-dimensional centroid vector for each note.
  */
 export async function getAllNoteCentroidEmbeddings(): Promise<Map<string, NoteCentroidEmbedding>> {
-  if (!readSemanticSearchEnabled()) return new Map();
+  if (!readSemanticSearchEnabled(getCurrentContext())) return new Map();
 
   try {
     const rows = await runSql<{

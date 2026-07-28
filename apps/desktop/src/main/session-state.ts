@@ -308,10 +308,14 @@ export function getOpenMainWindowsForRestore(): {
 
 /** Resolve the context a window belongs to (for geometry writes). The main
  *  window is bound via `bindContext`; until then returns `undefined` so the
- *  caller skips the write (boot still settling). */
-function resolveContextForWindow(win: BrowserWindow): string | undefined {
-  const ctx = contextBySenderId.get(win.webContents.id);
-  return ctx;
+ *  caller skips the write (boot still settling). Also used by the app menu to
+ *  open the Settings window pinned to the focused window's account context;
+ *  unbound windows (the Settings window itself, or a pre-boot main window)
+ *  return `undefined` so the caller falls back to the shared "last used"
+ *  pointer. */
+export function resolveContextForWindow(win: BrowserWindow | undefined): string | undefined {
+  if (!win) return undefined;
+  return contextBySenderId.get(win.webContents.id);
 }
 
 function rawBounds(win: BrowserWindow): WindowBounds {

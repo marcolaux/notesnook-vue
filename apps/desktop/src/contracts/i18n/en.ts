@@ -128,10 +128,8 @@ export default {
   settings: {
     title: "Settings",
     groups: {
-      customization: "Customization",
-      security: "Security",
-      syncBackup: "Sync & backup",
-      about: "About"
+      /** Device-wide sections (Sync / Backup / Import / Attachments / Updates). */
+      global: "Global"
     },
     sections: {
       appearance: "Appearance",
@@ -306,6 +304,10 @@ export default {
       monthly: "Monthly",
       autoBackups: "Automatic backups",
       autoBackupsFull: "Automatic backups with attachments",
+      autoBackupsAllAccounts: "Automatic backups run for every account into its own subfolder of the backup directory.",
+      autoBackupsDormantNote: "Dormant accounts (expired login) back up notes plus only their locally-cached attachments.",
+      retentionCount: "Keep last backups",
+      retentionCountHint: "Number of automatic backups to keep per account per mode (older ones are deleted).",
       backupDirectory: "Backup directory",
       backupDirPlaceholder: "Not set (prompts for location on backup)",
       backupDirHint: "Select a directory to store automatic and manual backups without prompting.",

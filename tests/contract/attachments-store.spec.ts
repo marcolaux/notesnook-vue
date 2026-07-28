@@ -23,6 +23,7 @@ const dbRef = vi.hoisted(() => {
   };
 });
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: dbRef.getDatabase,
   bootstrap: vi.fn()
 }));

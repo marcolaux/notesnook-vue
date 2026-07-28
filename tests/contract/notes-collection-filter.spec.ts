@@ -23,6 +23,7 @@ let mockDb: {
 };
 
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => mockDb,
   bootstrap: vi.fn()
 }));

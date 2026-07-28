@@ -20,6 +20,7 @@ import { registerCommands, clearCommands, type Command } from "@/commands/regist
 // The omnibar store imports `getDatabase` + `goToCollection`; stub both so the
 // platform graph (sodium/crypto/bridge) + the router/db aren't pulled in.
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => ({}),
   bootstrap: vi.fn()
 }));

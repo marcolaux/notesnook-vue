@@ -9,6 +9,7 @@ import type { Command } from "./registry";
 import { VIEWS } from "@/router/routes";
 import { desktop } from "@/platform/desktop-bridge";
 import { readCurrentContext } from "@/platform/account-context";
+import { getCurrentContext } from "@/platform/bootstrap";
 import { usePublishDialogStore } from "@/stores/publish-dialog";
 import { useDialogStore } from "@/stores/dialog";
 import { useTemplatesStore } from "@/stores/templates";
@@ -504,7 +505,7 @@ const settingsCommand: Command = {
   group: "app",
   when: (ctx) => ctx.auth.showShell,
   run: () => {
-    void desktop.window.openSettings.mutate().catch(() => undefined);
+    void desktop.window.openSettings.mutate({ contextId: getCurrentContext() }).catch(() => undefined);
   }
 };
 

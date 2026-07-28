@@ -68,18 +68,29 @@ export function isSettingsWindow(win: BrowserWindow | undefined | null): boolean
   return !!win && !win.isDestroyed() && win === settingsWindow;
 }
 
-export function openSettingsWindow(preloadPath: string, section?: string): void {
+export function openSettingsWindow(preloadPath: string, section?: string, contextId?: string): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     // eslint-disable-next-line no-console
     console.log("[settings-window] focusing existing window");
     if (settingsWindow.isMinimized()) settingsWindow.restore();
     settingsWindow.show();
     settingsWindow.focus();
-    // If a deep-link section was requested, nudge the existing window to it
-    // (best-effort: the renderer re-reads `?section=` on receiving this).
-    if (section) {
-      const u = new URL(settingsWindow.webContents.getURL());
-      u.searchParams.set("section", section);
+    // Reload the existing window to the requested section/context only when
+    // either differs from what it is currently showing. Same section + same
+    // context → just focus (no reload). A different `?ctx=` reloads so the
+    // Settings window re-boots into the caller's account DB; a different
+    // `?section=` deep-links as before. Best-effort: the renderer re-reads
+    // both query params on mount.
+    const u = new URL(settingsWindow.webContents.getURL());
+    const curCtx = u.searchParams.get("ctx") ?? "";
+    const newCtx = contextId ?? "";
+    const curSection = u.searchParams.get("section") ?? "";
+    const newSection = section ?? "";
+    if (newCtx !== curCtx || newSection !== curSection) {
+      if (section) u.searchParams.set("section", section);
+      else u.searchParams.delete("section");
+      if (contextId) u.searchParams.set("ctx", contextId);
+      else u.searchParams.delete("ctx");
       void settingsWindow.webContents.loadURL(u.toString());
     }
     return;
@@ -134,15 +145,18 @@ export function openSettingsWindow(preloadPath: string, section?: string): void 
 
   // Deep-link section (e.g. `?section=updates`) so callers like the title-bar
   // update badge can open Settings on a specific section. `SettingsLayout.vue`
-  // reads this on mount to seed its active section.
+  // reads this on mount to seed its active section. `?ctx=<id>` (when passed)
+  // pins the Settings window to the caller's account context so it operates on
+  // that account's DB; omitted → the renderer falls back to the shared
+  // "last used" pointer (see `platform/bootstrap.ts`).
+  const query: Record<string, string> = { window: "settings" };
+  if (section) query.section = section;
+  if (contextId) query.ctx = contextId;
   const devUrl = process.env["ELECTRON_RENDERER_URL"];
   if (devUrl) {
-    const params = new URLSearchParams(section ? { window: "settings", section } : { window: "settings" });
+    const params = new URLSearchParams(query);
     void settingsWindow.loadURL(`${devUrl}?${params.toString()}`);
   } else {
-    const query: Record<string, string> = section
-      ? { window: "settings", section }
-      : { window: "settings" };
     void settingsWindow.loadFile(resolve(__dirname, "../renderer/index.html"), { query });
   }
 }

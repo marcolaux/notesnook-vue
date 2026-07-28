@@ -1,9 +1,15 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { getDatabase } from "@/platform/bootstrap";
+import { getDatabase, getCurrentContext } from "@/platform/bootstrap";
 import type { TimeFormat, TrashCleanupInterval, Profile, DayFormat, WeekFormat } from "@notesnook-vue/contracts";
 import { ThemeDark, ThemeLight, type VueTheme } from "@notesnook-vue/theme-vue";
 import { logger, readLoggingEnabled, writeLoggingEnabled } from "@/utils/logger";
+import {
+  readCtxStringWithLegacy,
+  writeCtxString,
+  removeCtxKey,
+  migrateLegacyToCtx
+} from "@/platform/per-context-prefs";
 
 /**
  * Settings store (Phase 7) — the headless data backend for `SettingsView`.
@@ -58,13 +64,15 @@ const DEFAULT_THEME_MODE: ThemeMode = "dark";
  *  GitHub API call; users who'd rather not ping api.github.com can turn it off). */
 const DEFAULT_UPSTREAM_CHECK_ENABLED = true;
 
-function readThemeMode(): ThemeMode {
-  try {
-    const v = localStorage.getItem(THEME_MODE_KEY);
-    return v === "light" || v === "dark" || v === "system" ? v : DEFAULT_THEME_MODE;
-  } catch {
-    return DEFAULT_THEME_MODE;
-  }
+/** Read the per-context `themeMode`, falling back to the legacy un-suffixed
+ *  key (lazy migration — `loadClientPrefs` copies it into the ctx key). */
+function readThemeMode(ctx: string): ThemeMode {
+  const { value } = readCtxStringWithLegacy(THEME_MODE_KEY, ctx);
+  return value === "light" || value === "dark" || value === "system" ? value : DEFAULT_THEME_MODE;
+}
+
+function writeThemeMode(mode: ThemeMode, ctx: string): void {
+  writeCtxString(THEME_MODE_KEY, ctx, mode);
 }
 
 /** localStorage key for the `upstreamReleaseCheckEnabled` client-only toggle. */
@@ -128,91 +136,66 @@ function writeTasksShowCompleted(enabled: boolean): void {
 const DEFAULT_TRANSPARENCY_ENABLED = true;
 export const TRANSPARENCY_ENABLED_KEY = "notesnook.transparencyEnabled";
 
-export function readTransparencyEnabled(): boolean {
-  try {
-    const v = localStorage.getItem(TRANSPARENCY_ENABLED_KEY);
-    if (v === "false") return false;
-    if (v === "true") return true;
-    return DEFAULT_TRANSPARENCY_ENABLED;
-  } catch {
-    return DEFAULT_TRANSPARENCY_ENABLED;
-  }
+export function readTransparencyEnabled(ctx: string): boolean {
+  const { value } = readCtxStringWithLegacy(TRANSPARENCY_ENABLED_KEY, ctx);
+  if (value === "false") return false;
+  if (value === "true") return true;
+  return DEFAULT_TRANSPARENCY_ENABLED;
 }
 
-function writeTransparencyEnabled(enabled: boolean): void {
-  try {
-    localStorage.setItem(TRANSPARENCY_ENABLED_KEY, enabled ? "true" : "false");
-  } catch {
-    /* best-effort — persistence is optional */
-  }
+function writeTransparencyEnabled(enabled: boolean, ctx: string): void {
+  writeCtxString(TRANSPARENCY_ENABLED_KEY, ctx, enabled ? "true" : "false");
 }
 
 export const SEMANTIC_SEARCH_ENABLED_KEY = "notesnook.semanticSearchEnabled";
 export const SEMANTIC_SEARCH_PROMPTED_KEY = "notesnook.semanticSearchPrompted";
 
-/** Check if this is a brand new install (no pre-existing notesnook settings in localStorage) */
-function isBrandNewInstall(): boolean {
-  try {
-    return (
-      localStorage.getItem(SEMANTIC_SEARCH_PROMPTED_KEY) === null &&
-      localStorage.getItem(SEMANTIC_SEARCH_ENABLED_KEY) === null &&
-      localStorage.getItem(TRANSPARENCY_ENABLED_KEY) === null &&
-      localStorage.getItem(THEME_MODE_KEY) === null
-    );
-  } catch {
-    return false;
-  }
+/** Check if this is a brand new install for context `ctx` — no per-context key
+ *  AND no legacy un-suffixed key for any of the four boot-signal keys. The
+ *  legacy check is kept so an upgrading user (whose values still live under the
+ *  un-suffixed keys until first read) is NOT re-prompted as a "new install". */
+function isBrandNewInstall(ctx: string): boolean {
+  const legacyAbsent =
+    readCtxStringWithLegacy(SEMANTIC_SEARCH_PROMPTED_KEY, ctx).value === null &&
+    readCtxStringWithLegacy(SEMANTIC_SEARCH_ENABLED_KEY, ctx).value === null &&
+    readCtxStringWithLegacy(TRANSPARENCY_ENABLED_KEY, ctx).value === null &&
+    readCtxStringWithLegacy(THEME_MODE_KEY, ctx).value === null;
+  return legacyAbsent;
 }
 
-export function readSemanticSearchPrompted(): boolean {
-  try {
-    const p = localStorage.getItem(SEMANTIC_SEARCH_PROMPTED_KEY);
-    if (p === "true") return true;
-    if (p === "false") return false;
+export function readSemanticSearchPrompted(ctx: string): boolean {
+  const { value: p } = readCtxStringWithLegacy(SEMANTIC_SEARCH_PROMPTED_KEY, ctx);
+  if (p === "true") return true;
+  if (p === "false") return false;
 
-    // Brand new installs are auto-marked as prompted (enabled by default without dialog)
-    if (isBrandNewInstall()) {
-      writeSemanticSearchPrompted(true);
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
+  // Brand new installs are auto-marked as prompted (enabled by default without dialog)
+  if (isBrandNewInstall(ctx)) {
+    writeSemanticSearchPrompted(true, ctx);
+    return true;
   }
+  return false;
 }
 
-export function readSemanticSearchEnabled(): boolean {
-  try {
-    const v = localStorage.getItem(SEMANTIC_SEARCH_ENABLED_KEY);
-    if (v === "false") return false;
-    if (v === "true") return true;
+export function readSemanticSearchEnabled(ctx: string): boolean {
+  const { value: v } = readCtxStringWithLegacy(SEMANTIC_SEARCH_ENABLED_KEY, ctx);
+  if (v === "false") return false;
+  if (v === "true") return true;
 
-    // Brand new installs default to true; existing upgrading users default to false until prompted
-    const isNew = isBrandNewInstall();
-    if (isNew) {
-      writeSemanticSearchEnabled(true);
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
+  // Brand new installs default to true; existing upgrading users default to false until prompted
+  const isNew = isBrandNewInstall(ctx);
+  if (isNew) {
+    writeSemanticSearchEnabled(true, ctx);
+    return true;
   }
+  return false;
 }
 
-function writeSemanticSearchEnabled(enabled: boolean): void {
-  try {
-    localStorage.setItem(SEMANTIC_SEARCH_ENABLED_KEY, enabled ? "true" : "false");
-  } catch {
-    /* best-effort — persistence is optional */
-  }
+function writeSemanticSearchEnabled(enabled: boolean, ctx: string): void {
+  writeCtxString(SEMANTIC_SEARCH_ENABLED_KEY, ctx, enabled ? "true" : "false");
 }
 
-export function writeSemanticSearchPrompted(prompted: boolean): void {
-  try {
-    localStorage.setItem(SEMANTIC_SEARCH_PROMPTED_KEY, prompted ? "true" : "false");
-  } catch {
-    /* best-effort — persistence is optional */
-  }
+export function writeSemanticSearchPrompted(prompted: boolean, ctx: string): void {
+  writeCtxString(SEMANTIC_SEARCH_PROMPTED_KEY, ctx, prompted ? "true" : "false");
 }
 
 /**
@@ -228,30 +211,18 @@ export function writeSemanticSearchPrompted(prompted: boolean): void {
 export const THEME_DARK_KEY = "notesnook.theme.dark";
 export const THEME_LIGHT_KEY = "notesnook.theme.light";
 
-function readStoredTheme(key: string, fallback: VueTheme): VueTheme {
+function readStoredTheme(base: string, ctx: string, fallback: VueTheme): VueTheme {
+  const { value: raw } = readCtxStringWithLegacy(base, ctx);
+  if (!raw) return fallback;
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
     return JSON.parse(raw) as VueTheme;
   } catch {
     return fallback;
   }
 }
 
-function writeStoredTheme(key: string, theme: VueTheme): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(theme));
-  } catch {
-    /* best-effort — persistence is optional */
-  }
-}
-
-function writeThemeMode(mode: ThemeMode): void {
-  try {
-    localStorage.setItem(THEME_MODE_KEY, mode);
-  } catch {
-    /* best-effort — persistence is optional */
-  }
+function writeStoredTheme(base: string, ctx: string, theme: VueTheme): void {
+  writeCtxString(base, ctx, JSON.stringify(theme));
 }
 
 export const useSettingsStore = defineStore("settings", () => {
@@ -269,7 +240,12 @@ export const useSettingsStore = defineStore("settings", () => {
   const profile = ref<Profile | undefined>(undefined);
 
   // --- client-only (ours) ----------------------------------------------------
-  const themeMode = ref<ThemeMode>(readThemeMode());
+  // The per-account client prefs (theme/transparency/semantic/theme slots) are
+  // keyed by context in localStorage; the store reads them for the current
+  // context at construction and again in `loadClientPrefs(ctx)` after a context
+  // switch. `getCurrentContext()` is set by `bootstrap()` before the store is
+  // first used (App.vue setup); in the headless test env it is mocked.
+  const themeMode = ref<ThemeMode>(readThemeMode(getCurrentContext()));
   /** Bumped by `setThemeMode`; `App.vue` watches it to apply `setTheme` on-site. */
   const themeChangeSignal = ref(0);
   /** Whether the in-app upstream-release notifier may run its once-a-day check. */
@@ -279,25 +255,71 @@ export const useSettingsStore = defineStore("settings", () => {
   /** Whether the acrylic/glass look is on. Bumped-signal pattern mirrors
    *  `themeMode` — `App.vue` watches `transparencyChangeSignal` to apply the
    *  `data-transparency` attr on <html> on-site (keeps the store DOM-free). */
-  const transparencyEnabled = ref<boolean>(readTransparencyEnabled());
+  const transparencyEnabled = ref<boolean>(readTransparencyEnabled(getCurrentContext()));
   const transparencyChangeSignal = ref(0);
   /** Whether on-device Semantic Vector Search is enabled. */
-  const semanticSearchEnabled = ref<boolean>(readSemanticSearchEnabled());
+  const semanticSearchEnabled = ref<boolean>(readSemanticSearchEnabled(getCurrentContext()));
   /** Whether diagnostic `logger.log/warn/info` output is enabled (forced on in
    *  dev; off by default in packaged builds). Errors always print regardless. */
   const loggingEnabled = ref<boolean>(readLoggingEnabled());
   /** Whether the user has been prompted via dialog about vector search onboarding. */
-  const semanticSearchPrompted = ref<boolean>(readSemanticSearchPrompted());
+  const semanticSearchPrompted = ref<boolean>(readSemanticSearchPrompted(getCurrentContext()));
   /** The two theme slots. Default to the vendored built-ins until a theme is
    *  installed from the catalog or imported from a file. */
-  const darkTheme = ref<VueTheme>(readStoredTheme(THEME_DARK_KEY, ThemeDark));
-  const lightTheme = ref<VueTheme>(readStoredTheme(THEME_LIGHT_KEY, ThemeLight));
+  const darkTheme = ref<VueTheme>(readStoredTheme(THEME_DARK_KEY, getCurrentContext(), ThemeDark));
+  const lightTheme = ref<VueTheme>(readStoredTheme(THEME_LIGHT_KEY, getCurrentContext(), ThemeLight));
+
+  /**
+   * Re-read the per-account client-only prefs (theme mode, transparency,
+   * semantic-search toggles, theme slots) for `ctx` into the store refs, with
+   * lazy legacy migration. Call after a context switch (the Settings window's
+   * `switchContext`, the main window's `contextChangeSignal` watch) so the UI
+   * reflects the newly-active account. `load()` only covers `db.settings`-backed
+   * values; this covers the localStorage-backed ones. Defaults `ctx` to the live
+   * context for convenience.
+   */
+  function loadClientPrefs(ctx: string = getCurrentContext()): void {
+    // Lazy-migrate any legacy un-suffixed values into this ctx's keys on first
+    // contact so an upgrading user's existing prefs carry forward to this account.
+    migrateLegacyToCtx(THEME_MODE_KEY, ctx);
+    migrateLegacyToCtx(TRANSPARENCY_ENABLED_KEY, ctx);
+    migrateLegacyToCtx(SEMANTIC_SEARCH_ENABLED_KEY, ctx);
+    migrateLegacyToCtx(SEMANTIC_SEARCH_PROMPTED_KEY, ctx);
+    migrateLegacyToCtx(THEME_DARK_KEY, ctx);
+    migrateLegacyToCtx(THEME_LIGHT_KEY, ctx);
+    const prevMode = themeMode.value;
+    const prevTransparency = transparencyEnabled.value;
+    const prevDark = darkTheme.value;
+    const prevLight = lightTheme.value;
+    themeMode.value = readThemeMode(ctx);
+    transparencyEnabled.value = readTransparencyEnabled(ctx);
+    semanticSearchEnabled.value = readSemanticSearchEnabled(ctx);
+    semanticSearchPrompted.value = readSemanticSearchPrompted(ctx);
+    darkTheme.value = readStoredTheme(THEME_DARK_KEY, ctx, ThemeDark);
+    lightTheme.value = readStoredTheme(THEME_LIGHT_KEY, ctx, ThemeLight);
+    // Bump the change signals only when a value actually changed across the
+    // context switch, so every window's existing `themeChangeSignal` /
+    // `transparencyChangeSignal` watch re-applies the renderer theme +
+    // transparency for the newly-active account (the Settings window has no
+    // `applyTheme` of its own; it relies on this signal). No bump when the
+    // values are unchanged (avoids a redundant `setNativeTheme` round-trip).
+    if (
+      themeMode.value !== prevMode ||
+      darkTheme.value !== prevDark ||
+      lightTheme.value !== prevLight
+    ) {
+      themeChangeSignal.value += 1;
+    }
+    if (transparencyEnabled.value !== prevTransparency) {
+      transparencyChangeSignal.value += 1;
+    }
+  }
 
   /**
    * Read all db.settings-backed values into the store. Called on boot (after
    * the db is up) and can be re-called to refresh. Never throws — a failure
-   * leaves the previous values intact. `themeMode` is loaded from
-   * `localStorage` at construction, not here.
+   * leaves the previous values intact. Client-only prefs are loaded at
+   * construction and via `loadClientPrefs`, not here.
    */
   async function load(): Promise<void> {
     try {
@@ -420,11 +442,12 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
-  /** Set the theme mode (light/dark/system), persist to localStorage, and bump
-   * the change signal so `App.vue` re-applies `setTheme` on-site. */
+  /** Set the theme mode (light/dark/system), persist to the current account's
+   *  localStorage key, and bump the change signal so `App.vue` re-applies
+   *  `setTheme` on-site. */
   function setThemeMode(mode: ThemeMode): void {
     themeMode.value = mode;
-    writeThemeMode(mode);
+    writeThemeMode(mode, getCurrentContext());
     themeChangeSignal.value += 1;
   }
 
@@ -440,72 +463,75 @@ export const useSettingsStore = defineStore("settings", () => {
     writeTasksShowCompleted(enabled);
   }
 
-  /** Set the transparency toggle, persist to localStorage, and bump the change
-   *  signal so `App.vue` re-applies `data-transparency` on-site. */
+  /** Set the transparency toggle, persist to the current account's localStorage
+   *  key, and bump the change signal so `App.vue` re-applies
+   *  `data-transparency` on-site. */
   function setTransparencyEnabled(enabled: boolean): void {
     transparencyEnabled.value = enabled;
-    writeTransparencyEnabled(enabled);
+    writeTransparencyEnabled(enabled, getCurrentContext());
     transparencyChangeSignal.value += 1;
   }
 
   /**
    * Mirror a `themeMode` change made in ANOTHER window (delivered via the
-   * `storage` event). Updates the local ref so this window's system-mode
-   * OS-preference listener etc. see the right value, but does NOT write
-   * localStorage (the other window already did) and does NOT bump
-   * `themeChangeSignal` (the other window's `App.vue` already re-applied;
-   * bumping here would re-trigger the local `applyTheme` → `setNativeTheme`
-   * chain). The caller (`App.vue`) re-applies the renderer CSS itself.
+   * `storage` event) for context `ctx`. Updates the local ref only if `ctx` is
+   * this window's active context — a theme change for account A must not flip
+   * account B's window. Does NOT write localStorage (the other window already
+   * did) and does NOT bump `themeChangeSignal` (the other window's `App.vue`
+   * already re-applied; bumping here would re-trigger the local `applyTheme` →
+   * `setNativeTheme` chain). The caller (`App.vue`) re-applies the renderer CSS
+   * itself. `ctx === null` means a legacy un-suffixed write (treated as the
+   * current context — transitional safety net).
    */
-  function syncThemeMode(mode: ThemeMode): void {
+  function syncThemeMode(mode: ThemeMode, ctx: string | null): void {
+    if (ctx !== null && ctx !== getCurrentContext()) return;
     themeMode.value = mode;
   }
 
   /**
    * Mirror a `transparencyEnabled` change made in ANOTHER window (delivered
-   * via the `storage` event). Same contract as `syncThemeMode`: updates the
-   * local ref, does NOT write localStorage (the other window did) and does NOT
-   * bump `transparencyChangeSignal` (the other window's `App.vue` already
-   * re-applied). The caller (`App.vue`) re-applies `data-transparency` itself.
+   * via the `storage` event) for context `ctx`. Same contract as
+   * `syncThemeMode`: ctx-gated, no localStorage write, no signal bump. The
+   * caller (`App.vue`) re-applies `data-transparency` itself.
    */
-  function syncTransparencyEnabled(enabled: boolean): void {
+  function syncTransparencyEnabled(enabled: boolean, ctx: string | null): void {
+    if (ctx !== null && ctx !== getCurrentContext()) return;
     transparencyEnabled.value = enabled;
   }
 
   /**
    * Install `theme` into the slot for its `colorScheme` (dark/light) — persists
-   * the full theme JSON + swaps that slot + bumps `themeChangeSignal` so
-   * `App.vue` re-applies it if the slot is the active one. Deliberately does
-   * NOT touch `themeMode` (light/dark/system): installing a theme populates its
-   * slot, but which slot is active stays under the user's mode control (the
-   * Appearance mode toggle). The other slot is left untouched. (Upstream
-   * flips colorScheme on install; we don't — the user keeps their mode.)
+   * the full theme JSON to the current account's slot key + swaps that slot +
+   * bumps `themeChangeSignal` so `App.vue` re-applies it if the slot is the
+   * active one. Deliberately does NOT touch `themeMode` (light/dark/system):
+   * installing a theme populates its slot, but which slot is active stays under
+   * the user's mode control (the Appearance mode toggle). The other slot is
+   * left untouched. (Upstream flips colorScheme on install; we don't — the user
+   * keeps their mode.)
    */
   function setActiveTheme(theme: VueTheme): void {
+    const ctx = getCurrentContext();
     if (theme.colorScheme === "dark") {
       darkTheme.value = theme;
-      writeStoredTheme(THEME_DARK_KEY, theme);
+      writeStoredTheme(THEME_DARK_KEY, ctx, theme);
     } else {
       lightTheme.value = theme;
-      writeStoredTheme(THEME_LIGHT_KEY, theme);
+      writeStoredTheme(THEME_LIGHT_KEY, ctx, theme);
     }
     themeChangeSignal.value += 1;
   }
 
   /**
    * Reset installed dark and light themes back to built-in stock themes
-   * (ThemeDark / ThemeLight), remove stored theme entries from localStorage,
-   * and bump `themeChangeSignal` so active theme is re-applied on-site.
+   * (ThemeDark / ThemeLight), remove the current account's stored theme
+   * entries, and bump `themeChangeSignal` so active theme is re-applied on-site.
    */
   function restoreStockThemes(): void {
+    const ctx = getCurrentContext();
     darkTheme.value = ThemeDark;
     lightTheme.value = ThemeLight;
-    try {
-      localStorage.removeItem(THEME_DARK_KEY);
-      localStorage.removeItem(THEME_LIGHT_KEY);
-    } catch {
-      /* best-effort — persistence is optional */
-    }
+    removeCtxKey(THEME_DARK_KEY, ctx);
+    removeCtxKey(THEME_LIGHT_KEY, ctx);
     themeChangeSignal.value += 1;
   }
 
@@ -520,23 +546,25 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   /**
-   * Mirror a slot change made in ANOTHER window (via the `storage` event). No
-   * localStorage write (the other window did it) and no signal bump (the other
-   * window's `App.vue` already re-applied; the caller re-applies here).
+   * Mirror a slot change made in ANOTHER window (via the `storage` event) for
+   * context `ctx`. ctx-gated; no localStorage write (the other window did it)
+   * and no signal bump (the other window's `App.vue` already re-applied; the
+   * caller re-applies here).
    */
-  function syncStoredTheme(colorScheme: "dark" | "light", theme: VueTheme): void {
+  function syncStoredTheme(colorScheme: "dark" | "light", theme: VueTheme, ctx: string | null): void {
+    if (ctx !== null && ctx !== getCurrentContext()) return;
     if (colorScheme === "dark") darkTheme.value = theme;
     else lightTheme.value = theme;
   }
 
   function setSemanticSearchEnabled(enabled: boolean): void {
     semanticSearchEnabled.value = enabled;
-    writeSemanticSearchEnabled(enabled);
+    writeSemanticSearchEnabled(enabled, getCurrentContext());
   }
 
   function setSemanticSearchPrompted(prompted: boolean): void {
     semanticSearchPrompted.value = prompted;
-    writeSemanticSearchPrompted(prompted);
+    writeSemanticSearchPrompted(prompted, getCurrentContext());
   }
 
   function setLoggingEnabled(enabled: boolean): void {
@@ -567,6 +595,7 @@ export const useSettingsStore = defineStore("settings", () => {
     darkTheme,
     lightTheme,
     load,
+    loadClientPrefs,
     setDateFormat,
     setTimeFormat,
     setTitleFormat,

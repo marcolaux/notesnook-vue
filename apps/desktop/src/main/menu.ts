@@ -1,5 +1,6 @@
 import { BrowserWindow, Menu, type MenuItemConstructorOptions } from "electron";
 import { openSettingsWindow, isSettingsWindow } from "./settings-window";
+import { resolveContextForWindow } from "./session-state";
 import { tMain, registerLocaleChangeCallback } from "./i18n";
 
 /**
@@ -56,7 +57,8 @@ function buildAppMenu(preloadPath: string): Menu {
         {
           label: tMain("menu.settings"),
           accelerator: "CmdOrCtrl+,",
-          click: () => openSettingsWindow(preloadPath)
+          click: () =>
+            openSettingsWindow(preloadPath, undefined, resolveContextForWindow(focusedWindow()))
         },
         { type: "separator" },
         {

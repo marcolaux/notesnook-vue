@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from "pinia";
 // platform seam; stub it so the sodium/crypto/bridge graph isn't loaded for a
 // pure router-logic test (same pattern as command-palette.spec).
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => ({}),
   bootstrap: vi.fn()
 }));

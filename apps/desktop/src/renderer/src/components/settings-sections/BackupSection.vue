@@ -18,9 +18,10 @@
  * password (optional field here, passed to `importBackup`).
  *
  * Toggles (`useConfigStore`, localStorage): encrypt backups, automatic-backup
- * reminder (never/daily/weekly/monthly), and the with-attachments variant. The
- * reminder offsets drive the auto-backup scheduler (a later phase — stored now,
- * wired then).
+ * reminder (never/daily/weekly/monthly), the with-attachments variant, and the
+ * retention count. The reminder offsets + retention drive the per-account
+ * auto-backup scheduler (`stores/auto-backup.ts`), which writes each account's
+ * backup into its own subdirectory of the configured backup directory.
  */
 import { ref, computed, onMounted } from "vue";
 import { Surface, Flex, Text, Button, Input } from "@notesnook-vue/ui-vue";
@@ -28,7 +29,7 @@ import { useI18n } from "vue-i18n";
 import { useBackupsStore } from "@/stores/backup";
 import { useConfigStore } from "@/stores/config";
 import { desktop } from "@/platform/desktop-bridge";
-import { formatBackupTime } from "@/utils/backup";
+import { formatBackupTime, backupFilename } from "@/utils/backup";
 import type { BackupFile, LegacyBackupFile } from "@notesnook-vue/contracts";
 
 const backups = useBackupsStore();
@@ -58,6 +59,11 @@ const reminderOptions = computed<{ value: number; label: string }[]>(() => [
   { value: 3, label: t("settings.backup.monthly") }
 ]);
 
+/** Retention-count options (1–10). Mirrors the reminder select shape. */
+const retentionOptions = computed<{ value: number; label: string }[]>(() =>
+  Array.from({ length: 10 }, (_, i) => ({ value: i + 1, label: String(i + 1) }))
+);
+
 function pickBackupMode(e: Event): void {
   backupMode.value = (e.target as HTMLSelectElement).value as "-" | "partial" | "full";
 }
@@ -67,18 +73,11 @@ function pickReminder(e: Event): void {
 function pickFullReminder(e: Event): void {
   config.setFullBackupReminderOffset(Number((e.target as HTMLSelectElement).value));
 }
+function pickRetention(e: Event): void {
+  config.setBackupRetentionCount(Number((e.target as HTMLSelectElement).value));
+}
 function toggleEncrypt(e: Event): void {
   config.setEncryptBackups((e.target as HTMLInputElement).checked);
-}
-
-/** Build a dated `.nnbackup` filename, mirroring upstream's naming. */
-function backupFilename(mode: "partial" | "full"): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(
-    d.getHours()
-  )}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-  return `${stamp}${mode === "full" ? "-full" : ""}.nnbackup`;
 }
 
 async function onSelectBackupDirectory(): Promise<void> {
@@ -248,6 +247,24 @@ async function onRestore(): Promise<void> {
             <option v-for="o in reminderOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
         </Flex>
+
+        <Flex direction="column" :gap="1">
+          <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.backup.retentionCount") }}</Text>
+          <select
+            :value="config.backupRetentionCount"
+            class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            @change="pickRetention"
+          >
+            <option v-for="o in retentionOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </select>
+          <Text variant="body" size="xs" class="text-text-muted"
+            >{{ t("settings.backup.retentionCountHint") }}</Text
+          >
+        </Flex>
+
+        <Text variant="body" size="xs" class="text-text-muted"
+          >{{ t("settings.backup.autoBackupsAllAccounts") }} {{ t("settings.backup.autoBackupsDormantNote") }}</Text
+        >
 
         <Flex direction="column" :gap="1">
           <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.backup.backupDirectory") }}</Text>

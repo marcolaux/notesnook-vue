@@ -21,7 +21,7 @@ vi.mock("@/platform/themes-api", () => ({
   installTheme: installThemeMock,
   updateTheme: updateThemeMock
 }));
-vi.mock("@/platform/bootstrap", () => ({ getDatabase: () => ({ settings: {} }) }));
+vi.mock("@/platform/bootstrap", () => ({ getCurrentContext: () => "local", getDatabase: () => ({ settings: {} }) }));
 vi.mock("@/stores/auth", () => ({
   useAuthStore: () => ({ user: { value: undefined } })
 }));

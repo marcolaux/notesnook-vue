@@ -11,6 +11,11 @@ import "./style.css";
 import "./commands";
 import { detectPlatform } from "@contracts/titlebar";
 import { readTransparencyEnabled } from "@/stores/settings";
+import {
+  LOCAL_CONTEXT,
+  readWindowContext,
+  readCurrentContext
+} from "@/platform/account-context";
 
 // Mark the OS on <html> before first paint so CSS can opt out of the
 // acrylic/glass look where the OS doesn't support window transparency (Linux:
@@ -25,7 +30,9 @@ if (typeof document !== "undefined") {
   document.documentElement.dataset.platform = detectPlatform(
     typeof window !== "undefined" ? window.os : undefined
   );
-  document.documentElement.dataset.transparency = readTransparencyEnabled()
+  document.documentElement.dataset.transparency = readTransparencyEnabled(
+    readWindowContext() ?? readCurrentContext() ?? LOCAL_CONTEXT
+  )
     ? "on"
     : "off";
 }

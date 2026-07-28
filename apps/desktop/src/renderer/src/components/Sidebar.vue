@@ -118,9 +118,11 @@ const linkTopViews = computed(() =>
 // link here — render it as a button below the Trash link.
 const linkBottomViews = bottomViews.filter((v) => v.name !== "settings");
 
-/** Open the shared Settings window (focused singleton). Best-effort. */
+/** Open the shared Settings window (focused singleton) pinned to this
+ *  window's account context, so Settings operates on the same account's DB.
+ *  Best-effort. */
 function openSettings(): void {
-  void desktop.window.openSettings.mutate().catch((e) => {
+  void desktop.window.openSettings.mutate({ contextId: getCurrentContext() }).catch((e) => {
     // eslint-disable-next-line no-console
     console.error("[sidebar] openSettings failed:", e);
   });

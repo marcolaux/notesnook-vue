@@ -75,7 +75,8 @@ const db = {
 };
 vi.mock("@/platform/bootstrap", () => ({
   getDatabase: () => db,
-  bootstrap: vi.fn()
+  bootstrap: vi.fn(),
+  getCurrentContext: () => "local"
 }));
 
 // Map-backed localStorage mock (node has none). Scoped to this file (vitest
@@ -271,10 +272,10 @@ describe("useSettingsStore — setters", () => {
     s.setThemeMode("system");
     expect(s.themeMode).toBe("system");
     expect(s.themeChangeSignal).toBe(1);
-    expect(storage.getItem("notesnook.themeMode")).toBe("system");
+    expect(storage.getItem("notesnook.themeMode.local")).toBe("system");
     s.setThemeMode("light");
     expect(s.themeChangeSignal).toBe(2);
-    expect(storage.getItem("notesnook.themeMode")).toBe("light");
+    expect(storage.getItem("notesnook.themeMode.local")).toBe("light");
   });
 
   it("transparencyEnabled is read from localStorage at construction", () => {
@@ -297,10 +298,10 @@ describe("useSettingsStore — setters", () => {
     s.setTransparencyEnabled(false);
     expect(s.transparencyEnabled).toBe(false);
     expect(s.transparencyChangeSignal).toBe(1);
-    expect(storage.getItem("notesnook.transparencyEnabled")).toBe("false");
+    expect(storage.getItem("notesnook.transparencyEnabled.local")).toBe("false");
     s.setTransparencyEnabled(true);
     expect(s.transparencyChangeSignal).toBe(2);
-    expect(storage.getItem("notesnook.transparencyEnabled")).toBe("true");
+    expect(storage.getItem("notesnook.transparencyEnabled.local")).toBe("true");
   });
 
   it("darkTheme/lightTheme default to the vendored built-ins", () => {
@@ -325,7 +326,7 @@ describe("useSettingsStore — setters", () => {
     expect(s.darkTheme.id).toBe("custom-dark");
     expect(s.themeMode).toBe("light"); // installing a dark theme does NOT change the mode
     expect(s.themeChangeSignal).toBe(2); // setThemeMode bumped 1, setActiveTheme bumped 2
-    expect(JSON.parse(storage.getItem("notesnook.theme.dark")!).id).toBe("custom-dark");
+    expect(JSON.parse(storage.getItem("notesnook.theme.dark.local")!).id).toBe("custom-dark");
     expect(s.lightTheme.id).toBe("default-light"); // other slot untouched
   });
 
@@ -336,7 +337,7 @@ describe("useSettingsStore — setters", () => {
     s.setActiveTheme(customLight);
     expect(s.lightTheme.id).toBe("custom-light");
     expect(s.themeMode).toBe("dark"); // unchanged — installing never flips the mode
-    expect(JSON.parse(storage.getItem("notesnook.theme.light")!).id).toBe("custom-light");
+    expect(JSON.parse(storage.getItem("notesnook.theme.light.local")!).id).toBe("custom-light");
   });
 
   it("restoreStockThemes resets installed slots to built-in defaults, removes stored themes, and bumps signal", () => {
@@ -347,16 +348,16 @@ describe("useSettingsStore — setters", () => {
     s.setActiveTheme(customLight);
     expect(s.darkTheme.id).toBe("custom-dark");
     expect(s.lightTheme.id).toBe("custom-light");
-    expect(storage.getItem("notesnook.theme.dark")).not.toBeNull();
-    expect(storage.getItem("notesnook.theme.light")).not.toBeNull();
+    expect(storage.getItem("notesnook.theme.dark.local")).not.toBeNull();
+    expect(storage.getItem("notesnook.theme.light.local")).not.toBeNull();
 
     const signalBefore = s.themeChangeSignal;
     s.restoreStockThemes();
 
     expect(s.darkTheme.id).toBe("default-dark");
     expect(s.lightTheme.id).toBe("default-light");
-    expect(storage.getItem("notesnook.theme.dark")).toBeNull();
-    expect(storage.getItem("notesnook.theme.light")).toBeNull();
+    expect(storage.getItem("notesnook.theme.dark.local")).toBeNull();
+    expect(storage.getItem("notesnook.theme.light.local")).toBeNull();
     expect(s.themeChangeSignal).toBe(signalBefore + 1);
   });
 
@@ -396,5 +397,61 @@ describe("useSettingsStore — setters", () => {
     await s.load();
     expect(s.dateFormat).toBe("DD-MM-YYYY"); // unchanged
     db.settings.getDateFormat = orig;
+  });
+});
+
+describe("useSettingsStore — per-context client prefs", () => {
+  const HEX = "a1b2c3d4e5f60718";
+
+  it("setThemeMode writes to the ctx-suffixed key, not the legacy key", () => {
+    const s = useSettingsStore();
+    s.setThemeMode("light");
+    expect(storage.getItem("notesnook.themeMode.local")).toBe("light");
+    expect(storage.getItem("notesnook.themeMode")).toBeNull();
+  });
+
+  it("loadClientPrefs(ctx) re-reads that ctx's prefs into the refs", () => {
+    const s = useSettingsStore();
+    s.setThemeMode("dark"); // writes to .local
+    // Seed a different ctx with a different theme + transparency.
+    storage.setItem("notesnook.themeMode." + HEX, "light");
+    storage.setItem("notesnook.transparencyEnabled." + HEX, "false");
+    s.loadClientPrefs(HEX);
+    expect(s.themeMode).toBe("light");
+    expect(s.transparencyEnabled).toBe(false);
+  });
+
+  it("loadClientPrefs lazily migrates a legacy value into the ctx key", () => {
+    storage.setItem("notesnook.themeMode", "system"); // legacy un-suffixed
+    const s = useSettingsStore();
+    s.loadClientPrefs(HEX);
+    expect(s.themeMode).toBe("system");
+    expect(storage.getItem("notesnook.themeMode." + HEX)).toBe("system");
+  });
+
+  it("syncThemeMode applies when ctx matches the current context", () => {
+    const s = useSettingsStore();
+    s.syncThemeMode("system", "local");
+    expect(s.themeMode).toBe("system");
+  });
+
+  it("syncThemeMode applies for a legacy (null) ctx", () => {
+    const s = useSettingsStore();
+    s.syncThemeMode("light", null);
+    expect(s.themeMode).toBe("light");
+  });
+
+  it("syncThemeMode is ignored when ctx is a different account", () => {
+    const s = useSettingsStore();
+    const before = s.themeMode;
+    s.syncThemeMode("light", HEX);
+    expect(s.themeMode).toBe(before); // unchanged — not this window's account
+  });
+
+  it("syncTransparencyEnabled is ignored for a non-current ctx", () => {
+    const s = useSettingsStore();
+    const before = s.transparencyEnabled;
+    s.syncTransparencyEnabled(false, HEX);
+    expect(s.transparencyEnabled).toBe(before);
   });
 });

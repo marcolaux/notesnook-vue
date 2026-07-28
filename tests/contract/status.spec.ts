@@ -16,6 +16,7 @@ import { useStatusStore } from "@/stores/status";
 let lastSyncedMock = 0;
 let hasUnsyncedMock = false;
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => ({
     lastSynced: async () => lastSyncedMock,
     hasUnsyncedChanges: async () => hasUnsyncedMock

@@ -15,6 +15,7 @@ import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
 import { desktop } from "@/platform/desktop-bridge";
 import { readCurrentContext } from "@/platform/account-context";
+import { getCurrentContext } from "@/platform/bootstrap";
 
 export function useTabShortcuts(): void {
   const layout = useEditorLayoutStore();
@@ -31,7 +32,7 @@ export function useTabShortcuts(): void {
     if (metaOrCtrl && !e.shiftKey && !e.altKey && (e.key === "," || e.code === "Comma")) {
       e.preventDefault();
       e.stopPropagation();
-      void desktop.window.openSettings.mutate().catch(() => undefined);
+      void desktop.window.openSettings.mutate({ contextId: getCurrentContext() }).catch(() => undefined);
       return;
     }
 

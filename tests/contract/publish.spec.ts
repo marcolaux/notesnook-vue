@@ -67,6 +67,7 @@ const db = {
   sync: vi.fn(async () => true)
 };
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => db,
   bootstrap: vi.fn()
 }));

@@ -34,7 +34,8 @@ import type {
   Output,
   RequestOptions,
   FileEncryptionMetadataWithOutputType,
-  FileEncryptionMetadataWithHash
+  FileEncryptionMetadataWithHash,
+  Database
 } from "@notesnook-vue/contracts";
 import { hosts } from "@notesnook-vue/contracts";
 import { NNCrypto } from "./nncrypto";
@@ -105,7 +106,19 @@ export interface FileStorageOptions {
   crypto?: NNCryptoLike;
 }
 
-export function createFileStorage(options: FileStorageOptions = {}): IFileStorage {
+/** Desktop-only extension to `IFileStorage`: a raw encrypted-byte read used by
+ *  the auto-backup scheduler. Backup stores the encrypted blob verbatim (plus
+ *  the `.attachments_key` core yields) — `readEncrypted` would DECRYPT, which is
+ *  wrong for backup. This exposes the underlying `streamablefs` `readable`
+ *  stream (the encrypted bytes) without touching core's `IFileStorage` type. */
+export interface DesktopFileStorage extends IFileStorage {
+  /** Open a raw encrypted-byte read stream for `filename`, or `undefined` when
+   *  the file isn't cached locally. The scheduler buffers + writes this to
+   *  disk as `attachments/<hash>` for a full-mode backup. */
+  __rawReadStream(filename: string): Promise<ReadableStream<Uint8Array> | undefined>;
+}
+
+export function createFileStorage(options: FileStorageOptions = {}): DesktopFileStorage {
   const chunkStore = options.chunkStore ?? new NodeFSFileStore();
   const nn = options.crypto ?? NNCrypto;
   const streamablefs = new StreamableFS(chunkStore);
@@ -465,6 +478,16 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
       return out as Output<TOutputFormat>;
     },
 
+    /** Raw encrypted-byte read stream (desktop-only; see {@link DesktopFileStorage}).
+     *  Used by the auto-backup scheduler to copy cached attachment blobs to disk
+     *  verbatim for a full-mode backup. Returns `undefined` when the file isn't
+     *  cached locally — the scheduler skips it (mirrors core's own skip when
+     *  `downloadFile` can't fetch a signed URL offline). */
+    async __rawReadStream(filename): Promise<ReadableStream<Uint8Array> | undefined> {
+      const handle = await streamablefs.readFile(filename);
+      return handle?.readable;
+    },
+
     async deleteFile(filename, requestOptions?): Promise<boolean> {
       if (!requestOptions) {
         return !(await streamablefs.exists(filename)) || (await streamablefs.deleteFile(filename));
@@ -548,4 +571,36 @@ export function createFileStorage(options: FileStorageOptions = {}): IFileStorag
       };
     }
   };
+}
+
+// --- Auto-backup scheduler: raw encrypted attachment read -------------------
+//
+// The per-account auto-backup scheduler (`stores/auto-backup.ts`) copies each
+// cached attachment's ENCRYPTED bytes to disk verbatim for a full-mode backup
+// (backup stores the encrypted blob + the `.attachments_key` core yields, NOT
+// the decrypted plaintext). Core's `Database.fs()` is typed as `IFileStorage`,
+// which has no raw-read method — but every desktop `Database` (the singleton
+// AND `openAccountDb` throwaways, both built on `createDesktopPlatform` →
+// `createFileStorage`) returns a `DesktopFileStorage` at runtime with
+// `__rawReadStream`. Reach it via a structural cast; absent/undefined → the
+// scheduler skips that attachment (mirrors core's own skip at `backup.ts` when
+// `downloadFile` can't fetch a signed URL offline).
+
+/** Open a raw encrypted-byte read stream for `hash` on `db`'s file storage, or
+ *  `undefined` when the desktop raw-read isn't present or the file isn't cached
+ *  locally. Never throws — a failure logs + returns `undefined` so the scheduler
+ *  can skip the attachment. */
+export async function readAttachmentStream(
+  db: Database,
+  hash: string
+): Promise<ReadableStream<Uint8Array> | undefined> {
+  try {
+    const fs = db.fs() as unknown as { __rawReadStream?: (f: string) => Promise<ReadableStream<Uint8Array> | undefined> };
+    if (!fs.__rawReadStream) return undefined;
+    return await fs.__rawReadStream(hash);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[fs] readAttachmentStream failed:", e);
+    return undefined;
+  }
 }

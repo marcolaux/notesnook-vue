@@ -19,6 +19,7 @@ let rows: Map<string, Row>;
 
 let mockDb: { settings: { collection: { get: (id: string) => Row | undefined; upsert: (r: Row) => Promise<void> } } };
 vi.mock("@/platform/bootstrap", () => ({
+  getCurrentContext: () => "local",
   getDatabase: () => mockDb,
   bootstrap: vi.fn()
 }));

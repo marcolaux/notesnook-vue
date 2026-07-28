@@ -132,10 +132,7 @@ export default {
   settings: {
     title: "Einstellungen",
     groups: {
-      customization: "Anpassung",
-      security: "Sicherheit",
-      syncBackup: "Sync & Backup",
-      about: "Über"
+      global: "Global"
     },
     sections: {
       appearance: "Darstellung",
@@ -310,6 +307,10 @@ export default {
       monthly: "Monatlich",
       autoBackups: "Automatische Backups",
       autoBackupsFull: "Automatische Backups mit Anhängen",
+      autoBackupsAllAccounts: "Automatische Backups laufen für jedes Konto in einen eigenen Unterordner des Backup-Verzeichnisses.",
+      autoBackupsDormantNote: "Inaktive Konten (abgelaufene Anmeldung) sichern Notizen plus nur die lokal zwischengespeicherten Anhänge.",
+      retentionCount: "Letzte Backups behalten",
+      retentionCountHint: "Anzahl der automatischen Backups, die pro Konto und Modus behalten werden (ältere werden gelöscht).",
       backupDirectory: "Backup-Verzeichnis",
       backupDirPlaceholder: "Nicht gesetzt (fragt beim Backup nach Ort)",
       backupDirHint: "Wähle ein Verzeichnis für automatische und manuelle Backups ohne Nachfrage.",
