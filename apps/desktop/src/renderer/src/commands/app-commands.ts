@@ -15,6 +15,7 @@ import { useDialogStore } from "@/stores/dialog";
 import { useTemplatesStore } from "@/stores/templates";
 import { useContextMenuStore } from "@/stores/context-menu";
 import { usePropertiesStore } from "@/stores/properties";
+import { useEditorStore } from "@/stores/editor";
 import {
   buildColorSubmenu,
   buildTagsSubmenu,
@@ -22,6 +23,7 @@ import {
   type NoteMenuTarget
 } from "@/utils/context-menu-entries";
 import { buildActiveNoteAssignmentDeps } from "@/utils/assignment-menu";
+import { nextTick, watch } from "vue";
 import i18n from "@/i18n";
 
 const t = i18n.global.t.bind(i18n.global);
@@ -54,11 +56,27 @@ function openAssignmentSubmenu(ctx: CommandContext, kind: "notebook" | "tag" | "
       : kind === "tag"
         ? buildTagsSubmenu(target, deps)
         : buildColorSubmenu(target, deps);
-  useContextMenuStore().showSubmenu(
+  const menu = useContextMenuStore();
+  // Capture the focused pane's editor NOW — while the palette still has DOM
+  // focus, the editor is blurred but ProseMirror keeps its selection, and
+  // `useEditorStore().editor` still resolves to the pane the user was editing
+  // in (the palette does not change the focused pane key). After the standalone
+  // submenu closes we refocus that editor so the caret returns to exactly
+  // where it was — without this the editor stays blurred after the assignment.
+  const editor = useEditorStore().editor;
+  menu.showSubmenu(
     spec,
     Math.floor(window.innerWidth / 2),
     Math.floor(window.innerHeight / 2)
   );
+  if (!editor) return;
+  const stop = watch(() => menu.open, (isOpen) => {
+    if (isOpen) return;
+    stop();
+    // Defer past the overlay's unmount + the palette's close so the focus
+    // isn't immediately stolen back by a teardown handler.
+    void nextTick(() => editor.commands.focus());
+  });
 }
 
 const appCommands: Command[] = [
