@@ -31,9 +31,14 @@ import {
   Heading,
   OutlineList,
   OutlineListItem,
+  CollapsibleBulletList,
+  CollapsibleOrderedList,
+  CollapsibleListItem,
   AttachmentNode,
   TaskItemNode,
   TaskListNode,
+  CheckListItemNode,
+  CheckListNode,
   EmbedNode,
   ImageNode,
   AudioNode,
@@ -617,13 +622,32 @@ function onLinkInputBlur(): void {
 // TableComponent owns the <table>/<colgroup>/<tbody> via addNodeView.
 const editor = useEditor({
   extensions: [
-    StarterKit.configure({ codeBlock: false, heading: false }),
+    // StarterKit's plain `codeBlock`/`heading` are disabled in favour of our
+    // own (refractor codeblock + collapsible headings). `bulletList`/
+    // `orderedList`/`listItem` are also disabled and replaced below by our
+    // `Collapsible*` variants — they extend the stock extensions, so the
+    // `- `/`* ` and `1.` input rules + Mod-Shift-8/7 shortcuts are inherited,
+    // and only a `collapsed` attribute + a shared `listItem` node-view chevron
+    // are added (see packages/editor-vue/.../collapsible-list/). Existing
+    // `<ul>`/`<ol>` notes need no migration: `collapsed` defaults to false.
+    StarterKit.configure({
+      codeBlock: false,
+      heading: false,
+      bulletList: false,
+      orderedList: false,
+      listItem: false
+    }),
     Heading,
     OutlineList,
     OutlineListItem,
+    CollapsibleBulletList,
+    CollapsibleOrderedList,
+    CollapsibleListItem,
     AttachmentNode,
     TaskListNode,
     TaskItemNode.configure({ nested: true }),
+    CheckListNode,
+    CheckListItemNode.configure({ nested: true }),
     EmbedNode,
     ImageNode,
     AudioNode,
@@ -1389,10 +1413,13 @@ function onEditorAreaClick(e: MouseEvent): void {
   if (mouseDownInEditor) return;
   // Editor handles its own clicks — only intercept the empty band around/below
   // the content (the scroll container + the `.prose` wrapper margins). The
-  // title input + tag chips are interactive meta above/below the note, not
-  // part of the editor surface, so their clicks are left to those controls.
+  // title input + notebook/tag chips + their add-inputs are interactive meta
+  // above/below the note, not part of the editor surface, so their clicks are
+  // left to those controls. (`.editor-notebooks` MUST be listed — without it a
+  // click on the notebook add-input falls through to `editor.chain().focus()`,
+  // stealing focus from the input and closing its suggestion popover.)
   const target = e.target as HTMLElement | null;
-  if (target && target.closest(".ProseMirror, .editor-title, .editor-tags, .editor-links")) return;
+  if (target && target.closest(".ProseMirror, .editor-title, .editor-notebooks, .editor-tags, .editor-links")) return;
   const doc = inst.state.doc;
   const last = doc.lastChild;
   const willInsert =
@@ -1457,7 +1484,7 @@ function onEditorAreaClick(e: MouseEvent): void {
         <EditorContent :editor="editor" class="prose max-w-none text-sm text-text" />
         <div
           v-if="!isDraft"
-          class="editor-notebooks mt-4 flex flex-wrap items-center gap-2 border-t border-glass-border pt-3"
+          class="editor-notebooks editor-tags mt-4 flex flex-wrap items-center gap-2 border-t border-glass-border pt-3"
         >
           <span
             v-for="nb in notebooks"
@@ -1505,11 +1532,12 @@ function onEditorAreaClick(e: MouseEvent): void {
               </li>
             </ul>
           </div>
-        </div>
-        <div
-          v-if="!isDraft"
-          class="editor-tags mt-4 flex flex-wrap items-center gap-2 border-t border-glass-border pt-3"
-        >
+          <!-- separator between notebooks and tags within the same row -->
+          <span
+            v-if="notebooks.length > 0"
+            class="h-4 w-px shrink-0 self-center bg-glass-border"
+            aria-hidden="true"
+          />
           <span
             v-for="tag in tags"
             :key="tag.id"

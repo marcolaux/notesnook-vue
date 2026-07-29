@@ -11,8 +11,11 @@
     "./*": "./src/*"
   },
   "dependencies": {
+    "@tiptap/extension-bullet-list": "2.6.6",
     "@tiptap/extension-color": "2.6.6",
     "@tiptap/extension-font-family": "2.6.6",
+    "@tiptap/extension-list-item": "2.6.6",
+    "@tiptap/extension-ordered-list": "2.6.6",
     "@tiptap/extension-highlight": "2.6.6",
     "@tiptap/extension-subscript": "2.6.6",
     "@tiptap/extension-superscript": "2.6.6",

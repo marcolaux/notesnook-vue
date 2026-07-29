@@ -86,6 +86,23 @@ describe("tool-definitions (editor-vue parity)", () => {
     expect(calls).toContain("toggleTaskList");
   });
 
+  it("simpleCheckList run invokes toggleCheckList (the simple checkbox list)", () => {
+    const { editor, calls } = fakeEditor();
+    EDITOR_ACTIONS.find((a) => a.id === "simpleCheckList")!.run(editor);
+    expect(calls).toContain("toggleCheckList");
+  });
+
+  it("the Lists dropdown menu has a single-task entry next to the task list", () => {
+    const editor = { isActive: () => false } as unknown as import("@tiptap/vue-3").Editor;
+    const lists = EDITOR_ACTIONS.find((a) => a.id === "lists")!;
+    const items = lists.menu!(editor);
+    const taskIdx = items.findIndex((i) => i.id === "list-task");
+    const simpleIdx = items.findIndex((i) => i.id === "list-simple-check");
+    expect(taskIdx).toBeGreaterThanOrEqual(0);
+    expect(simpleIdx).toBe(taskIdx + 1);
+    expect(items[simpleIdx].label).toBe("tools.submenu.simpleCheckList");
+  });
+
   it("table run invokes insertTable", () => {
     const { editor, calls } = fakeEditor();
     EDITOR_ACTIONS.find((a) => a.id === "table")!.run(editor);

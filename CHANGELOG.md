@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🎨 Block-colorize adapts its palette for contrast on any theme
+The block-colorize toolbar toggle (which tints editor text by node/mark type — headings→yellow, bold→red, italic→green, links→purple, list items cycle by nesting depth, code tokens by Prism class) now keeps its colours readable on **any** theme, including 3rd-party catalog themes whose background colours aren't known at build time. The colour source — the theme system's `--*-static` Material palette — is theme-invariant (same hex in light and dark), so without adjustment bright colours (yellow/green/orange) washed out on light backgrounds and dark purple washed out on the dark editor surface.
+
+- **Measured, not assumed**: at theme-inject time each colour is checked against the resolved theme background; if it falls below WCAG AA (4.5:1) its OKLCH **lightness** is shifted (hue + chroma preserved) until it meets the target. Colours already passing are left untouched, so the palette stays vibrant where it already reads — only the offending colours move.
+- **New `theme-vue` colour math** (`packages/theme-vue/src/color-contrast.ts`): pure, dependency-free WCAG contrast + OKLCH forward/inverse (`adjustForContrast`, `CONTRAST_TARGET = 4.5`). `block-colorize.ts` (`blockColorizeToCSS`) resolves the base primary `background` and emits a `:root { --bc-*, --bc-code-* }` block; `injectTheme` calls it, so the palette recomputes on every theme switch.
+- **CSS consumers** (`style.css`) now read `var(--bc-heading, var(--yellow-static))` etc., with the `--*-static` colour kept as a fallback for the pre-injection first paint. No editor-vue or bridge changes — only the resolved colour values change.
+- `CONTRAST_TARGET` is a one-line knob: drop to `3.0` (AA-large) if the 4.5 floor reads too muted on light themes (only the worst offenders — yellow/green/orange/gray — would then shift).
+
+#### Verification
+- `npm run typecheck` (node + web + contracts) — clean.
+- `npm run test:contract` — new `color-contrast.spec.ts` (WCAG math, OKLCH round-trip, adjust-for-contrast direction/hue-preservation, `blockColorizeToCSS` emits all `--bc-*`/`--bc-code-*` meeting 4.5 against both built-in backgrounds); extended `theme.spec.ts` `injectTheme` suite. 1743 tests green.
+- On-site gate pending: visual confirmation across light + dark themes (and ideally a 3rd-party catalog theme) — toggle the palette button on a note with headings/bold/italic/lists/a code block.
+
+### 📋 Collapsible bullet & numbered lists
+Plain bullet lists and numbered lists are now collapsible in-place (a chevron toggle in the left gutter), like the pre-existing outline list — closing a long-standing gap where the editor had two bullet-list node types (stock `bulletList`, no collapse, and the custom collapsible `outlineList`) that were otherwise functionally identical.
+
+- **Minimal extension**: `CollapsibleBulletList`/`CollapsibleOrderedList` extend the stock TipTap `BulletList`/`OrderedList`, adding only a `collapsed` attribute (serialized `data-collapsed="true"`). `CollapsibleListItem` extends the shared `ListItem` with a Vue node-view that draws the `•` marker and a chevron only on items that contain a child list; click flips the child's `collapsed` via `tr.setNodeMarkup`. Inherited unchanged: the `toggle*` commands, `- `/`* `/`1.` input rules, `Mod-Shift-8`/`7`, and Enter/Tab/Shift-Tab behaviour.
+- **Bullet ≡ outline**: the bullet list now renders identically to the outline list — native `::marker` is suppressed and the node-view draws the same self-drawn `•` (both: 1.5rem gutter, dot kept on hover/collapse, chevron beside the dot). Ordered lists keep their native numbers (the dot is hidden for `ol`) and use a wider 2rem gutter so the left-aligned chevron clears multi-digit numbers. Collapsed subtrees are hidden by CSS; the ProseMirror doc still holds them.
+- **No migration**: `collapsed` defaults false; existing `<ul>`/`<ol>` notes are unchanged. The dot/chevron are node-view DOM, not in `getHTML()`, so serialized HTML round-trips unchanged. Editor.vue disables the stock `bulletList`/`orderedList`/`listItem` and registers the `Collapsible*` variants instead.
+
+#### Verification
+- `npm run typecheck` (node + web + contracts) — clean.
+- `npm run test:contract` — editor HTML / note-preview / sn-importer / tool-definitions suites green.
+- On-site gate pending: visual confirmation of collapse/expand on nested bullet and numbered lists, light + dark.
+
+### ☑️ Simple checklist (mobile checklist round-trips on desktop)
+The mobile editor's checkbox list — `<ul class="simple-checklist">` / `<li class="simple-checklist--item">`, a flat checkbox list with no header/progress bar — is now recognised on desktop so mobile notes round-trip faithfully. Without it, `ul.simple-checklist` fell back to a plain bullet `listItem` (the checklist read as "just a list").
+
+- **Pure-CSS checkbox** (`extensions/check-list` + `check-list-item`): no Vue node-view component — the checkbox is drawn in CSS (`::after` outline, `::before` masked checkmark) and toggled by a left-edge click hit-area in the plain-DOM node view. Nested check lists nest as real child `<ul class="simple-checklist">` inside the parent `<li>` (no `data-indent` flattening), since the simple checklist has no header.
+- **Toolbar**: a new "Task (single)" entry is added to the Lists dropdown (`simpleCheckList`), distinct from the rich "Task list" (the existing `checkList` ToolId → rich task-list). The two share the `checkList` string only by name collision — the ToolId is the rich task-list, the TipTap node/command `checkList` is the simple one.
+- **Import**: the Standard Notes importer now emits the simple checklist (`simple-checklist--item`) for SN checklists — SN checklists are flat checkbox lists, not task boards. `note-preview` counts both `li.checklist--item` and `li.simple-checklist--item` so imported/mobile checklists show progress and appear in the Tasks view.
+
+#### Verification
+- `npm run typecheck` (node + web + contracts) — clean.
+- `npm run test:contract` — sn-importer / note-preview / tool-definitions suites green.
+- On-site gate pending: visual confirmation of a simple-checklist note (toggle, nested), light + dark.
+
 ### ✨ What's New window shows the newest release notes
 The Changelog / What's New window now fetches the latest `CHANGELOG.md` from the app's GitHub repo at runtime and shows the **newest** version's release notes, instead of being limited to the installed version's notes (which are baked into the renderer at build time and so only ever contain entries up to the shipped version). When the newest published version is newer than the installed one and the auto-updater hasn't flagged an update (e.g. in dev), the window surfaces a subtle "Version X is available" hint with a link to the GitHub release.
 

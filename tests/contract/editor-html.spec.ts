@@ -23,6 +23,11 @@ import {
   AttachmentNode,
   TaskItemNode,
   TaskListNode,
+  CheckListItemNode,
+  CheckListNode,
+  CollapsibleBulletList,
+  CollapsibleOrderedList,
+  CollapsibleListItem,
   EmbedNode,
   ImageNode,
   CodeBlock,
@@ -38,10 +43,23 @@ import {
 const editor = new Editor({
   element: document.createElement("div"),
   extensions: [
-    StarterKit.configure({ codeBlock: false }),
+    // Mirrors Editor.vue: stock bullet/ordered/listItem disabled in favour of
+    // the Collapsible* variants (same schema + input rules + shortcuts, plus a
+    // `collapsed` attribute and a shared `listItem` node-view chevron).
+    StarterKit.configure({
+      codeBlock: false,
+      bulletList: false,
+      orderedList: false,
+      listItem: false
+    }),
+    CollapsibleBulletList,
+    CollapsibleOrderedList,
+    CollapsibleListItem,
     AttachmentNode,
     TaskListNode,
     TaskItemNode.configure({ nested: true }),
+    CheckListNode,
+    CheckListItemNode.configure({ nested: true }),
     EmbedNode,
     ImageNode,
     CodeBlock,
@@ -146,6 +164,39 @@ describe("editor node-view round-trip (2.4a + 2.4b + 2.4c + 2.4h)", () => {
     expect(out).toContain('data-indent="2"');
     // the flat item must NOT carry a data-indent attribute
     expect(out).toContain('<li class="checklist--item"><p>flat</p></li>');
+  });
+
+  it("simple checklist (mobile) preserves class-based checked state", () => {
+    const html =
+      '<ul class="simple-checklist"><li class="simple-checklist--item checked"><p>done</p></li><li class="simple-checklist--item"><p>todo</p></li></ul>';
+    const out = roundTrip(html);
+    expect(out).toContain('class="simple-checklist"');
+    expect([...out.matchAll(/simple-checklist--item/g)].length).toBe(2);
+    expect(out).toContain('<li class="checked simple-checklist--item"><p>done</p></li>');
+    expect(out).toContain('<li class="simple-checklist--item"><p>todo</p></li>');
+  });
+
+  it("simple checklist nests as a child <ul class=\"simple-checklist\">", () => {
+    const html =
+      '<ul class="simple-checklist"><li class="simple-checklist--item checked"><p>parent</p><ul class="simple-checklist"><li class="simple-checklist--item"><p>child</p></li></ul></li></ul>';
+    const out = roundTrip(html);
+    expect((out.match(/class="simple-checklist"/g) || []).length).toBe(2);
+    expect((out.match(/simple-checklist--item/g) || []).length).toBe(2);
+  });
+
+  it("simple checklist does NOT collide with the rich task-list schema", () => {
+    // A rich task-list round-trips as `checklist` / `checklist--item`, a simple
+    // checklist as `simple-checklist` / `simple-checklist--item` — neither
+    // claims the other's markup. (`simple-checklist--item` contains the
+    // substring `checklist--item`, so we key off the rich `<ul class="checklist">`
+    // and the quoted rich item class to distinguish them.)
+    const rich = '<ul class="checklist"><li class="checklist--item checked"><p>x</p></li></ul>';
+    expect(roundTrip(rich)).toContain('class="checklist"');
+    expect(roundTrip(rich)).not.toContain("simple-checklist");
+    const simple = '<ul class="simple-checklist"><li class="simple-checklist--item checked"><p>x</p></li></ul>';
+    expect(roundTrip(simple)).toContain('class="simple-checklist"');
+    expect(roundTrip(simple)).not.toContain('class="checklist"');
+    expect(roundTrip(simple)).not.toContain('"checklist--item');
   });
 
   it("task item data-indent is clamped to the max on parse", () => {
@@ -470,5 +521,62 @@ describe("editor node-view round-trip (2.4a + 2.4b + 2.4c + 2.4h)", () => {
     expect(html).toContain('data-tag-id="t1"');
     expect(html).toContain('data-tag-title="work"');
     expect(html).toContain("world");
+  });
+});
+
+describe("collapsible bullet/ordered lists", () => {
+  // The Collapsible* variants extend the stock extensions, so a plain list (no
+  // data-collapsed) round-trips exactly as the stock `<ul>`/`<ol>` would — the
+  // `collapsed` attribute defaults to false and emits nothing. The chevron is a
+  // node-view concern only; it never appears in serialised HTML.
+  it("a plain bullet list round-trips unchanged (no data-collapsed, no chevron markup)", () => {
+    const out = roundTrip("<ul><li>a</li><li>b</li></ul>");
+    expect(out).toContain("<ul>");
+    expect(out).not.toContain("data-collapsed");
+    expect(out).not.toContain("collapsible-toggle-btn");
+    expect(out).toContain("<li><p>a</p></li>");
+    expect(out).toContain("<li><p>b</p></li>");
+  });
+
+  it("a nested bullet list with data-collapsed round-trips and keeps the attr", () => {
+    const html =
+      '<ul><li><p>parent</p><ul data-collapsed="true"><li><p>child</p></li></ul></li></ul>';
+    const out = roundTrip(html);
+    // the child <ul> keeps data-collapsed="true"; the root <ul> has none.
+    expect(out).toContain('<ul data-collapsed="true">');
+    expect((out.match(/<ul/g) || []).length).toBe(2);
+    expect(out).toContain("<p>child</p>");
+  });
+
+  it("a bullet list without data-collapsed does not gain one on round-trip", () => {
+    const html = '<ul><li><p>p</p><ul><li><p>c</p></li></ul></li></ul>';
+    const out = roundTrip(html);
+    expect(out).not.toContain("data-collapsed");
+    expect((out.match(/<ul/g) || []).length).toBe(2);
+  });
+
+  it("toggleBulletList still produces a <ul> (command + schema inherited)", () => {
+    expect(schema.nodes.bulletList).toBeTruthy();
+    expect(schema.nodes.listItem).toBeTruthy();
+    expect(typeof editor.commands.toggleBulletList).toBe("function");
+    // The markdown input rule regex is inherited; the schema accepts a bare <ul>.
+    const out = roundTrip("<ul><li>x</li></ul>");
+    expect(out).toContain("<ul>");
+  });
+
+  it("a collapsed ordered list round-trips and keeps data-collapsed + start", () => {
+    const html =
+      '<ol start="3"><li><p>parent</p><ol data-collapsed="true"><li><p>child</p></li></ol></li></ol>';
+    const out = roundTrip(html);
+    expect(out).toContain('<ol data-collapsed="true">');
+    // start=3 is preserved on the root <ol> (rendered since !== 1).
+    expect(out).toContain('start="3"');
+    expect(out).toContain("<p>child</p>");
+  });
+
+  it("a plain ordered list round-trips unchanged (no data-collapsed)", () => {
+    const out = roundTrip("<ol><li>a</li><li>b</li></ol>");
+    expect(out).toContain("<ol>");
+    expect(out).not.toContain("data-collapsed");
   });
 });

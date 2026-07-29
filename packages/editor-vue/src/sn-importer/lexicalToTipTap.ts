@@ -225,57 +225,39 @@ class Converter {
 
   private list(node: LexicalNode): Promise<string> {
     if (node.listType === "check") {
-      // Check lists are flattened (see `checkList`) so a check list nested
-      // inside a check item becomes indented task items in the SAME taskList
-      // (data-indent), not a nested taskList — Notesnook renders a full header
-      // (title/progress/clear) per taskList, so nesting taskLists would stack
-      // headers ("a checklist within a checklist"). Bullet/number lists nested
-      // under a check item stay nested (they have no header).
-      return this.checkList(node.children ?? [], 0);
+      // Imported check lists become the SIMPLE checklist (`<ul class="simple-
+      // checklist">`), not the rich task-list: a Standard Notes checklist is a
+      // flat list of checkboxes, not a task board with a progress header. The
+      // simple checklist has no per-list header, so nested check lists nest as
+      // real child `<ul class="simple-checklist">` (no flattening needed).
+      return this.checkList(node.children ?? []);
     }
     const tag = node.listType === "number" ? "ol" : "ul";
     return this.walkListItems(node.children ?? [], tag, "", false);
   }
 
   /**
-   * Emit a check list as a single flat `<ul class="checklist">` whose items may
-   * carry `data-indent` to express nesting. Nested check lists (a check item
-   * containing a check list) are inlined as sibling task items with indent+1,
-   * NOT as a nested taskList — so only one taskList header renders. An empty
-   * check item that merely wraps a nested check list is dropped (its items
-   * flatten as siblings). Nested bullet/number lists and inline content stay
-   * inside their own `<li>`. Recursive calls return their `<li>`s (no `<ul>`)
-   * so the top-level call wraps everything in one `<ul class="checklist">`.
+   * Emit a check list as a `<ul class="simple-checklist">`. Each `listitem`
+   * becomes a `<li class="simple-checklist--item [checked]">`. Inline content
+   * AND nested lists (check / bullet / number) are walked via
+   * {@link walkListItemContent}, which renders nested check lists as a real
+   * nested `<ul class="simple-checklist">` inside the `<li>` — the simple
+   * checklist has no header, so nesting is faithful to the source structure
+   * (unlike the rich task-list, which flattened to a single list with
+   * `data-indent` to avoid stacking progress headers).
    */
-  private async checkList(items: LexicalNode[], indent: number): Promise<string> {
+  private async checkList(items: LexicalNode[]): Promise<string> {
     const lis: string[] = [];
     for (const item of items) {
       if (item.type !== "listitem") {
-        lis.push(`<li class="checklist--item">${await this.walkInlineChildren(item.children ?? [])}</li>`);
+        lis.push(`<li class="simple-checklist--item">${await this.walkInlineChildren(item.children ?? [])}</li>`);
         continue;
       }
       const checked = item.checked === true;
-      const children = item.children ?? [];
-      // Partition: nested CHECK lists flatten as indented siblings; everything
-      // else (inline text + nested bullet/number lists) stays inside this <li>.
-      const inLi: LexicalNode[] = [];
-      const nestedChecks: LexicalNode[] = [];
-      for (const c of children) {
-        if (c.type === "list" && c.listType === "check") nestedChecks.push(c);
-        else inLi.push(c);
-      }
-      const liContent = await this.walkListItemContent(inLi, true);
-      const indentAttr = indent > 0 ? ` data-indent="${indent}"` : "";
-      // Emit the <li> only when it has its own content; an empty check item that
-      // only wraps a nested check list is dropped (its items flatten below).
-      if (liContent.length > 0) {
-        lis.push(`<li class="checklist--item${checked ? " checked" : ""}"${indentAttr}>${liContent}</li>`);
-      }
-      for (const nc of nestedChecks) {
-        lis.push(await this.checkList(nc.children ?? [], indent + 1));
-      }
+      const content = await this.walkListItemContent(item.children ?? [], false);
+      lis.push(`<li class="simple-checklist--item${checked ? " checked" : ""}">${content}</li>`);
     }
-    return indent === 0 ? `<ul class="checklist">${lis.join("")}</ul>` : lis.join("");
+    return `<ul class="simple-checklist">${lis.join("")}</ul>`;
   }
 
   private async walkListItems(

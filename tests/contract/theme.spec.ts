@@ -113,6 +113,14 @@ describe("injectTheme — DOM effects", () => {
     expect(document.documentElement.style.colorScheme).toBe("light");
     expect(getCurrentTheme()?.id).toBe("default-light");
   });
+
+  it("injects the block-colorize --bc-* palette (contrast-adjusted)", () => {
+    injectTheme(ThemeLight);
+    const css = document.getElementById("nn-theme")?.textContent ?? "";
+    expect(css).toContain("--bc-heading:");
+    expect(css).toContain("--bc-list-1:");
+    expect(css).toContain("--bc-code-keyword:");
+  });
 });
 
 describe("Tailwind bridge", () => {

@@ -10,6 +10,7 @@ import type { VueTheme } from "./types";
 import { themeToCSS } from "./theme-to-css";
 import { glassmorphismToCSS } from "./glassmorphism";
 import { tailwindBridgeToCSS } from "./tailwind-bridge";
+import { blockColorizeToCSS } from "./block-colorize";
 
 const STYLE_ID = "nn-theme";
 
@@ -24,6 +25,9 @@ export function injectTheme(theme: VueTheme): void {
     themeToCSS(theme), // `.theme-scope-*` blocks (upstream byte format)
     glassmorphismToCSS(theme), // `:root { --nn-backdrop-blur; --nn-surface-opacity; }`
     tailwindBridgeToCSS(), // `:root { --color-*: var(--<upstream>); --backdrop-blur-base: …; }`
+    // Block-colorize palette: each `--*-static` colour OKLCH-lightness-adjusted
+    // against this theme's background for WCAG contrast. Recomputed every switch.
+    blockColorizeToCSS(theme),
     // The theme's own Prism code-block CSS (each ThemeDefinition carries its
     // own `codeBlockCSS`, e.g. One Dark / One Light). Injecting it here means
     // code blocks follow the active theme instead of a hardcoded palette.

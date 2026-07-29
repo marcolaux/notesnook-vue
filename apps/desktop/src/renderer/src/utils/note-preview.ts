@@ -19,12 +19,17 @@
  * so it is absent from the stored HTML. The node's own `parseHTML` re-derives
  * it by counting `li.checklist--item` / `li.checklist--item.checked`; we mirror
  * that exactly here (across all root task lists in the note → overall progress).
+ * The simple checklist (mobile/imported) uses `li.simple-checklist--item` and
+ * is counted the same way so imported checklists show progress and appear in
+ * the Tasks view.
  */
 
 export interface ChecklistProgress {
-  /** Number of checked checklist items (`li.checklist--item.checked`). */
+  /** Number of checked checklist items (rich `li.checklist--item.checked` +
+   *  simple `li.simple-checklist--item.checked`). */
   checked: number;
-  /** Total checklist items (`li.checklist--item`). */
+  /** Total checklist items (rich `li.checklist--item` + simple
+   *  `li.simple-checklist--item`). */
   total: number;
 }
 
@@ -52,11 +57,18 @@ function extractThumbnail(doc: Document): string | null {
   return null;
 }
 
-/** Count checklist items across all root task lists in the note body. */
+/** Count checklist items across all root task lists in the note body. Sums
+ *  the rich task-list (`li.checklist--item`) and the simple checklist
+ *  (`li.simple-checklist--item`); a nested item is a descendant here, so it is
+ *  counted (matches the rich task-list's own `parseHTML` behaviour). */
 function extractChecklist(doc: Document): ChecklistProgress | null {
-  const total = doc.querySelectorAll("li.checklist--item").length;
+  const total =
+    doc.querySelectorAll("li.checklist--item").length +
+    doc.querySelectorAll("li.simple-checklist--item").length;
   if (total === 0) return null;
-  const checked = doc.querySelectorAll("li.checklist--item.checked").length;
+  const checked =
+    doc.querySelectorAll("li.checklist--item.checked").length +
+    doc.querySelectorAll("li.simple-checklist--item.checked").length;
   return { checked, total };
 }
 

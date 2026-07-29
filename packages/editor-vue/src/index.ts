@@ -18,6 +18,16 @@ export type { TaskItemAttributes } from "./extensions/task-item/types";
 export { TaskListNode } from "./extensions/task-list/task-list";
 export type { TaskListAttributes } from "./extensions/task-list/types";
 
+// Simple checklist (the mobile editor's checkbox list). `<ul class="simple-
+// checklist">` / `<li class="simple-checklist--item [checked]">` — no header,
+// no progress bar; the checkbox is drawn in CSS. Separate schema from the rich
+// task-list above; both are registered so mobile notes round-trip.
+export { CheckListNode } from "./extensions/check-list/check-list";
+export type { CheckListOptions } from "./extensions/check-list/check-list";
+export { CheckListItemNode } from "./extensions/check-list-item/check-list-item";
+export type { CheckListItemOptions } from "./extensions/check-list-item/check-list-item";
+export type { CheckListItemAttributes } from "./extensions/check-list-item/types";
+
 export { EmbedNode } from "./extensions/embed/embed";
 export type { EmbedOptions, EmbedAttributes, EmbedAlignmentOptions, EmbedSizeOptions, Embed } from "./extensions/embed/types";
 
@@ -68,6 +78,13 @@ export { OutlineList } from "./extensions/outline-list/outline-list";
 export type { OutlineListOptions } from "./extensions/outline-list/outline-list";
 export { OutlineListItem } from "./extensions/outline-list/outline-list-item";
 export type { OutlineListItemOptions } from "./extensions/outline-list/outline-list-item";
+
+// Collapsible bullet/ordered lists — extend the stock TipTap list extensions
+// to add a `collapsed` attribute + a shared `listItem` node-view chevron. See
+// extensions/collapsible-list/ for the rationale (mirrors OutlineList).
+export { CollapsibleBulletList } from "./extensions/collapsible-list/bullet-list";
+export { CollapsibleOrderedList } from "./extensions/collapsible-list/ordered-list";
+export { CollapsibleListItem } from "./extensions/collapsible-list/list-item";
 
 // Block-colorize (port of the sn-super-colors Standard Notes theme): a pure
 // ProseMirror decoration plugin that stamps `data-list-level` on list items so

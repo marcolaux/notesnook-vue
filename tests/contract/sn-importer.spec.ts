@@ -125,13 +125,16 @@ describe("lexicalToTipTapHtml — blocks", () => {
       { type: "listitem", value: 2, checked: false, direction: "ltr", format: "", indent: 0, version: 1, children: [text("todo")] }
     ] };
     const r = await lexicalToTipTapHtml(root(cl), stubResolvers());
-    expect(r.html).toBe('<ul class="checklist"><li class="checklist--item checked">done</li><li class="checklist--item">todo</li></ul>');
+    // Imported check lists emit the SIMPLE checklist (mobile's checkbox list),
+    // not the rich task-list — no progress header, CSS-drawn checkbox.
+    expect(r.html).toBe('<ul class="simple-checklist"><li class="simple-checklist--item checked">done</li><li class="simple-checklist--item">todo</li></ul>');
   });
 
-  it("nested check list (check > check) flattens to ONE taskList with data-indent (no doubled header)", async () => {
-    // A check item containing a nested check list — must NOT become a nested
-    // <ul class="checklist"> (which would render a second TaskList header). The
-    // nested items flatten as sibling task items with data-indent.
+  it("nested check list (check > check) nests as a child <ul class=\"simple-checklist\"> (no flattening)", async () => {
+    // The simple checklist has no per-list header, so a check item containing a
+    // nested check list nests it as a real child `<ul class="simple-checklist">`
+    // inside the parent `<li>` — faithful to the source (the rich task-list
+    // flattened to `data-indent` siblings to avoid stacking progress headers).
     const inner = { type: "list", listType: "check", tag: "ul", start: 1, direction: null, format: "", indent: 0, version: 1, children: [
       { type: "listitem", value: 1, checked: false, direction: "ltr", format: "", indent: 0, version: 1, children: [text("child")] }
     ] };
@@ -139,13 +142,14 @@ describe("lexicalToTipTapHtml — blocks", () => {
       { type: "listitem", value: 1, checked: true, direction: "ltr", format: "", indent: 0, version: 1, children: [text("parent"), inner] }
     ] };
     const r = await lexicalToTipTapHtml(root(outer), stubResolvers());
-    expect((r.html.match(/<ul class="checklist"/g) || []).length).toBe(1);
+    expect((r.html.match(/<ul class="simple-checklist"/g) || []).length).toBe(2);
     expect(r.html).toBe(
-      '<ul class="checklist"><li class="checklist--item checked">parent</li><li class="checklist--item" data-indent="1">child</li></ul>'
+      '<ul class="simple-checklist"><li class="simple-checklist--item checked">parent<ul class="simple-checklist"><li class="simple-checklist--item">child</li></ul></li></ul>'
     );
+    expect(r.html).not.toContain("data-indent");
   });
 
-  it("empty check item wrapping a nested check list is dropped (its items flatten as siblings)", async () => {
+  it("empty check item wrapping a nested check list keeps the parent (nesting preserved, no drop)", async () => {
     const inner = { type: "list", listType: "check", tag: "ul", start: 1, direction: null, format: "", indent: 0, version: 1, children: [
       { type: "listitem", value: 1, checked: false, direction: "ltr", format: "", indent: 0, version: 1, children: [text("check item X")] }
     ] };
@@ -153,13 +157,14 @@ describe("lexicalToTipTapHtml — blocks", () => {
       { type: "listitem", value: 1, checked: false, direction: "ltr", format: "", indent: 0, version: 1, children: [inner] }
     ] };
     const r = await lexicalToTipTapHtml(root(outer), stubResolvers());
-    expect((r.html.match(/<ul class="checklist"/g) || []).length).toBe(1);
-    // No empty <li> — the wrapper item with no text is dropped; only the
-    // indented child item remains.
-    expect(r.html).toBe('<ul class="checklist"><li class="checklist--item" data-indent="1">check item X</li></ul>');
+    // The empty wrapper item is kept (it nests the child list) — no flattening.
+    expect((r.html.match(/<ul class="simple-checklist"/g) || []).length).toBe(2);
+    expect(r.html).toBe(
+      '<ul class="simple-checklist"><li class="simple-checklist--item"><ul class="simple-checklist"><li class="simple-checklist--item">check item X</li></ul></li></ul>'
+    );
   });
 
-  it("bullet > check > check: one taskList under the bullet, nested item indented (no doubling)", async () => {
+  it("bullet > check > check: nested check lists nest as child <ul>s (no data-indent)", async () => {
     const inner = { type: "list", listType: "check", tag: "ul", start: 1, direction: null, format: "", indent: 0, version: 1, children: [
       { type: "listitem", value: 1, checked: false, direction: "ltr", format: "", indent: 0, version: 1, children: [text("check item X")] }
     ] };
@@ -170,8 +175,8 @@ describe("lexicalToTipTapHtml — blocks", () => {
       { type: "listitem", value: 1, checked: null, direction: "ltr", format: "", indent: 0, version: 1, children: [text("list item"), middle] }
     ] };
     const r = await lexicalToTipTapHtml(root(bullet), stubResolvers());
-    expect((r.html.match(/<ul class="checklist"/g) || []).length).toBe(1);
-    expect(r.html).toContain('data-indent="1"');
+    expect((r.html.match(/<ul class="simple-checklist"/g) || []).length).toBe(2);
+    expect(r.html).not.toContain("data-indent");
     expect(r.html).toContain("check item X");
     expect(r.html).toContain("list item");
   });

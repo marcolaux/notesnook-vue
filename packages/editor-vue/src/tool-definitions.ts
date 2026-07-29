@@ -134,7 +134,7 @@ export interface EditorAction {
 // decoupled from a specific extension set (see EditorAction.run doc comment).
 const chain = (editor: Editor): any => editor.chain().focus();
 
-export type ListTypeKey = "bulletList" | "numberedList" | "checkList" | "outlineList";
+export type ListTypeKey = "bulletList" | "numberedList" | "checkList" | "simpleCheckList" | "outlineList";
 
 let lastSelectedListType: ListTypeKey = "bulletList";
 
@@ -463,6 +463,18 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     }
   },
   {
+    id: "simpleCheckList",
+    title: "Task (single)",
+    keywords: ["checkbox", "check", "todo", "task", "single", "simple-checklist"],
+    slash: true,
+    glyph: "square-check-big",
+    isActive: (e) => e.isActive("checkList"),
+    run: (e) => {
+      setLastSelectedListType("simpleCheckList");
+      chain(e).toggleCheckList().run();
+    }
+  },
+  {
     id: "outlineList",
     title: "Outline list",
     keywords: ["outline", "toggle list", "collapsible", "tree", "fold"],
@@ -484,6 +496,7 @@ export const EDITOR_ACTIONS: EditorAction[] = [
       e.isActive("bulletList") ||
       e.isActive("orderedList") ||
       e.isActive("taskList") ||
+      e.isActive("checkList") ||
       e.isActive("outlineList"),
     isDisabled: (e) => e.isActive("codeblock"),
     menu: (e) => [
@@ -518,6 +531,16 @@ export const EDITOR_ACTIONS: EditorAction[] = [
         }
       },
       {
+        id: "list-simple-check",
+        label: "tools.submenu.simpleCheckList",
+        icon: "square-check-big",
+        checked: e.isActive("checkList"),
+        onSelect: () => {
+          setLastSelectedListType("simpleCheckList");
+          chain(e).toggleCheckList().run();
+        }
+      },
+      {
         id: "list-outline",
         label: "tools.submenu.outlineList",
         icon: "list-tree",
@@ -535,6 +558,8 @@ export const EDITOR_ACTIONS: EditorAction[] = [
         chain(e).toggleOrderedList().run();
       } else if (e.isActive("taskList")) {
         chain(e).toggleTaskList().run();
+      } else if (e.isActive("checkList")) {
+        chain(e).toggleCheckList().run();
       } else if (e.isActive("outlineList")) {
         chain(e).toggleOutlineList().run();
       } else {
@@ -544,6 +569,9 @@ export const EDITOR_ACTIONS: EditorAction[] = [
             break;
           case "checkList":
             chain(e).toggleTaskList().run();
+            break;
+          case "simpleCheckList":
+            chain(e).toggleCheckList().run();
             break;
           case "outlineList":
             chain(e).toggleOutlineList().run();

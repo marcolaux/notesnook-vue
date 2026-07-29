@@ -104,6 +104,20 @@ describe("extractNotePreview — checklist progress", () => {
     const html = '<p>text</p><ul><li>not a checklist</li></ul>';
     expect(extractNotePreview(html).checklist).toBeNull();
   });
+
+  it("counts the simple checklist (mobile/imported) the same as the rich one", () => {
+    const html =
+      '<ul class="simple-checklist"><li class="simple-checklist--item checked"><p>a</p></li>' +
+      '<li class="simple-checklist--item"><p>b</p></li></ul>';
+    expect(extractNotePreview(html).checklist).toEqual({ checked: 1, total: 2 });
+  });
+
+  it("sums rich task-list + simple checklist items together", () => {
+    const html =
+      '<ul class="checklist"><li class="checklist--item checked"><p>a</p></li></ul>' +
+      '<ul class="simple-checklist"><li class="simple-checklist--item"><p>b</p></li></ul>';
+    expect(extractNotePreview(html).checklist).toEqual({ checked: 1, total: 2 });
+  });
 });
 
 describe("extractNotePreview — combined + robustness", () => {

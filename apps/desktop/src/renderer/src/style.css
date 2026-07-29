@@ -453,13 +453,19 @@ html[data-transparency="off"] .editor-tab-inactive {
   padding-left: 1.5rem;
 }
 .ProseMirror ul {
-  list-style: disc;
+  /* The bullet list's native `::marker` is suppressed: the list-item node-view
+     draws its own `•` (see `.collapsible-bullet-dot`) so a bullet list renders
+     identically to the outline list (which also self-draws its dot). Other
+     `<ul>` list types (taskList, simple-checklist) already set `list-style:
+     none` themselves, so this only affects the plain bullet list. */
+  list-style: none;
 }
 .ProseMirror ol {
   list-style: decimal;
-}
-.ProseMirror ul ul {
-  list-style: circle;
+  /* Wider gutter than `ul` so the collapse chevron, which sits in the LEFT of
+     the gutter (see the collapsible-list rules below), clears multi-digit
+     numbers whose marker grows leftward from the content edge. */
+  padding-left: 2rem;
 }
 .ProseMirror ol ol {
   list-style: lower-alpha;
@@ -515,6 +521,69 @@ html[data-transparency="off"] .editor-tab-inactive {
    accent fill; this de-emphasises the body text). */
 .ProseMirror .checklist--item.checked > div {
   color: color-mix(in oklab, var(--paragraph) 55%, transparent);
+}
+
+/* Simple checklist (mobile's checkbox list) — `<ul class="simple-checklist">`
+   with `<li class="simple-checklist--item [checked]">`. No node-view component:
+   the checkbox square is drawn in CSS (`::after` outline + `::before` fill) and
+   toggled by the click hit-area in the check-list-item node view. Ported from
+   upstream `@notesnook/editor` styles; uses the same theme tokens
+   (`--icon`, `--accent`) the runtime theme bridge provides. */
+.ProseMirror ul.simple-checklist {
+  list-style: none;
+  padding-inline: 0 !important;
+  padding-inline-start: 40px;
+}
+.ProseMirror li.nested > ul.simple-checklist {
+  padding-inline-start: 15px;
+}
+.ProseMirror .simple-checklist li.simple-checklist--item {
+  position: relative;
+}
+/* The checkbox outline (un-checked state). Sits in the left gutter. */
+.ProseMirror .simple-checklist > li.simple-checklist--item::after {
+  position: absolute;
+  top: calc((1lh - 18px) / 2);
+  cursor: pointer;
+  content: "";
+  background-size: 18px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--icon);
+  border-radius: 5px;
+  left: -24px;
+}
+/* Checked → accent outline. */
+.ProseMirror .simple-checklist > li.simple-checklist--item.checked::after {
+  border: 2px solid var(--accent);
+}
+/* Checked → accent fill with a checkmark (masked SVG). */
+.ProseMirror .simple-checklist > li.simple-checklist--item.checked::before {
+  position: absolute;
+  top: calc((1lh - 14px) / 2);
+  cursor: pointer;
+  content: "";
+  background-size: 18px;
+  width: 14px;
+  height: 14px;
+  left: -22px;
+  background-color: var(--accent);
+  mask: url(data:image/svg+xml;base64,ICA8c3ZnIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDI0IDI0Ij4KICAgIDxwYXRoIGQ9Ik0yMSw3TDksMTlMMy41LDEzLjVMNC45MSwxMi4wOUw5LDE2LjE3TDE5LjU5LDUuNTlMMjEsN1oiLz4KICA8L3N2Zz4K)
+    no-repeat 50% 50%;
+  mask-size: cover;
+}
+/* Checked body text is slightly de-emphasised (matches task-list). */
+.ProseMirror .simple-checklist > li.simple-checklist--item.checked > :not(ul.simple-checklist) {
+  opacity: 0.8;
+}
+/* RTL: mirror the checkbox gutter to the right edge. */
+.ProseMirror .simple-checklist[dir="rtl"] > li.simple-checklist--item::after {
+  left: unset;
+  right: -24px;
+}
+.ProseMirror .simple-checklist[dir="rtl"] > li.simple-checklist--item.checked::before {
+  left: unset;
+  right: -22px;
 }
 
 /* Media node-views (image / embed) ship their own scoped surface styles; here
@@ -615,11 +684,15 @@ html[data-transparency="off"] .editor-tab-inactive {
   display: none !important;
 }
 
-/* Upstream Outline List Styles */
+/* Outline list — renders IDENTICALLY to the collapsible bullet list: same
+   1.5rem gutter, same spacing (no margin override → inherits the base
+   `ul`/`li` margins the bullet list uses), self-drawn `•` marker near the
+   text, and the disclosure chevron in the LEFT of the gutter beside the dot.
+   `list-style:none` (no native marker); the dot is kept on hover/collapse
+   (never faded). Collapsed subtrees are hidden by CSS. */
 .ProseMirror ul[data-type="outlineList"] {
   list-style: none;
-  padding-left: 1.25rem;
-  margin: 0.25rem 0;
+  padding-left: 1.5rem;
 }
 .ProseMirror ul[data-type="outlineList"][data-collapsed="true"] {
   display: none !important;
@@ -627,40 +700,166 @@ html[data-transparency="off"] .editor-tab-inactive {
 .ProseMirror li[data-type="outlineListItem"] {
   position: relative;
   list-style: none;
-  margin: 0.125rem 0;
 }
+/* The chevron toggle spans the full gutter (so hovering the dot or anywhere
+   in the gutter reveals it and clicking toggles — outliner "click the bullet
+   to fold"), but the arrow itself is left-aligned within the button so it
+   sits BESIDE the dot to its right, not centred over it. The button is
+   anchored to the first line (top:0, height = line-height) and centres its
+   arrow vertically, so the chevron aligns with the dot and the text. */
 .ProseMirror li[data-type="outlineListItem"] .outline-toggle-btn {
   position: absolute;
-  left: -1.25rem;
-  top: 0.25rem;
+  left: -1.5rem;
+  top: 0;
+  width: 1.5rem;
+  height: 1.7rem;
+  padding: 0 0 0 0.15rem;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 1rem;
-  height: 1rem;
-  padding: 0;
+  justify-content: flex-start;
   border: none;
   background: transparent;
   color: color-mix(in oklab, var(--paragraph) 60%, transparent);
   border-radius: 3px;
   cursor: pointer;
   user-select: none;
-  transition: transform 150ms ease, color 150ms ease;
+  opacity: 0;
+  pointer-events: auto;
+  transition: color 150ms ease, opacity 120ms ease;
+}
+.ProseMirror li[data-type="outlineListItem"] .outline-toggle-icon {
+  transition: transform 150ms ease;
+}
+/* Hovering the parent (incl. its dot, which the button covers) reveals the
+   chevron (down arrow = "collapse") beside the dot. */
+.ProseMirror li[data-type="outlineListItem"].has-list-child:hover .outline-toggle-btn {
+  opacity: 1;
 }
 .ProseMirror li[data-type="outlineListItem"] .outline-toggle-btn:hover {
   color: var(--color-text);
   background: color-mix(in oklab, var(--paragraph) 15%, transparent);
 }
+/* A collapsed parent always shows the rotated chevron beside its dot. The
+   rotation is applied to the icon only so the button's rectangular hit area
+   stays put. */
 .ProseMirror li[data-type="outlineListItem"] .outline-toggle-btn.is-collapsed {
+  opacity: 1;
+}
+.ProseMirror li[data-type="outlineListItem"] .outline-toggle-btn.is-collapsed .outline-toggle-icon {
   transform: rotate(-90deg);
 }
+/* The `•` marker sits near the text, to the right of the chevron. It is kept
+   on hover/collapse (never faded) — same as the bullet list keeps its native
+   marker. Centred on the first line (matching the chevron and a native disc)
+   and pointer-events:none so the toggle button (which covers it) receives the
+   hover/click. */
 .ProseMirror li[data-type="outlineListItem"] .outline-bullet-dot {
   position: absolute;
-  left: -1rem;
-  top: 0.1rem;
+  left: -0.5rem;
+  top: 0;
+  width: 0.5rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: color-mix(in oklab, var(--paragraph) 50%, transparent);
   user-select: none;
   pointer-events: none;
+}
+
+/* Collapsible bullet/ordered lists. The stock `bulletList`/`orderedList` are
+   extended with a `collapsed` attribute (serialised `data-collapsed="true"`)
+   and the shared `listItem` gets a Vue node-view that draws a `•` marker (for
+   bullet lists) and — only for items that contain a child list — a chevron in
+   the left gutter. The bullet list renders IDENTICALLY to the outline list:
+   same self-drawn `•`, same 1.5rem gutter, same spacing. Ordered lists keep
+   their native numbers (the dot is hidden for `ol`) and use a wider 2rem
+   gutter (set on `ol` above) so the left-aligned chevron clears multi-digit
+   numbers. Collapsed subtrees are hidden by CSS — the ProseMirror doc still
+   holds them. */
+.ProseMirror ul[data-collapsed="true"],
+.ProseMirror ol[data-collapsed="true"] {
+  display: none !important;
+}
+/* Anchor for the absolutely-positioned dot + chevron. Always relative: leaf
+   bullet items also carry the self-drawn dot. */
+.ProseMirror li.collapsible-list-item {
+  position: relative;
+}
+/* Self-drawn `•` bullet — identical to `.outline-bullet-dot` so a bullet list
+   and an outline list look the same. Drawn for every item; hidden for ordered
+   lists below (they keep their native numbers). pointer-events:none so the
+   toggle button (which covers it) receives the hover/click. */
+.ProseMirror li.collapsible-list-item .collapsible-bullet-dot {
+  position: absolute;
+  left: -0.5rem;
+  top: 0;
+  width: 0.5rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in oklab, var(--paragraph) 50%, transparent);
+  user-select: none;
+  pointer-events: none;
+}
+/* Ordered lists keep their native numbers — hide the self-drawn dot. */
+.ProseMirror ol > li.collapsible-list-item .collapsible-bullet-dot {
+  display: none;
+}
+/* The chevron spans the full gutter (so hovering the marker or anywhere in the
+   gutter reveals it and clicking toggles — outliner "click the bullet to
+   fold"), but the arrow is left-aligned within the button so it sits BESIDE
+   the marker to its right, not centred over it. The button is anchored to the
+   first line (top:0, height = line-height) and centres its arrow vertically,
+   so the chevron aligns with the native marker and the text. */
+.ProseMirror li.collapsible-list-item .collapsible-toggle-btn {
+  position: absolute;
+  top: 0;
+  height: 1.7rem;
+  padding: 0 0 0 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: none;
+  background: transparent;
+  color: color-mix(in oklab, var(--paragraph) 60%, transparent);
+  border-radius: 3px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  pointer-events: auto;
+  transition: color 150ms ease, opacity 120ms ease;
+}
+/* Bullet-list chevron: 1.5rem gutter (same as the outline list). */
+.ProseMirror ul > li.collapsible-list-item .collapsible-toggle-btn {
+  left: -1.5rem;
+  width: 1.5rem;
+}
+/* Ordered-list chevron: wider 2rem gutter so the chevron clears numbers. */
+.ProseMirror ol > li.collapsible-list-item .collapsible-toggle-btn {
+  left: -2rem;
+  width: 2rem;
+}
+.ProseMirror li.collapsible-list-item .collapsible-toggle-icon {
+  transition: transform 150ms ease;
+}
+/* Hovering the item (incl. its marker, which the button covers) reveals the
+   chevron beside the marker. */
+.ProseMirror li.collapsible-list-item.has-list-child:hover .collapsible-toggle-btn {
+  opacity: 1;
+}
+.ProseMirror li.collapsible-list-item .collapsible-toggle-btn:hover {
+  color: var(--color-text);
+  background: color-mix(in oklab, var(--paragraph) 15%, transparent);
+}
+/* A collapsed item always shows the rotated chevron. The rotation is applied
+   to the icon only so the button's rectangular hit area stays put. */
+.ProseMirror li.collapsible-list-item .collapsible-toggle-btn.is-collapsed {
+  opacity: 1;
+}
+.ProseMirror li.collapsible-list-item .collapsible-toggle-btn.is-collapsed .collapsible-toggle-icon {
+  transform: rotate(-90deg);
 }
 
 /* Table node-view (Phase 2.4h). The `.selectedCell` / `.column-resize-handle`
@@ -870,9 +1069,14 @@ html[data-transparency="off"] .editor-tab-inactive {
    `.block-colorize` class the host bridge toggles on `.ProseMirror`
    (`editor.view.dom`) from the per-note effective state. The colours come
    from the theme system's `--*-static` categorical palette (emitted in every
-   theme, including 3rd-party, by `theme-vue/theme-to-css.ts`), exposed here as
-   `--bc-*` intermediates so a future re-tinting palette can override them
-   without touching the rules.
+   theme, including 3rd-party, by `theme-vue/theme-to-css.ts`). The exact
+   value used is `--bc-*` — an OKLCH-lightness-adjusted variant of the matching
+   `--*-static` colour, emitted per-theme by `theme-vue/block-colorize.ts`
+   (`blockColorizeToCSS`) so each colour meets WCAG AA contrast against the
+   theme background on ANY theme (the static palette is theme-invariant, so
+   yellow/green/orange wash out on light bg and dark purple on dark bg without
+   adjustment). The `var(--*-static)` fallback keeps a colour before theme
+   injection (first paint).
 
    Mapping (faithful to the original):
      headings → yellow, bold → red, italic → green, links → purple,
@@ -883,17 +1087,6 @@ html[data-transparency="off"] .editor-tab-inactive {
    `<li>` by the `BlockColorize` ProseMirror plugin (CSS can't count depth);
    the plugin emits NO decorations when colorize is off, so the attributes
    vanish entirely. The root class is belt-and-suspenders. ──────────────── */
-.ProseMirror.block-colorize {
-  --bc-heading: var(--yellow-static);
-  --bc-bold: var(--red-static);
-  --bc-italic: var(--green-static);
-  --bc-link: var(--purple-static);
-  --bc-list-1: var(--blue-static);
-  --bc-list-2: var(--red-static);
-  --bc-list-3: var(--yellow-static);
-  --bc-list-4: var(--green-static);
-  --bc-list-5: var(--orange-static);
-}
 
 /* Headings */
 .ProseMirror.block-colorize h1,
@@ -902,31 +1095,31 @@ html[data-transparency="off"] .editor-tab-inactive {
 .ProseMirror.block-colorize h4,
 .ProseMirror.block-colorize h5,
 .ProseMirror.block-colorize h6 {
-  color: var(--bc-heading);
+  color: var(--bc-heading, var(--yellow-static));
 }
 
 /* Inline marks */
 .ProseMirror.block-colorize strong {
-  color: var(--bc-bold);
+  color: var(--bc-bold, var(--red-static));
 }
 .ProseMirror.block-colorize em {
-  color: var(--bc-italic);
+  color: var(--bc-italic, var(--green-static));
 }
 /* Links: purple keeps them distinct from the list-depth cycle (the original
    reserved cyan for links and skipped it in the list cycle). */
 .ProseMirror.block-colorize a {
-  color: var(--bc-link);
+  color: var(--bc-link, var(--purple-static));
 }
 
 /* List items by nesting depth (data-list-level cycles 1..5). Each `<li>`
    carries its own colour; a nested `<li>` overrides for its subtree, matching
    the original's per-level semantics. ::marker inherits `color`, so bullets /
    numbers / checkboxes tint too. */
-.ProseMirror.block-colorize li[data-list-level="1"] { color: var(--bc-list-1); }
-.ProseMirror.block-colorize li[data-list-level="2"] { color: var(--bc-list-2); }
-.ProseMirror.block-colorize li[data-list-level="3"] { color: var(--bc-list-3); }
-.ProseMirror.block-colorize li[data-list-level="4"] { color: var(--bc-list-4); }
-.ProseMirror.block-colorize li[data-list-level="5"] { color: var(--bc-list-5); }
+.ProseMirror.block-colorize li[data-list-level="1"] { color: var(--bc-list-1, var(--blue-static)); }
+.ProseMirror.block-colorize li[data-list-level="2"] { color: var(--bc-list-2, var(--red-static)); }
+.ProseMirror.block-colorize li[data-list-level="3"] { color: var(--bc-list-3, var(--yellow-static)); }
+.ProseMirror.block-colorize li[data-list-level="4"] { color: var(--bc-list-4, var(--green-static)); }
+.ProseMirror.block-colorize li[data-list-level="5"] { color: var(--bc-list-5, var(--orange-static)); }
 
 /* Code-block syntax tokens (refractor/Prism classes, applied as inline
    decoration spans inside `<pre>`). Only the common token types are tinted;
@@ -934,24 +1127,24 @@ html[data-transparency="off"] .editor-tab-inactive {
 .ProseMirror.block-colorize pre .keyword,
 .ProseMirror.block-colorize pre .builtin,
 .ProseMirror.block-colorize pre .class-name {
-  color: var(--purple-static);
+  color: var(--bc-code-keyword, var(--purple-static));
 }
 .ProseMirror.block-colorize pre .string,
 .ProseMirror.block-colorize pre .char,
 .ProseMirror.block-colorize pre .regex,
 .ProseMirror.block-colorize pre .attr-value,
 .ProseMirror.block-colorize pre .inserted {
-  color: var(--green-static);
+  color: var(--bc-code-string, var(--green-static));
 }
 .ProseMirror.block-colorize pre .comment,
 .ProseMirror.block-colorize pre .doctype,
 .ProseMirror.block-colorize pre .cdata {
-  color: var(--gray-static);
+  color: var(--bc-code-comment, var(--gray-static));
 }
 .ProseMirror.block-colorize pre .function,
 .ProseMirror.block-colorize pre .selector,
 .ProseMirror.block-colorize pre .tag {
-  color: var(--blue-static);
+  color: var(--bc-code-function, var(--blue-static));
 }
 .ProseMirror.block-colorize pre .number,
 .ProseMirror.block-colorize pre .operator,
@@ -960,5 +1153,5 @@ html[data-transparency="off"] .editor-tab-inactive {
 .ProseMirror.block-colorize pre .property,
 .ProseMirror.block-colorize pre .attr-name,
 .ProseMirror.block-colorize pre .deleted {
-  color: var(--orange-static);
+  color: var(--bc-code-number, var(--orange-static));
 }

@@ -54,7 +54,17 @@ function toggleCollapse(): void {
 </script>
 
 <template>
-  <NodeViewWrapper as="li" data-type="outlineListItem" class="outline-list-item-wrapper">
+  <NodeViewWrapper
+    as="li"
+    data-type="outlineListItem"
+    class="outline-list-item-wrapper"
+    :class="{ 'has-list-child': hasChildList }"
+  >
+    <!-- The `•` marker is always present (the outline list uses list-style:
+         none, so this dot IS the bullet). It is KEPT on hover/collapse (never
+         faded), matching the bullet list keeping its native marker; the
+         chevron (below) appears beside it to its left. -->
+    <span class="outline-bullet-dot" contenteditable="false">•</span>
     <button
       v-if="hasChildList"
       type="button"
@@ -65,6 +75,7 @@ function toggleCollapse(): void {
       @click="toggleCollapse"
     >
       <svg
+        class="outline-toggle-icon"
         width="12"
         height="12"
         viewBox="0 0 24 24"
@@ -77,7 +88,6 @@ function toggleCollapse(): void {
         <polyline points="6 9 12 15 18 9" />
       </svg>
     </button>
-    <span v-else class="outline-bullet-dot" contenteditable="false">•</span>
     <NodeViewContent class="outline-item-content" />
   </NodeViewWrapper>
 </template>
