@@ -19,9 +19,12 @@ export { TaskListNode } from "./extensions/task-list/task-list";
 export type { TaskListAttributes } from "./extensions/task-list/types";
 
 // Simple checklist (the mobile editor's checkbox list). `<ul class="simple-
-// checklist">` / `<li class="simple-checklist--item [checked]">` — no header,
-// no progress bar; the checkbox is drawn in CSS. Separate schema from the rich
-// task-list above; both are registered so mobile notes round-trip.
+// checklist">` / `<li class="simple-checklist--item [checked]" data-indent?>` —
+// no header, no progress bar (a bare `<ul>`, unlike the rich task-list's card).
+// Its items REUSE the rich `TaskItemComponent` row (real checkbox button + grip +
+// `data-indent` visual indent), so the two checklist types render identical
+// rows; only the container differs. Separate schema from the rich task-list
+// above; both are registered so mobile notes round-trip byte-for-byte.
 export { CheckListNode } from "./extensions/check-list/check-list";
 export type { CheckListOptions } from "./extensions/check-list/check-list";
 export { CheckListItemNode } from "./extensions/check-list-item/check-list-item";

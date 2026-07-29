@@ -70,6 +70,35 @@ export interface AssignmentMenuEntry {
   title: string;
 }
 
+/**
+ * The subset of {@link NoteMenuDeps} the Color / Tags / Notebooks submenu
+ * builders actually read. Defined as a standalone interface so the
+ * "Add to notebook / tag / Assign color" command-palette commands can build
+ * just this slice (via `buildActiveNoteAssignmentDeps`) without stubbing the
+ * unrelated open-in-window / delete / publish callbacks. `NoteMenuDeps`
+ * structurally satisfies it (superset), so `buildNoteMenu` + the full-deps test
+ * fixtures keep passing it unchanged.
+ */
+export interface AssignmentSubmenuDeps {
+  /** Color submenu: the available colors. */
+  colors: ColorMenuEntry[];
+  setColor: (colorId: string, noteId: string) => void | Promise<void>;
+  clearColor: (noteId: string) => void | Promise<void>;
+  presetColors: ColorMenuEntry[];
+  assignPresetColor: (title: string, colorCode: string, noteId: string) => void | Promise<void>;
+  createColor: (noteId: string) => void | Promise<void>;
+  /** Tags submenu: the available tags. */
+  tags: AssignmentMenuEntry[];
+  addTag: (tagId: string, noteId: string) => void | Promise<void>;
+  removeTag: (tagId: string, noteId: string) => void | Promise<void>;
+  createTag: (title: string, noteId: string) => void | Promise<void>;
+  /** Notebooks submenu: the available notebooks. */
+  notebooks: AssignmentMenuEntry[];
+  addNotebook: (notebookId: string, noteId: string) => void | Promise<void>;
+  removeNotebook: (notebookId: string, noteId: string) => void | Promise<void>;
+  createNotebook: (title: string, noteId: string) => void | Promise<void>;
+}
+
 /** Actions the notes-list row needs (passed in from NotesList.vue). */
 export interface NoteMenuDeps {
   openInWindow: (noteId: string) => void;
@@ -141,7 +170,7 @@ export interface NoteMenuDeps {
  * `setColor`; "No color" runs `clearColor`. Closes the menu on pick (no
  * `keepOpen` — color is single-select).
  */
-export function buildColorSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps): SubmenuSpec {
+export function buildColorSubmenu(note: NoteMenuTarget, deps: AssignmentSubmenuDeps): SubmenuSpec {
   return {
     build: () => {
       const items: MenuItem[] = [
@@ -200,7 +229,7 @@ function matchesQuery(title: string, query: string): boolean {
  * updates live). A "Create …" entry appears when the query is non-empty and no
  * existing tag title matches it exactly (creates + assigns in one step).
  */
-export function buildTagsSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps): SubmenuSpec {
+export function buildTagsSubmenu(note: NoteMenuTarget, deps: AssignmentSubmenuDeps): SubmenuSpec {
   return {
     search: { placeholder: t("contextMenu.searchTags") },
     build: (query) => {
@@ -241,7 +270,7 @@ export function buildTagsSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps): Subm
  * adds/removes the note's membership (`keepOpen`). A "Create …" entry appears
  * for a non-empty, non-matching query (creates the notebook + adds the note).
  */
-export function buildNotebooksSubmenu(note: NoteMenuTarget, deps: NoteMenuDeps): SubmenuSpec {
+export function buildNotebooksSubmenu(note: NoteMenuTarget, deps: AssignmentSubmenuDeps): SubmenuSpec {
   return {
     search: { placeholder: t("contextMenu.searchNotebooks") },
     build: (query) => {

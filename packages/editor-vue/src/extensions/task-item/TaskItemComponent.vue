@@ -4,6 +4,18 @@ Task item node-view — a checklist row: a drag grip, a checkbox toggle, and
 the editable content (the paragraph) via <NodeViewContent>. Toggling the
 checkbox calls `updateAttributes({ checked })`; the task-list stats plugin
 syncs the parent list's progress bar from these attrs.
+
+Shared by BOTH checklist item types: the rich `taskItem` (Aufgabenliste, inside
+the TaskListComponent card) AND the simple `checkListItem` (bare
+`<ul class="simple-checklist">`). The component is type-agnostic — it reads
+only `node.attrs.checked` and `node.attrs.indent` (both node schemas declare
+these) — so the two checklist types render IDENTICAL rows (same checkbox
+button, drag grip, spacing, checked dimming, `data-indent` visual indent).
+Only the container differs: the rich list wraps items in a card with a
+header/progress bar; the simple list is a bare `<ul>`. Serialization stays
+type-specific (`renderHTML` emits `checklist--item` vs `simple-checklist--item`
+for byte-for-byte round-trip); this live DOM carries the shared `checklist--item`
+class so the rich row CSS applies to both.
 */
 import { computed } from "vue";
 import { NodeViewWrapper, NodeViewContent } from "@tiptap/vue-3";

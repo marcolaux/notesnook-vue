@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ☑️ Toggle a line into a checklist item (Cmd/Ctrl+L)
+A new `editor:toggleChecklistItem` action (command palette + **Cmd/Ctrl+L**) turns the current line into a checklist item in place — or, when the caret is already inside a check item (rich `taskList` or simple `checkList`), flips that item's `checked` state. This closes the gap where the only way to get a checkbox row was the Lists dropdown or an input rule.
+
+- **In-place, no lift**: when the caret is inside a bullet / ordered / outline list, the **innermost enclosing list** is rebuilt as a `checkList`/`checkListItem` subtree and swapped in atomically (`tr.replaceWith` in one step — per-node `setNodeMarkup` can't do this, since every intermediate state violates the parent's content rule). Stock `toggleList` would otherwise `wrapInList` and lift the item to the top level ("moved to the first level" bug); this rebuild keeps the item where it is.
+- **Children stay bullets** (fixed the same day): conversion is **non-recursive** — only the items at the caret's level become check items; any list nested inside them keeps its original type. So toggling a parent that has children turns just the parent row into a checkbox, leaving the nested children as bullets. Valid because `CheckListItemNode` is configured `nested: true` (`paragraph block*`), so a `checkListItem` can hold a nested `bulletList`. (Siblings of the toggled item still convert — they share the list container, and a `checkListItem` can only live in a `checkList`.)
+- **Flip, not re-convert**: when already in a check item, the command flips `checked` via a raw `tr.setNodeMarkup`; the rich task-list's state-management plugin then propagates to children/parents + syncs `stats`, and the simple `checkListItem` node-view syncs its `.checked` class.
+- **Shared row + visual indent**: the simple checklist item now reuses the rich task-list's `TaskItemComponent` row (real `<button>` checkbox + drag grip + `data-indent`), replacing the old CSS-drawn checkbox — so a toggled simple check row looks identical to a rich Aufgabenliste row. Tab/Shift-Tab adjust the `indent` attribute via a new shared `utils/list-indent.ts` helper (20px-per-level visual indent, no real nested `<ul>`), matching the rich task-list. `block-colorize` and the context-menu now recognise `checkListItem`.
+- **Cmd/Ctrl+K freed**: the `link` extension no longer binds `Mod-k` (it collided with the command-palette hotkey); insert links via the toolbar / `@`/`[[` mention bridge instead.
+
+#### Verification
+- `npm run test:contract` — new `toggle-checklist.spec.ts` (8) green; full suite 1750 passed (one unrelated flaky `canvas-theme` timing test).
+- On-site gate pending: visual confirmation of toggling a parent item with children (children stay bullets), flipping checked, and Tab/Shift-Tab indent on both rich and simple checklist rows, light + dark.
+
+### 🗂️ Assign notebook / tag / color from the command palette
+Three new command-palette entries — **Add to notebook**, **Add tag**, **Assign color** (`app:add-to-notebook` / `app:add-tag` / `app:assign-color`) — let you assign the active note to a notebook, tag, or color without reaching for the right-click menu or the Properties panel.
+
+- **Reuse, don't rebuild**: the commands open the *same* Color / Tags / Notebooks submenu builders the right-click context menu uses (`utils/context-menu-entries.ts`), now wired to the active note via a new `buildActiveNoteAssignmentDeps(target)` in `utils/assignment-menu.ts` (mirrors `NotesList.vue`).
+- **Standalone submenu mode**: new `showSubmenu(spec, x, y)` standalone mode in the context-menu store (+ `standalone` flag) opens a submenu with no root menu — `ContextMenu.vue` hides the root panel, centres the submenu, and closes on ArrowLeft/Escape. The submenu builders' deps type was narrowed to an assignment-only slice so commands don't stub unrelated callbacks.
+- i18n keys `command.addToNotebook` / `addTag` / `assignColor` added (en + de).
+
+#### Verification
+- `npm run test:contract` — context-menu / bridge-router suites green.
+- On-site gate pending: open each command from the palette and confirm the submenu opens centred and assigns correctly.
+
 ### 🎨 Block-colorize adapts its palette for contrast on any theme
 The block-colorize toolbar toggle (which tints editor text by node/mark type — headings→yellow, bold→red, italic→green, links→purple, list items cycle by nesting depth, code tokens by Prism class) now keeps its colours readable on **any** theme, including 3rd-party catalog themes whose background colours aren't known at build time. The colour source — the theme system's `--*-static` Material palette — is theme-invariant (same hex in light and dark), so without adjustment bright colours (yellow/green/orange) washed out on light backgrounds and dark purple washed out on the dark editor surface.
 

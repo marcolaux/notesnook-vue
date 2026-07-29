@@ -475,6 +475,16 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     }
   },
   {
+    // Toggle checklist item — converts the current block into a task-list item,
+    // or — when the cursor is already in a checklist item (rich `taskList` or
+    // simple `checkList`) — flips that item's checked state. Also bound to
+    // Cmd/Ctrl+L (`Mod-l`) on TaskListNode. Not a slash command.
+    id: "toggleChecklistItem",
+    title: "Toggle checklist item",
+    keywords: ["checklist", "todo", "task", "check", "checkbox", "toggle", "done"],
+    run: (e) => chain(e).toggleChecklistItem().run()
+  },
+  {
     id: "outlineList",
     title: "Outline list",
     keywords: ["outline", "toggle list", "collapsible", "tree", "fold"],

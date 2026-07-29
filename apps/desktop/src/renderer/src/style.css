@@ -524,66 +524,38 @@ html[data-transparency="off"] .editor-tab-inactive {
 }
 
 /* Simple checklist (mobile's checkbox list) — `<ul class="simple-checklist">`
-   with `<li class="simple-checklist--item [checked]">`. No node-view component:
-   the checkbox square is drawn in CSS (`::after` outline + `::before` fill) and
-   toggled by the click hit-area in the check-list-item node view. Ported from
-   upstream `@notesnook/editor` styles; uses the same theme tokens
-   (`--icon`, `--accent`) the runtime theme bridge provides. */
+   with `<li class="simple-checklist--item [checked]" data-indent?>`. The items
+   reuse the rich task-list's `TaskItemComponent` node-view, so each row is
+   rendered as `li.checklist--item` (a real `<button>` checkbox + drag grip) and
+   the shared `.checklist--item` rules below (line-height, margin, checked dim)
+   apply to BOTH checklist types — they render IDENTICAL rows. Only the
+   container differs: the simple list is a bare `<ul>` (no card/header/progress,
+   which stay Aufgabenliste-specific). Serialization stays type-specific via
+   `renderHTML` (`simple-checklist--item`) for byte-for-byte round-trip. */
 .ProseMirror ul.simple-checklist {
   list-style: none;
-  padding-inline: 0 !important;
-  padding-inline-start: 40px;
+  /* Match the rich task-list container's `px-3 py-2` (TaskListComponent's
+     `<ul class="px-3 py-2">` + the `.tasklist-wrapper ul { padding: 0.5rem
+     0.75rem }` override) so a simple-checklist row aligns with an
+     Aufgabenliste row. No `!important`: this selector (`.ProseMirror
+     ul.simple-checklist`, specificity 0,2,1) already outranks the general
+     `.ProseMirror ul { padding-left: 1.5rem }` (0,1,1), and leaving it
+     non-`!important` lets the legacy-nested rule below win for nested lists. */
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
 }
-.ProseMirror li.nested > ul.simple-checklist {
-  padding-inline-start: 15px;
+/* Inter-row gap: match the rich `space-y-2` (8px). The shared
+   `.checklist--item { margin: 0 }` rule is outranked by this more-specific
+   adjacent-sibling selector. */
+.ProseMirror ul.simple-checklist > .checklist--item + .checklist--item {
+  margin-top: 0.5rem;
 }
-.ProseMirror .simple-checklist li.simple-checklist--item {
-  position: relative;
-}
-/* The checkbox outline (un-checked state). Sits in the left gutter. */
-.ProseMirror .simple-checklist > li.simple-checklist--item::after {
-  position: absolute;
-  top: calc((1lh - 18px) / 2);
-  cursor: pointer;
-  content: "";
-  background-size: 18px;
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--icon);
-  border-radius: 5px;
-  left: -24px;
-}
-/* Checked → accent outline. */
-.ProseMirror .simple-checklist > li.simple-checklist--item.checked::after {
-  border: 2px solid var(--accent);
-}
-/* Checked → accent fill with a checkmark (masked SVG). */
-.ProseMirror .simple-checklist > li.simple-checklist--item.checked::before {
-  position: absolute;
-  top: calc((1lh - 14px) / 2);
-  cursor: pointer;
-  content: "";
-  background-size: 18px;
-  width: 14px;
-  height: 14px;
-  left: -22px;
-  background-color: var(--accent);
-  mask: url(data:image/svg+xml;base64,ICA8c3ZnIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDI0IDI0Ij4KICAgIDxwYXRoIGQ9Ik0yMSw3TDksMTlMMy41LDEzLjVMNC45MSwxMi4wOUw5LDE2LjE3TDE5LjU5LDUuNTlMMjEsN1oiLz4KICA8L3N2Zz4K)
-    no-repeat 50% 50%;
-  mask-size: cover;
-}
-/* Checked body text is slightly de-emphasised (matches task-list). */
-.ProseMirror .simple-checklist > li.simple-checklist--item.checked > :not(ul.simple-checklist) {
-  opacity: 0.8;
-}
-/* RTL: mirror the checkbox gutter to the right edge. */
-.ProseMirror .simple-checklist[dir="rtl"] > li.simple-checklist--item::after {
-  left: unset;
-  right: -24px;
-}
-.ProseMirror .simple-checklist[dir="rtl"] > li.simple-checklist--item.checked::before {
-  left: unset;
-  right: -22px;
+/* Legacy nested `<ul class="simple-checklist">` (existing/mobile notes that
+   nest for real; new Tab-indent uses `data-indent` on the item instead).
+   Indent the nested list so the hierarchy still reads. */
+.ProseMirror .checklist--item ul.simple-checklist {
+  padding: 0 0 0 1.5rem;
+  margin: 0;
 }
 
 /* Media node-views (image / embed) ship their own scoped surface styles; here

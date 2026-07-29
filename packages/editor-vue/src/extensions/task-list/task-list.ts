@@ -17,8 +17,8 @@ Differences from upstream (scoped to this 2.4a increment):
 */
 import { mergeAttributes, VueNodeViewRenderer } from "@tiptap/vue-3";
 import { TaskList } from "@tiptap/extension-task-list";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
-import type { Node as ProsemirrorNode } from "@tiptap/pm/model";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
+import { type Node as ProsemirrorNode, type NodeType } from "@tiptap/pm/model";
 import TaskListComponent from "./TaskListComponent.vue";
 import { countCheckedItems, findRootTaskList, toggleChildren } from "./utils";
 import {
@@ -31,6 +31,23 @@ import {
 import { TaskItemNode } from "../task-item/task-item";
 
 export type { TaskListAttributes } from "./types";
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    // Declared under a fresh namespace key (not the base `taskList`) — TS won't
+    // let a second `taskList` property add a method (TS2717), and `SingleCommands`
+    // flattens every namespace's methods together, so `editor.commands
+    // .toggleChecklistItem` resolves regardless of the key.
+    checklistItem: {
+      /** Toggle the current block into a checklist item, or — when the cursor
+       *  is already inside a `taskItem` (rich) or `checkListItem` (simple) —
+       *  flip that item's `checked` state. Bound to `Mod-l` (see
+       *  `addKeyboardShortcuts`); also exposed in the command palette via the
+       *  `toggleChecklistItem` editor action in `tool-definitions.ts`. */
+      toggleChecklistItem: () => ReturnType;
+    };
+  }
+}
 
 export const TaskListNode = TaskList.extend({
   addAttributes() {
@@ -93,7 +110,133 @@ export const TaskListNode = TaskList.extend({
           // views — force the editor back to the correct position.
           setTimeout(() => editor.commands.setTextSelection(position), 0);
           return true;
+        },
+      toggleChecklistItem:
+        () =>
+        ({ state, chain }) => {
+          // Walk up from the cursor to find the nearest checklist item node
+          // (rich `taskItem` or simple `checkListItem`). If found, flip its
+          // `checked` attribute via a raw `tr.setNodeMarkup` (there is no chain
+          // command for it) — the task-list-state-management plugin then
+          // propagates to children/parents + syncs `stats` (rich), and the
+          // checkListItem node-view `update` syncs its `.checked` CSS class
+          // (simple). If NOT inside a checklist item, convert the current line
+          // into a simple (bare-checkbox) checklist item — in place when the
+          // cursor is inside another list type (see below).
+          const { $from } = state.selection;
+          const taskItem = state.schema.nodes.taskItem;
+          const checkListItem = state.schema.nodes.checkListItem;
+          let itemNode: ProsemirrorNode | null = null;
+          let itemPos = -1;
+          for (let depth = $from.depth; depth > 0; depth--) {
+            const node = $from.node(depth);
+            if (
+              (taskItem && node.type === taskItem) ||
+              (checkListItem && node.type === checkListItem)
+            ) {
+              itemNode = node;
+              itemPos = $from.before(depth);
+              break;
+            }
+          }
+          if (itemNode && itemPos >= 0) {
+            const checked = Boolean(itemNode.attrs.checked);
+            return chain()
+              .command(({ tr }) => {
+                tr.setNodeMarkup(itemPos, undefined, {
+                  ...itemNode.attrs,
+                  checked: !checked
+                });
+                return true;
+              })
+              .run();
+          }
+          // Not inside a checklist item. If the cursor is inside a list of
+          // another type (bullet / ordered / outline), convert the INNERMOST
+          // containing list into a simple checklist IN PLACE — rebuild that
+          // one list as `checkList`/`checkListItem` and replace it atomically
+          // — so the line becomes a check item WITHOUT being lifted out of
+          // its parent. Only the items at the caret's level become check
+          // items; any lists NESTED inside them are left at their original
+          // type (a `checkListItem` with `nested: true` holds `paragraph
+          // block*`, so it can contain a nested bullet/ordered list — the
+          // children stay bullets, only the toggled row gains a checkbox).
+          // Stock `toggleList` can't do this: it only swaps the list type when
+          // the items are already compatible (validContent), and otherwise
+          // falls back to `wrapInList`, which lifts the item to the top level
+          // (the "moved to the first level" bug). A plain block (no list
+          // ancestor) is wrapped in a new simple checklist via
+          // `toggleCheckList`.
+          const checkListType = state.schema.nodes.checkList;
+          const checkListItemType = state.schema.nodes.checkListItem;
+          let listNode: ProsemirrorNode | null = null;
+          let listDepth = -1;
+          for (let depth = $from.depth; depth > 0; depth--) {
+            const node = $from.node(depth);
+            if (node.type.spec.group?.includes("list")) {
+              listNode = node;
+              listDepth = depth;
+              break;
+            }
+          }
+          const listName = listNode?.type.name;
+          if (
+            listNode &&
+            listDepth > 0 &&
+            checkListType &&
+            checkListItemType &&
+            listName !== "taskList" &&
+            listName !== "checkList"
+          ) {
+            // Convert ONLY the innermost enclosing list: its direct items
+            // become `checkListItem`s, and each item's content (including any
+            // nested bullet/ordered/outline list) is reused VERBATIM, so
+            // nested children keep their original list type instead of being
+            // recursively rewritten into check items. We REBUILD the one list
+            // as `checkList`/`checkListItem` and `tr.replaceWith` it in ONE
+            // step: per-node `setNodeMarkup` can't work, because
+            // `setNodeMarkup` validates content on each call, and every
+            // intermediate state is invalid (a `bulletList` holding a
+            // `checkListItem`, or a `checkList` holding a `listItem`,
+            // violates the parent's content rule). The rebuilt subtree has
+            // the same shape/size as the original, so it drops into the same
+            // range.
+            const listPos = $from.before(listDepth);
+            const end = listPos + listNode.nodeSize;
+            const newNode = toChecklistSubtree(
+              listNode,
+              checkListType,
+              checkListItemType
+            );
+            return chain()
+              .command(({ tr }) => {
+                tr.replaceWith(listPos, end, newNode);
+                // The rebuilt subtree has the SAME shape/size as the original
+                // (only node TYPES change — paragraphs + inline marks are
+                // reused), so the caret's absolute position is still valid in
+                // the new doc and points into the converted check item's text.
+                // Restore it explicitly: `replaceWith` of a closed-node slice
+                // otherwise maps interior positions to the END of the inserted
+                // range (the next line), jumping the cursor down. Preserve both
+                // anchor and head (same positions) so a range selection is kept.
+                const { anchor, head } = state.selection;
+                tr.setSelection(TextSelection.create(tr.doc, anchor, head));
+                return true;
+              })
+              .run();
+          }
+          return chain().toggleCheckList().run();
         }
+    };
+  },
+
+  addKeyboardShortcuts() {
+    // Preserve the base `Mod-Shift-9` (toggle task list) from
+    // `@tiptap/extension-task-list` while adding `Mod-l` (Cmd/Ctrl+L) for the
+    // toggle-checklist-item action.
+    return {
+      ...this.parent?.(),
+      "Mod-l": () => this.editor.commands.toggleChecklistItem()
     };
   },
 
@@ -212,4 +355,63 @@ function areAllChecked(node: ProsemirrorNode): boolean {
     }
   }
   return allChecked;
+}
+
+/**
+ * A list *container* that {@link toChecklistSubtree} should rewrite to a
+ * `checkList`: bullet / ordered / outline (group "block list"), but NOT
+ * `taskList` / `checkList` (the conversion only targets non-check lists).
+ */
+function isConvertibleList(node: ProsemirrorNode): boolean {
+  return (
+    Boolean(node.type.spec.group?.includes("list")) &&
+    node.type.name !== "taskList" &&
+    node.type.name !== "checkList"
+  );
+}
+
+/**
+ * Rebuild `list` (a bullet / ordered / outline list) as a single-level
+ * `checkList`, for {@link toggleChecklistItem}'s in-place conversion.
+ *
+ * Every DIRECT item of `list` becomes a `checkListItem` — preserving a
+ * converted task item's existing `checked` state (plain list / outline
+ * items start unchecked), with `indent` left at its default (0). Each
+ * item's content (paragraph + any nested bullet/ordered/outline list) is
+ * reused VERBATIM, so nested children keep their original list type — only
+ * the rows at the caret's level gain a checkbox. Reused paragraphs /
+ * blocks keep their inline marks (the node objects are reused as-is; only
+ * the one list container and its direct items are re-typed).
+ *
+ * The rebuilt subtree has the SAME shape and size as the original, so it
+ * can replace the original range in one atomic `tr.replaceWith` — which
+ * matters because per-node `setNodeMarkup` cannot do this conversion:
+ * `setNodeMarkup` validates content on each call, and every intermediate
+ * state is invalid (a `bulletList` holding a `checkListItem` — or a
+ * `checkList` holding a `listItem` — breaks the parent's content rule).
+ */
+function toChecklistSubtree(
+  list: ProsemirrorNode,
+  checkListType: NodeType,
+  checkListItemType: NodeType
+): ProsemirrorNode {
+  const children: ProsemirrorNode[] = [];
+  list.forEach((child) => {
+    if (isConvertibleList(child)) {
+      // A list nested directly inside another list (defensive — normally
+      // lists nest inside list items, not directly). Leave it at its
+      // original type: only the caret's level converts.
+      children.push(child);
+    } else {
+      // A list item → checkListItem, reusing its content verbatim — any
+      // nested list inside the item stays its original type.
+      children.push(
+        checkListItemType.create(
+          { checked: Boolean(child.attrs.checked) },
+          child.content
+        )
+      );
+    }
+  });
+  return checkListType.create({}, children);
 }

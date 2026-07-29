@@ -9,18 +9,16 @@ change. Only `addNodeView` differs: the React `createNodeView` is replaced by
 Mobile/iOS touch handling (decision #8 — desktop first) is dropped.
 */
 import { mergeAttributes, VueNodeViewRenderer } from "@tiptap/vue-3";
-import type { Editor } from "@tiptap/core";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskItemComponent from "./TaskItemComponent.vue";
-import { ensureLeadingParagraph, findParentNodeClosestToPos } from "../../utils/prosemirror";
+import { ensureLeadingParagraph } from "../../utils/prosemirror";
+import { MAX_LIST_INDENT, adjustListIndent } from "../../utils/list-indent";
 
 export type { TaskItemAttributes } from "./types";
 
-/**
- * Furthest a task item can be visually indented via Tab. Caps runaway nesting
- * of the left padding and keeps the rendered HTML tidy.
- */
-export const MAX_TASK_INDENT = 8;
+// Re-export the shared indent cap under its legacy name so existing imports
+// (`MAX_TASK_INDENT`) keep resolving.
+export { MAX_LIST_INDENT as MAX_TASK_INDENT } from "../../utils/list-indent";
 
 export const TaskItemNode = TaskItem.extend({
   draggable: true,
@@ -47,7 +45,7 @@ export const TaskItemNode = TaskItem.extend({
         parseHTML: (element) => {
           const n = Number(element.dataset.indent);
           return Number.isFinite(n) && n > 0
-            ? Math.min(MAX_TASK_INDENT, Math.floor(n))
+            ? Math.min(MAX_LIST_INDENT, Math.floor(n))
             : 0;
         },
         renderHTML: (attributes) => {
@@ -88,8 +86,8 @@ export const TaskItemNode = TaskItem.extend({
       // (MAX_TASK_INDENT) Tab is a no-op. When the caret is not inside a task
       // item, both return false so other handlers (e.g. code-block indent)
       // take the key.
-      Tab: () => adjustIndent(this.editor, this.name, +1),
-      "Shift-Tab": () => adjustIndent(this.editor, this.name, -1)
+      Tab: () => adjustListIndent(this.editor, this.name, +1),
+      "Shift-Tab": () => adjustListIndent(this.editor, this.name, -1)
     };
   },
 
@@ -101,30 +99,3 @@ export const TaskItemNode = TaskItem.extend({
     return [];
   }
 });
-
-/**
- * Adjust the `indent` attribute of the task item wrapping the selection by
- * `delta` (Tab = +1, Shift-Tab = -1), clamped to `[0, MAX_TASK_INDENT]`.
- *
- * Returns `true` (key handled) whenever the caret sits in a task item — even
- * when already at the floor/ceiling, so the browser's default Tab focus-move
- * (and the stock `liftListItem`/`sinkListItem`) never fire. Returns `false`
- * when the caret is outside a task item so other shortcuts can claim the key.
- */
-function adjustIndent(editor: Editor, typeName: string, delta: number): boolean {
-  const { state, view } = editor;
-  const item = findParentNodeClosestToPos(
-    state.selection.$from,
-    (node) => node.type.name === typeName
-  );
-  if (!item) return false;
-
-  const current = Number(item.node.attrs.indent ?? 0);
-  const next = Math.max(0, Math.min(MAX_TASK_INDENT, current + delta));
-  if (next === current) return true;
-
-  const tr = state.tr;
-  tr.setNodeMarkup(item.pos, undefined, { ...item.node.attrs, indent: next });
-  view.dispatch(tr);
-  return true;
-}

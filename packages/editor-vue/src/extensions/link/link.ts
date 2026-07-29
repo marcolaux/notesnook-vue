@@ -112,18 +112,11 @@ export const Link = Mark.create<LinkOptions>({
     };
   },
 
-  addKeyboardShortcuts() {
-    return {
-      "Mod-k": () => {
-        const triggerBtn = document.querySelector("[data-note-link-trigger]") as HTMLElement | null;
-        if (triggerBtn) {
-          triggerBtn.click();
-          return true;
-        }
-        return false;
-      }
-    };
-  },
+  // No `Mod-k` keyboard shortcut here: Cmd/Ctrl+K is the command-palette hotkey
+  // (bound globally in `components/TitleBar.vue`'s `onOmnibarHotkey`). Binding it
+  // here would let the editor's keymap swallow the keystroke (clicking the
+  // toolbar link button) before the palette opens. Insert a link via the
+  // toolbar button or the `@`/`[[` mention bridge instead.
 
   addProseMirrorPlugins() {
     const editor = this.editor;

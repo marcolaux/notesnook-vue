@@ -26,16 +26,20 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 
 export const blockColorizePluginKey = new PluginKey("blockColorize");
 
-/** List *container* node names (the ancestors whose depth we count). */
+/** List *container* node names (the ancestors whose depth we count). Includes
+ *  `checkList` (the simple/mobile checklist) so its items colorize by nesting
+ *  depth like every other list type. */
 const LIST_CONTAINERS = new Set([
   "bulletList",
   "orderedList",
   "taskList",
+  "checkList",
   "outlineList"
 ]);
 
-/** List *item* node names (the nodes that receive `data-list-level`). */
-const LIST_ITEMS = new Set(["listItem", "taskItem", "outlineListItem"]);
+/** List *item* node names (the nodes that receive `data-list-level`). Includes
+ *  `checkListItem` (the simple/mobile checklist item). */
+const LIST_ITEMS = new Set(["listItem", "taskItem", "checkListItem", "outlineListItem"]);
 
 /** Palette cycle length (matches the original: blue, red, yellow, green,
  *  orange — cyan reserved for links, so 5 not 6). */
@@ -58,7 +62,19 @@ function buildListLevelDecorations(doc: ProseMirrorNode): DecorationSet {
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
     if (LIST_ITEMS.has(node.type.name)) {
-      const level = listLevelAt(doc, pos);
+      let level = listLevelAt(doc, pos);
+      // The rich task-list AND the simple checklist nest VISUALLY via a
+      // `data-indent` attribute (Tab adjusts `indent`, not real nested
+      // containers — see `utils/list-indent.ts`). Without this, every item in
+      // a flat list shares container-depth 1 and colourizes the same colour
+      // regardless of how far it's indented. Add the visual indent so each
+      // indentation level cycles to the next colour, matching how real nested
+      // containers (bulletList) colourize by depth. Legacy simple-checklist
+      // notes that still nest for real keep `indent: 0`, so this is a no-op
+      // for them (their container depth already varies).
+      if (node.type.name === "taskItem" || node.type.name === "checkListItem") {
+        level += Number(node.attrs.indent ?? 0);
+      }
       const slot = ((level - 1) % LEVEL_MOD) + 1;
       decorations.push(
         Decoration.node(pos, pos + node.nodeSize, {

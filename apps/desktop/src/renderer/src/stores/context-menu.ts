@@ -52,6 +52,14 @@ export const useContextMenuStore = defineStore("contextMenu", () => {
   const activeIndex = ref(0);
   /** The currently-open submenu, or `null` (v2). At most one at a time. */
   const submenu = ref<SubmenuState | null>(null);
+  /** `true` when a submenu is shown WITHOUT a root menu — i.e. opened directly
+   *  as a standalone popup picker (the "Add to notebook / tag / Assign color"
+   *  command-palette commands reuse the Color/Tags/Notebooks submenu builders
+   *  this way, see `commands/app-commands.ts`). When `true`, `ContextMenu.vue`
+   *  hides the empty root panel and centers the submenu in the viewport instead
+   *  of anchoring it to a root row. `show()` resets this; only `showSubmenu`
+   *  sets it. */
+  const standalone = ref(false);
   /** Optional domain id of the thing the open menu targets (e.g. the right-
    *  clicked note's id), so the originating list can keep an outline on that
    *  row while the menu is open. Domain-agnostic: callers pass whatever id
@@ -79,6 +87,32 @@ export const useContextMenuStore = defineStore("contextMenu", () => {
     y.value = py;
     activeIndex.value = firstMenuIndex(items.value);
     submenu.value = null;
+    standalone.value = false;
+    contextId.value = ctxId ?? null;
+    open.value = true;
+  }
+
+  /** Open a submenu as a STANDALONE popup picker — no root menu, just the
+   *  submenu panel (with its search field, if any) centered near `(px, py)`.
+   *  Used by the "Add to notebook / tag / Assign color" command-palette
+   *  commands, which reuse the Color/Tags/Notebooks submenu builders so the
+   *  search / create / multi-toggle / preset behaviour is identical to the
+   *  right-click menus. `refreshSubmenu` (after a `keepOpen` toggle) and
+   *  `setQuery` (search input) work as normal because both operate on
+   *  `submenu` regardless of whether a root menu exists. */
+  function showSubmenu(spec: SubmenuSpec, px: number, py: number, ctxId?: string | null): void {
+    const built = spec.build("");
+    items.value = [];
+    submenu.value = {
+      spec,
+      items: built,
+      activeIndex: firstMenuIndex(built),
+      query: ""
+    };
+    x.value = px;
+    y.value = py;
+    activeIndex.value = 0;
+    standalone.value = true;
     contextId.value = ctxId ?? null;
     open.value = true;
   }
@@ -86,6 +120,7 @@ export const useContextMenuStore = defineStore("contextMenu", () => {
   function close(): void {
     open.value = false;
     submenu.value = null;
+    standalone.value = false;
     contextId.value = null;
     // Keep `items` until the next `show` so a closing overlay can finish its
     // exit without a flash of empty content; `show` overwrites them.
@@ -229,10 +264,12 @@ export const useContextMenuStore = defineStore("contextMenu", () => {
     y,
     activeIndex,
     submenu,
+    standalone,
     contextId,
     selectableItems,
     submenuItems,
     show,
+    showSubmenu,
     close,
     move,
     setActiveIndex,

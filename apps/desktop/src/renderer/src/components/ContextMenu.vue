@@ -65,7 +65,11 @@ function onKeydown(e: KeyboardEvent): void {
       }
       break;
     case "ArrowLeft":
-      if (menu.submenu) {
+      // In a standalone submenu there is no root to fall back to — close.
+      if (menu.standalone) {
+        e.preventDefault();
+        menu.close();
+      } else if (menu.submenu) {
         e.preventDefault();
         menu.closeSubmenu();
       }
@@ -76,7 +80,8 @@ function onKeydown(e: KeyboardEvent): void {
       break;
     case "Escape":
       e.preventDefault();
-      if (menu.submenu) menu.closeSubmenu();
+      if (menu.standalone) menu.close();
+      else if (menu.submenu) menu.closeSubmenu();
       else menu.close();
       break;
     default:
@@ -114,6 +119,10 @@ function reposition(): void {
 /** Position the submenu panel at the right edge of the active root row (flips
  *  left on viewport overflow). Called after the submenu opens / its items change. */
 function repositionSubmenu(): void {
+  if (menu.standalone) {
+    repositionStandalone();
+    return;
+  }
   const panel = submenuEl.value;
   if (!panel || !root.value) return;
   const row = root.value.querySelector<HTMLElement>(".context-menu__item.is-active");
@@ -126,6 +135,19 @@ function repositionSubmenu(): void {
   const topPos = rowRect.top + pr.height + 8 > vp.height ? Math.max(8, vp.height - pr.height - 8) : rowRect.top;
   subTop.value = topPos;
   subLeft.value = leftPos;
+}
+
+/** Center a standalone submenu around the stored `(x, y)` (the caller passes a
+ *  viewport point — the assignment commands use the viewport center) and clamp
+ *  it inside the viewport. Unlike {@link repositionSubmenu} there is no root row
+ *  to anchor to. */
+function repositionStandalone(): void {
+  const panel = submenuEl.value;
+  if (!panel) return;
+  const pr = panel.getBoundingClientRect();
+  const vp = { width: window.innerWidth, height: window.innerHeight };
+  subLeft.value = Math.max(8, Math.min(menu.x - Math.round(pr.width / 2), vp.width - pr.width - 8));
+  subTop.value = Math.max(8, Math.min(menu.y - Math.round(pr.height / 2), vp.height - pr.height - 8));
 }
 
 function onDown(e: MouseEvent): void {
@@ -165,8 +187,11 @@ watch(
       top.value = menu.y;
       left.value = menu.x;
       await nextTick();
-      root.value?.focus();
-      reposition();
+      // Standalone mode has no root panel — focus the submenu instead (the
+      // `menu.submenu` watch below also focuses the search input when present).
+      if (!menu.standalone) root.value?.focus();
+      else submenuEl.value?.focus();
+      if (!menu.standalone) reposition();
       document.addEventListener("mousedown", onDown, true);
       window.addEventListener("scroll", onScroll, true);
       window.addEventListener("resize", onClose);
@@ -198,8 +223,16 @@ watch(
   async (sub) => {
     if (!sub) return;
     await nextTick();
-    if (sub.spec.search) searchInput.value?.focus();
-    else root.value?.focus();
+    if (menu.standalone) {
+      // No root panel — focus the search field if present, else the submenu
+      // panel itself (so keyboard nav works for search-less submenus like Color).
+      if (sub.spec.search) searchInput.value?.focus();
+      else submenuEl.value?.focus();
+    } else if (sub.spec.search) {
+      searchInput.value?.focus();
+    } else {
+      root.value?.focus();
+    }
     repositionSubmenu();
   },
   { flush: "post" }
@@ -235,7 +268,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <div
-      v-if="menu.open"
+      v-if="menu.open && !menu.standalone"
       ref="root"
       class="context-menu titlebar-no-drag"
       tabindex="-1"

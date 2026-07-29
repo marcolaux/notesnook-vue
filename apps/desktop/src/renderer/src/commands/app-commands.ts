@@ -5,7 +5,7 @@
  * `./editor-commands`.
  */
 import { registerCommands } from "./registry";
-import type { Command } from "./registry";
+import type { Command, CommandContext } from "./registry";
 import { VIEWS } from "@/router/routes";
 import { desktop } from "@/platform/desktop-bridge";
 import { readCurrentContext } from "@/platform/account-context";
@@ -13,9 +13,53 @@ import { getCurrentContext } from "@/platform/bootstrap";
 import { usePublishDialogStore } from "@/stores/publish-dialog";
 import { useDialogStore } from "@/stores/dialog";
 import { useTemplatesStore } from "@/stores/templates";
+import { useContextMenuStore } from "@/stores/context-menu";
+import { usePropertiesStore } from "@/stores/properties";
+import {
+  buildColorSubmenu,
+  buildTagsSubmenu,
+  buildNotebooksSubmenu,
+  type NoteMenuTarget
+} from "@/utils/context-menu-entries";
+import { buildActiveNoteAssignmentDeps } from "@/utils/assignment-menu";
 import i18n from "@/i18n";
 
 const t = i18n.global.t.bind(i18n.global);
+
+/**
+ * Build a {@link NoteMenuTarget} snapshot for the active note (seeded from the
+ * Properties store's loaded assignments so the submenu ✓ states are correct),
+ * wire the assignment deps to the stores, then open the matching Color/Tags/
+ * Notebooks submenu as a standalone centered popup. Shared by the three
+ * `app:add-*` / `app:assign-color` commands below.
+ */
+function openAssignmentSubmenu(ctx: CommandContext, kind: "notebook" | "tag" | "color"): void {
+  const note = ctx.notes.activeNote;
+  if (!note) return;
+  const properties = usePropertiesStore();
+  const target: NoteMenuTarget = {
+    id: note.id,
+    title: note.title,
+    pinned: note.pinned,
+    favorite: note.favorite,
+    published: ctx.publish.published,
+    colorId: properties.color?.id ?? null,
+    tagIds: properties.tags.map((tg) => tg.id),
+    notebookIds: properties.notebooks.map((n) => n.id)
+  };
+  const deps = buildActiveNoteAssignmentDeps(target);
+  const spec =
+    kind === "notebook"
+      ? buildNotebooksSubmenu(target, deps)
+      : kind === "tag"
+        ? buildTagsSubmenu(target, deps)
+        : buildColorSubmenu(target, deps);
+  useContextMenuStore().showSubmenu(
+    spec,
+    Math.floor(window.innerWidth / 2),
+    Math.floor(window.innerHeight / 2)
+  );
+}
 
 const appCommands: Command[] = [
   {
@@ -313,6 +357,36 @@ const appCommands: Command[] = [
     group: "app",
     when: (ctx) => ctx.auth.showShell,
     run: (ctx) => ctx.shell.toggleProperties()
+  },
+  // "Add to notebook / tag / Assign color" — open the same Color/Tags/Notebooks
+  // submenus the notes-list right-click uses, as a standalone centered popup
+  // (see `stores/context-menu.ts` `showSubmenu`). The assignment deps are wired
+  // to the Properties/Collections/Colors stores for the active note; the submenu
+  // builders' search / create / multi-toggle / preset behaviour is reused
+  // verbatim. The omnibar closes the palette after `run`, then the popup opens.
+  {
+    id: "app:add-to-notebook",
+    title: "command.addToNotebook",
+    keywords: ["notebook", "add", "assign", "move", "organize", "folder"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote,
+    run: (ctx) => openAssignmentSubmenu(ctx, "notebook")
+  },
+  {
+    id: "app:add-tag",
+    title: "command.addTag",
+    keywords: ["tag", "add", "assign", "label", "categorize"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote,
+    run: (ctx) => openAssignmentSubmenu(ctx, "tag")
+  },
+  {
+    id: "app:assign-color",
+    title: "command.assignColor",
+    keywords: ["color", "assign", "label", "swatch", "tint", "highlight"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && !!ctx.notes.activeNote,
+    run: (ctx) => openAssignmentSubmenu(ctx, "color")
   },
   {
     id: "app:toggle-note-history",
