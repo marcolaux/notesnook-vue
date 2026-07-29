@@ -182,7 +182,8 @@ export {
   setLastSelectedListType,
   getLastSelectedListType,
   setEditorLabelResolver,
-  resolveToolTitle
+  resolveToolTitle,
+  setInsertDateHandler
 } from "./tool-definitions";
 export type {
   EditorAction,

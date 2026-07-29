@@ -37,7 +37,9 @@ export default {
     selected: "Ausgewählt",
     untitled: "Unbenannt",
     never: "Nie",
-    noAdditionalText: "Kein zusätzlicher Text"
+    noAdditionalText: "Kein zusätzlicher Text",
+    previous: "Zurück",
+    next: "Weiter"
   },
   notebookPicker: {
     title: "Notizbuch wählen",
@@ -632,6 +634,7 @@ export default {
   },
   routes: {
     all: "Alle Notizen",
+    daily: "Tägliche Notizen",
     tasks: "Aufgaben",
     notebooks: "Notizbücher",
     tags: "Tags",
@@ -642,6 +645,15 @@ export default {
     settings: "Einstellungen",
     notebooksHint: "Notizbücher & Unter-Notizbücher — kommt in Phase 3.2.",
     tagsHint: "Tags & Unter-Tags — kommt in Phase 3.2."
+  },
+  dailyNotes: {
+    createdOnDay: "An diesem Tag erstellt ({n})",
+    modifiedOnDay: "An diesem Tag bearbeitet ({n})",
+    tasksOnDay: "Aufgaben mit diesem Datum ({n})",
+    createFor: "Tagesnotiz für {date} erstellen"
+  },
+  insertDate: {
+    hint: "Tag anklicken · Pfeile navigieren · Enter einfügen · Esc abbrechen"
   },
   notesList: {
     newNote: "Neue Notiz",
@@ -703,6 +715,8 @@ export default {
     table: "Tabelle",
     embed: "Einbettung",
     linkNote: "Mit Notiz verknüpfen",
+    insertDate: "Datum",
+    insertTodayDateLink: "Heutige Tagesnotiz",
     tableSettings: "Tabelle",
     imageSettings: "Bild",
     embedSettings: "Einbettung",

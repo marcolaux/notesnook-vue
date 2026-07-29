@@ -703,6 +703,23 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     if (groups.value[groupId]) activeGroupId.value = groupId;
   }
 
+  /** Clear a group's active tab (set `activeTabId` to `undefined`) WITHOUT
+   *  closing its tabs — the tab strip still lists them (none highlighted), and
+   *  `EditorPane` renders the draft editor for the group. Used by the Daily
+   *  Notes mode to reveal a prefilled-title draft for a date that has no daily
+   *  note yet, while keeping the previously-open daily-note tabs around so the
+   *  user can click back to them. The tabs' sessions are preserved (no
+   *  `closeTab`); clicking a tab re-activates it via `activateTab`. */
+  function clearActiveTab(groupId: string): void {
+    const group = groups.value[groupId];
+    if (!group) return;
+    groups.value = { ...groups.value, [groupId]: { id: group.id } };
+    if (activeGroupId.value === groupId) {
+      // Keep the group focused so the draft editor is the focused pane.
+      activeGroupId.value = groupId;
+    }
+  }
+
   /** Toggle the per-tab note-history timeline sidebar on a note tab. No-op for
    *  attachment tabs or unknown ids. */
   function toggleHistory(tabId: string): void {
@@ -966,6 +983,7 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     activateTab,
     activateTabAtIndex,
     setActiveGroup,
+    clearActiveTab,
     toggleHistory,
     toggleToc,
     setTocMode,

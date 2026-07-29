@@ -33,7 +33,9 @@ export default {
     selected: "Selected",
     untitled: "Untitled",
     never: "Never",
-    noAdditionalText: "No additional text"
+    noAdditionalText: "No additional text",
+    previous: "Previous",
+    next: "Next"
   },
   notebookPicker: {
     title: "Choose a notebook",
@@ -636,6 +638,7 @@ export default {
   },
   routes: {
     all: "All Notes",
+    daily: "Daily Notes",
     tasks: "Tasks",
     notebooks: "Notebooks",
     tags: "Tags",
@@ -646,6 +649,15 @@ export default {
     settings: "Settings",
     notebooksHint: "Notebooks & subnotebooks — coming in Phase 3.2.",
     tagsHint: "Tags & subtags — coming in Phase 3.2."
+  },
+  dailyNotes: {
+    createdOnDay: "Created on this day ({n})",
+    modifiedOnDay: "Modified on this day ({n})",
+    tasksOnDay: "Tasks mentioning this date ({n})",
+    createFor: "Create daily note for {date}"
+  },
+  insertDate: {
+    hint: "Click a day · arrows navigate · Enter insert · Esc cancel"
   },
   notesList: {
     newNote: "New note",
@@ -711,6 +723,8 @@ export default {
     table: "Table",
     embed: "Embed",
     linkNote: "Link to note",
+    insertDate: "Date",
+    insertTodayDateLink: "Today's daily note",
     tableSettings: "Table",
     imageSettings: "Image",
     embedSettings: "Embed",

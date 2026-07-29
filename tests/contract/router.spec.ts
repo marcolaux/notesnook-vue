@@ -38,6 +38,7 @@ describe("router routes", () => {
   it("top/bottom partition matches the sidebar placement", () => {
     expect(topViews.map((v) => v.name)).toEqual([
       RouteName.all,
+      RouteName.daily,
       RouteName.tasks,
       RouteName.notebooks,
       RouteName.tags,
@@ -46,6 +47,11 @@ describe("router routes", () => {
       RouteName.reminders
     ]);
     expect(bottomViews.map((v) => v.name)).toEqual([RouteName.trash, RouteName.settings]);
+  });
+
+  it("daily route resolves to /daily", () => {
+    const router = createAppRouter();
+    expect(router.resolve({ name: RouteName.daily }).path).toBe("/daily");
   });
 
   it("redirects `/` to `/all`", async () => {

@@ -120,6 +120,10 @@ export interface EditorAction {
   available?: (editor: Editor) => boolean;
   /** For `"color"`: which mark the colour applies to. */
   colorTarget?: "text" | "highlight";
+  /** Optional override for the COMMAND-PALETTE title (the slash menu + toolbar
+   *  still use `title`). Used when the slash label and the palette label should
+   *  differ (e.g. slash "Date" vs palette "Insert date"). */
+  paletteTitle?: string;
   /**
    * Execute the action against the editor. The chain is cast to `any` because
    * `ChainedCommands` is derived from the editor's loaded extensions
@@ -167,6 +171,28 @@ export function setEditorLabelResolver(
 /** Resolve a tool action's display title via the host resolver, else English. */
 export function resolveToolTitle(action: { id: string; title: string }): string {
   return labelResolver(action.id) ?? action.title;
+}
+
+/**
+ * Host-installed handler for the "insert date" action (`insertDate`). The action
+ * is editor-vue-side and decoupled from any popup/UI, so it calls this handler
+ * (installed once at host boot via {@link setInsertDateHandler}) to open the
+ * host's date picker for the invoking editor. `null` until installed — in that
+ * case the action falls back to inserting today's local-ISO date (matching
+ * `insertTodayDateLink`), so an isolated editor still does something sensible.
+ */
+let insertDateHandler: ((editor: Editor) => void) | null = null;
+
+/** Install the host's "insert date" picker opener (called once at app boot). */
+export function setInsertDateHandler(fn: (editor: Editor) => void): void {
+  insertDateHandler = fn;
+}
+
+/** Format a `Date` as a local ISO `YYYY-MM-DD` string. */
+function localIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
 }
 
 const toggleHeading = (level: 1 | 2 | 3) => (editor: Editor): void => {
@@ -666,6 +692,46 @@ export const EDITOR_ACTIONS: EditorAction[] = [
     // until `NoteSuggest` is registered (an isolated editor would just insert a
     // literal `@`), matching the image action's "no-op until wired" contract.
     run: (e) => chain(e).insertContent("@").run()
+  },
+  {
+    id: "insertTodayDateLink",
+    title: "Today's daily note",
+    keywords: ["today", "date", "daily", "calendar", "daily notes"],
+    slash: true,
+    glyph: "calendar",
+    // Insert today's date (local ISO) followed by a space. The trailing space
+    // makes the date a complete token followed by a separator, so the
+    // `daily-note-bridge` auto-linker (wired in the renderer) wraps it in an
+    // `nn://note/<id>` link to today's daily note on the next transaction —
+    // creating the daily note if it doesn't exist. A no-op until the bridge is
+    // wired (an isolated editor would just insert the literal date text).
+    run: (e) => {
+      const d = new Date();
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return chain(e).insertContent(`${iso} `).run();
+    }
+  },
+  {
+    id: "insertDate",
+    title: "Date",
+    paletteTitle: "Insert date",
+    keywords: ["date", "insert date", "calendar", "today", "daily", "daily notes", "picker"],
+    slash: true,
+    glyph: "calendar",
+    // Open the host's date picker (today selected; ↑/↓ change the day; Enter
+    // inserts the selected date as a local-ISO token + trailing space so the
+    // `daily-note-bridge` auto-linker wraps it in an `nn://note/<id>` link to
+    // that date's daily note). The picker is host-side UI, so this `run` calls
+    // the host-installed `insertDateHandler`; until it's installed (an isolated
+    // editor), it falls back to inserting today's date (matching
+    // `insertTodayDateLink`).
+    run: (e) => {
+      if (insertDateHandler) {
+        insertDateHandler(e);
+        return;
+      }
+      return chain(e).insertContent(`${localIso(new Date())} `).run();
+    }
   },
 
   // --- Conditional (contextual) settings — shown only when the selection is

@@ -48,6 +48,7 @@ import { setTheme, ThemeDark, ThemeLight, type VueTheme } from "@notesnook-vue/t
 import { useReminderNotifications } from "@/composables/use-reminder-notifications";
 import { useTabShortcuts } from "@/composables/use-tab-shortcuts";
 import ContextMenu from "@/components/ContextMenu.vue";
+import DatePickerPopup from "@/components/DatePickerPopup.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import NotebookPickerDialog from "@/components/NotebookPickerDialog.vue";
 import ColorEditorDialog from "@/components/ColorEditorDialog.vue";
@@ -1005,6 +1006,10 @@ if (!isSettingsWindow) {
       <!-- Right-click context menus (notes list + sidebar). Teleports to
            <body>; driven by useContextMenuStore. -->
       <ContextMenu />
+
+      <!-- Date-picker popup (slash "Date" / palette "Insert date" commands).
+           Teleports to <body>; driven by useInsertDateStore. -->
+      <DatePickerPopup />
 
       <!-- Generic confirm dialog (destructive context-menu actions). Teleports
            to <body>; driven by useDialogStore. -->

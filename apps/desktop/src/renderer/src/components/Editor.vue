@@ -78,6 +78,7 @@ import {
   filterByKey
 } from "@notesnook-vue/editor-vue";
 import { recordUserActivity, flushVectorIndexQueue } from "@/utils/vector-search";
+import { isoDate, parseIsoDate } from "@/utils/daily-notes";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorStore, type EditorSurface } from "@/stores/editor";
@@ -85,6 +86,7 @@ import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useStatusStore } from "@/stores/status";
 import { usePropertiesStore } from "@/stores/properties";
 import { useCollectionsStore } from "@/stores/collections";
+import { useDailyNotesStore } from "@/stores/daily-notes";
 import type { Attachment } from "@notesnook-vue/contracts";
 import { textStats } from "@/utils/properties";
 import {
@@ -104,12 +106,14 @@ import {
 import { wireEditorColorPicker } from "@/editor/color-bridge";
 import { wireTagMention } from "@/editor/tag-mention-bridge";
 import { wireNoteLink } from "@/editor/note-link-bridge";
+import { wireDailyLink } from "@/editor/daily-note-bridge";
 import { wireBlockColorize } from "@/editor/block-colorize-bridge";
 import { goToCollection } from "@/utils/collection-nav";
 import { scrollTopFromFraction } from "@/utils/minimap";
 import { findHeading } from "@/utils/toc";
 import EditorToolbar from "./EditorToolbar.vue";
 import FindBar from "./FindBar.vue";
+import DailyNotesPanel from "./DailyNotesPanel.vue";
 
 const props = defineProps<{ tabId?: string; groupId?: string }>();
 
@@ -140,6 +144,22 @@ const isPaneFocused = computed(() => layout.activeGroupId === myGroupId.value);
 const myNote = computed(() =>
   myNoteId.value ? notes.items.find((n) => n.id === myNoteId.value) ?? null : null
 );
+/** The Daily Notes store — drives the prefilled-title draft for a selected date
+ *  that has no daily note yet (`pendingDailyDate`). In draft mode the title
+ *  input reads `pendingDailyDate` so it shows the ISO date WITHOUT creating the
+ *  note (creation fires only on real user input); when the draft is promoted to
+ *  a real note, `ensureDraft` calls `daily.claimDraft` to tag it daily. */
+const daily = useDailyNotesStore();
+/** When the open note is a daily note (tagged "daily" + ISO-date title), this is
+ *  its ISO date — used to show the day's references panel inside THIS tab. `null`
+ *  for non-daily notes. (A prefilled daily draft is handled by `dailyPanelDate`
+ *  below, which falls back to `pendingDailyDate`.) */
+const dailyNoteDate = computed<string | null>(() => {
+  const id = myNoteId.value;
+  if (!id || !daily.dailyNoteIds.has(id)) return null;
+  const parsed = parseIsoDate(myNote.value?.title ?? "");
+  return parsed ? isoDate(parsed) : null;
+});
 const myContentState = computed(
   () => notes.getContent(myNoteId.value ?? "")?.state ?? "idle"
 );
@@ -147,6 +167,13 @@ const myContentState = computed(
  *  that creates a note on the first keystroke. Drives the minimal draft UI —
  *  no toolbar, no tags/links footer, and a "create a note" title placeholder. */
 const isDraft = computed(() => !myNoteId.value);
+/** The date whose references panel lives inside THIS editor: an open daily-note
+ *  tab's own day, OR — for a prefilled daily draft (a no-note date) — the
+ *  pending date. `null` for non-daily notes/drafts, so the panel is hidden there
+ *  (the panel is per-editor, never a global window-bottom strip). */
+const dailyPanelDate = computed<string | null>(
+  () => dailyNoteDate.value ?? (isDraft.value ? daily.pendingDailyDate : null)
+);
 /** Registry key: `tabId` in tab mode, `"draft:" + groupId` in draft mode. */
 const myKey = computed(() => props.tabId ?? "draft:" + (props.groupId ?? ""));
 
@@ -227,7 +254,10 @@ watch(
 // user types; persistence is debounced per-note inside `notes.setTitle` and
 // flushed on note switch / deactivate / unmount.
 const titleModel = computed<string>({
-  get: () => myNote.value?.title ?? "",
+  // In draft mode, show the pending daily date as the prefilled title (display-
+  // only: `v-model` only calls `set` on real user input, so the prefill never
+  // triggers creation). Empty for a non-daily draft.
+  get: () => myNote.value?.title ?? (isDraft.value ? daily.pendingDailyDate ?? "" : ""),
   set: (v) => {
     const id = myNoteId.value;
     if (id) notes.setTitle(id, v);
@@ -808,6 +838,11 @@ async function ensureDraft(): Promise<void> {
   if (draftInFlight || myNote.value) return;
   draftInFlight = true;
   const focusBody = draftFocusBody;
+  // Capture the pending daily date BEFORE the async create: if this draft is a
+  // prefilled daily draft, the just-created note must be tagged daily + memoized
+  // (see `daily.claimDraft`). `pendingDailyDate` is cleared by `claimDraft`, so
+  // read it now.
+  const pendingIso = daily.pendingDailyDate;
   try {
     const html = editor.value?.getHTML() ?? draftHtml;
     const id = await notes.createDraft(
@@ -826,6 +861,11 @@ async function ensureDraft(): Promise<void> {
     // Flush any title typed before the pause into the new note (the body is
     // already preserved via the getLatestContent re-seed above).
     if (draftTitle) notes.setTitle(id, draftTitle);
+    // Tag the just-created note as the daily note for `pendingIso` (a daily
+    // draft promoted on first content). `claimDraft` adds the `daily` tag
+    // relation + memoizes the id + clears `pendingDailyDate`. No-op for a
+    // non-daily draft (`pendingIso` is null).
+    if (pendingIso) void daily.claimDraft(id, pendingIso);
     // NOTE: do NOT `scheduleSave(editor.value.getHTML())` here — by the time
     // this `await` resumes, Vue has already flushed the remount and the draft
     // editor is destroyed, so reading it would schedule a save of a stale/
@@ -837,6 +877,41 @@ async function ensureDraft(): Promise<void> {
     draftInFlight = false;
   }
 }
+
+// --- Daily draft: prefill + reset on date change ----------------------------
+// The Daily Notes mode reveals a draft editor (no active tab) for a selected
+// date that has no daily note yet, with the ISO date prefilled as the title
+// (`titleModel.get` reads `daily.pendingDailyDate`). When the user switches
+// between two such dates, the draft editor instance STAYS mounted (same
+// `"draft:"+groupId` key), so without a reset the previous date's buffered
+// title/body + pending creation would carry over into the new date. This
+// watcher cancels any in-flight creation for the previous date, clears the
+// body silently (no `onUpdate` → no creation), and re-seeds `draftTitle` to
+// the new ISO — so each no-note date starts clean. Only acts on drafts (a tab
+// editor ignores it). The tab-promotion/unmount path is already covered by
+// `onBeforeUnmount`'s `draftTimer` clear.
+watch(
+  () => daily.pendingDailyDate,
+  (iso) => {
+    if (!isDraft.value) return;
+    if (draftTimer) {
+      clearTimeout(draftTimer);
+      draftTimer = null;
+    }
+    draftHtml = "";
+    draftInFlight = false;
+    if (iso) {
+      // Seed the title buffer with the ISO date so a BODY keystroke (which
+      // doesn't touch the title) still creates the note with the ISO title.
+      // A title keystroke overrides this via `scheduleDraft({title})`.
+      draftTitle = iso;
+      // Clear any text left from the previous no-note date silently (the
+      // `false` flag suppresses `onUpdate`, so this never triggers creation).
+      editor.value?.chain().setContent("", false).run();
+    }
+  },
+  { immediate: true }
+);
 
 // --- Note switching (this tab's note) --------------------------------------
 /**
@@ -1124,6 +1199,7 @@ function refreshStatus(): void {
 
 let disposeTagMention: (() => void) | null = null;
 let disposeNoteLink: (() => void) | null = null;
+let disposeDailyLink: (() => void) | null = null;
 let disposeBlockColorize: (() => void) | null = null;
 
 /** The editor surface currently registered for this pane (rebuilt on editor
@@ -1218,6 +1294,12 @@ watch(
       // a disposer captured for cleanup on the next editor swap / unmount.
       disposeNoteLink?.();
       disposeNoteLink = wireNoteLink(e, () => myNoteId.value, () => myGroupId.value, footer);
+      // Wire the live date → daily-note auto-linker. On user keystrokes it
+      // wraps a complete date token in an `nn://note/<id>` link to that date's
+      // daily note (creating it if missing) and repoints a date link whose text
+      // was edited. Re-wired per editor instance; returns a disposer.
+      disposeDailyLink?.();
+      disposeDailyLink = wireDailyLink(e, () => myNoteId.value);
       // Wire the block-colorize hook + reactive re-apply: the `blockColorize`
       // toolbar toggle calls `storage.blockColorize.toggle()`, and the watch
       // keeps the editor's `.block-colorize` root class + list-depth
@@ -1357,6 +1439,10 @@ onBeforeUnmount(() => {
   // so a future transaction listener / reconcile watcher plugs in cleanly).
   disposeNoteLink?.();
   disposeNoteLink = null;
+  // Tear down the daily-note auto-link bridge (transaction listener + the
+  // dateFormat watch) so a per-tab editor doesn't leak on unmount.
+  disposeDailyLink?.();
+  disposeDailyLink = null;
   // Tear down the block-colorize bridge (reactive watch) so a per-tab editor
   // doesn't leak its store subscription on unmount.
   disposeBlockColorize?.();
@@ -1681,5 +1767,15 @@ function onEditorAreaClick(e: MouseEvent): void {
         </div>
       </template>
     </div>
+    <!-- Daily-note references (created / modified / tasks mentioning this date),
+         shown ONLY inside an editor whose note is a daily note (that day's refs)
+         OR a prefilled daily draft for a no-note date (the pending day's refs).
+         Per-editor — never a global window-bottom strip — so each daily-note tab
+         carries its own day's references and a non-daily note hides it. -->
+    <DailyNotesPanel
+      v-if="dailyPanelDate"
+      :date="dailyPanelDate"
+      class="shrink-0 max-h-[40%] overflow-y-auto"
+    />
   </div>
 </template>

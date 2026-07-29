@@ -5,6 +5,7 @@ import { router } from "./router";
 import { setCommandRouter } from "./commands/registry";
 import i18n from "./i18n";
 import { installEditorLabelResolver } from "@/composables/use-editor-labels";
+import { installInsertDateHandler } from "@/composables/use-insert-date";
 import "./style.css";
 // Command registration (app + editor actions populate the palette registry).
 // Imported for its side effect; safe before Pinia (handlers resolve stores lazily).
@@ -49,6 +50,9 @@ app.use(i18n);
 // host toolbar via `editorToolTitle`) can resolve `tools.<id>` titles. Inert
 // until `tools.*` keys are added to the catalog (Phase 7.1 batches).
 installEditorLabelResolver();
+// Install the host "insert date" picker opener so the editor-vue `insertDate`
+// action (slash "Date" + palette "Insert date") opens the date picker popup.
+installInsertDateHandler();
 // Expose the router to command-palette handlers (goto-* commands).
 setCommandRouter(router);
 app.mount("#app");

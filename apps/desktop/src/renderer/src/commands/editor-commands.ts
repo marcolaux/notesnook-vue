@@ -20,7 +20,9 @@ const editorCommands: Command[] = EDITOR_ACTIONS.filter(
   (action) => action.kind !== "dropdown" && action.kind !== "conditional"
 ).map((action) => ({
   id: `editor:${action.id}`,
-  title: action.title,
+  // `paletteTitle` (when set) overrides the palette label so the slash label and
+  // the palette label can differ (e.g. slash "Date" vs palette "Insert date").
+  title: action.paletteTitle ?? action.title,
   // `exactOptionalPropertyTypes` forbids assigning `undefined` to an optional
   // prop, so spread `keywords` only when present.
   ...(action.keywords ? { keywords: action.keywords } : {}),
