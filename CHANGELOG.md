@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-29
+
+### 📆 Daily Notes mode
+A new **Daily Notes** sidebar mode (`/daily`, top of the nav after All Notes) — a vertical **date-timeline** replaces the notes list; clicking a day opens that day's daily note (a normal note tagged `daily` with an ISO-date title). A references panel inside the daily-note tab lists notes **created/modified that day** plus **checklist items mentioning the date**. Typing or editing a date in *any* note auto-links it to that date's daily note (created if missing).
+
+- **Lazy creation**: clicking a date with no daily note reveals a **prefilled-title draft** (the note is created only when you type content), not an auto-created empty note. Right-click a no-note date → **"Create daily note for {date}"** creates it explicitly. Re-clicking the selected date re-activates its tab (or re-opens it if the tab was closed).
+- **Timeline indicators**: an **accent dot** when a daily note exists, an **orange dot** when the day has created/modified references but no note, and a **checkbox icon** when any checklist item mentions the date.
+- **Context menus everywhere**: timeline daily-note rows and references-panel rows get the **same context menu** as notes-list rows (extracted into a shared `useNoteContextMenu` composable — pin/favorite/color/tags/notebooks/delete/publish).
+- **References panel**: tasks section is shown **first**; the panel lives inside the editor (per daily-note tab + the daily draft), not as a global window strip. References update **live** when a date is added to a checklist item (re-scan on autosave + on opening a date) — no manual refresh.
+- **Delete stays in sync**: deleting a daily note drops its timeline dot at once (`refreshDailyNotes` filters trashed notes) and falls back to the prefilled draft for that date.
+
+### 📅 Insert date (slash + palette)
+A new **"Date"** slash command (`/date`) and **"Insert date"** command-palette entry open a **month-calendar picker** with today selected. **Mouse**: click any day to insert it; ◀/▶ browse months. **Keyboard**: ←/→ ±1 day, ↑/↓ ±7 days, PageUp/PageDown ±1 month, Home/End = month start/end, Enter inserts, Esc cancels. The inserted date auto-links to that date's daily note (same mechanic as "Today's daily note"). The picker is a host-installed handler on the editor-vue `insertDate` action (`paletteTitle` lets the slash label "Date" and palette label "Insert date" differ), positioned at the cursor.
+
+#### Verification
+- `npm run typecheck` (node + web) clean; `npm run test:contract` — 1791 passed (new `daily-notes.spec.ts`, `daily-notes-store.spec.ts`, `insert-date-store.spec.ts`; existing `tool-definitions` / `slash-commands` / `router` / `context-menu-entries` suites green).
+- On-site gate pending: timeline click/delete, prefilled draft creation (tab stays active), context menus, timeline dots/icons, calendar picker click + keyboard nav, and a date added to a checklist item appearing in that daily note's references.
+
 ## [0.14.0] - 2026-07-29
 
 ### ☑️ Toggle a line into a checklist item (Cmd/Ctrl+L)
