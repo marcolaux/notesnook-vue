@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-29
+
 ### ☑️ Toggle a line into a checklist item (Cmd/Ctrl+L)
 A new `editor:toggleChecklistItem` action (command palette + **Cmd/Ctrl+L**) turns the current line into a checklist item in place — or, when the caret is already inside a check item (rich `taskList` or simple `checkList`), flips that item's `checked` state. This closes the gap where the only way to get a checkbox row was the Lists dropdown or an input rule.
 
@@ -25,6 +27,7 @@ Three new command-palette entries — **Add to notebook**, **Add tag**, **Assign
 
 - **Reuse, don't rebuild**: the commands open the *same* Color / Tags / Notebooks submenu builders the right-click context menu uses (`utils/context-menu-entries.ts`), now wired to the active note via a new `buildActiveNoteAssignmentDeps(target)` in `utils/assignment-menu.ts` (mirrors `NotesList.vue`).
 - **Standalone submenu mode**: new `showSubmenu(spec, x, y)` standalone mode in the context-menu store (+ `standalone` flag) opens a submenu with no root menu — `ContextMenu.vue` hides the root panel, centres the submenu, and closes on ArrowLeft/Escape. The submenu builders' deps type was narrowed to an assignment-only slice so commands don't stub unrelated callbacks.
+- **Editor focus restored after assigning**: the editor used to stay blurred after the submenu closed — the caret didn't return to where you'd been typing. The command now captures the focused pane's editor while the palette is open (ProseMirror keeps its selection across the blur) and refocuses it once the submenu closes, so the caret lands back where it was.
 - i18n keys `command.addToNotebook` / `addTag` / `assignColor` added (en + de).
 
 #### Verification
