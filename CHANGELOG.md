@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-07-30
+
+### 🔧 Upstream core v3.4.5
+
+Bumped the vendored `@notesnook/core` (submodule `d4658aa` → `b5140d9`, upstream tag `v3.4.5`) and rebuilt the five runtime packages from source — zero patches to upstream. No app-layer code changed; this picks up one user-visible upstream fix plus internal diagnostics.
+
+- **Deleting your vault now removes *all* vaults**: upstream had an unintentional bug where more than one vault could be created, yet `vault.delete()` only removed the default one — leaving orphaned vaults (and, with `deleteAllLockedNotes`, only the default vault's locked notes were deleted). The fix iterates every vault: when "delete all locked notes" is chosen it collects the locked-note IDs across **all** vaults (de-duped) and removes them, then `vaults.removeAll()` clears every vault. The `vault.delete(deleteAllLockedNotes)` signature is unchanged.
+- **Decryption diagnostics**: `user-manager` and `sync` now emit `logger.info` lines tracking which key version decrypts which items (master key / DEK / legacy DEK presence, key count + versions) — no behaviour change, just better forensics when password-change decryption fails.
+
+The editor's prosemirror bump (`view` 1.34.2 → 1.42.2) and `react-node-view` refactor in v3.4.5 are **not consumed** — this build only imports the `ToolId` type from `@notesnook/editor` (the rest of editor-vue is a source-level port), and that type was unchanged, so editor/theme vendored types were intentionally not refreshed.
+
+#### Verification
+- `npm run build:vendor:src` — 5 runtime packages rebuilt from source, submodule left pristine, zero patches.
+- `npm run typecheck` (node + web + contracts) — clean.
+- `npm run test:contract` — 1791/1791 tests pass across 119 files.
+- `npm run build` — clean.
+
 ## [0.15.0] - 2026-07-29
 
 ### 📆 Daily Notes mode
