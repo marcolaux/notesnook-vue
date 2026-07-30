@@ -24,6 +24,13 @@ import { VueNodeViewRenderer } from "@tiptap/vue-3";
 import CollapsibleListItemView from "./CollapsibleListItemView.vue";
 
 export const CollapsibleListItem = ListItem.extend({
+  // Enable drag-to-reorder (the `ListDragReorder` plugin moves a parent and its
+  // nested subtree as a group). Stock `ListItem` is not draggable; the grip in
+  // `CollapsibleListItemView` (with `data-drag-handle` + `draggable="true"`)
+  // initiates the drag, and TipTap's NodeView `onDragStart` turns it into a
+  // `NodeSelection` the plugin reads.
+  draggable: true,
+
   addNodeView() {
     return VueNodeViewRenderer(CollapsibleListItemView);
   }

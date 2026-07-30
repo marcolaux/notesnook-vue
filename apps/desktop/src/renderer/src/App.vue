@@ -595,6 +595,28 @@ onMounted(async () => {
     // choice so a fresh boot matches the saved theme (not stuck dark).
     applyTheme(settings.themeMode);
     await auth.init();
+    // Re-read the per-account client-only prefs for the NOW-current context.
+    // The settings/config store refs were populated at construction (during
+    // `<script setup>`, before `bootstrap`/`auth.init`), when
+    // `getCurrentContext()` was still `LOCAL_CONTEXT`. `bootstrap` has since
+    // switched it to the restored account's context id, so without this reload
+    // the refs hold the LOCAL values for the whole session. That re-showed the
+    // semantic-search onboarding dialog on every restart into a logged-in
+    // account: the dialog gates on `!settings.semanticSearchPrompted`, the
+    // dialog handlers persist `prompted` to the ACCOUNT ctx, but the ref read
+    // the LOCAL ctx — which was never written — so it stayed `false` forever.
+    // `auth.init` (unlike `completeLogin`/`switchToAccount`) does NOT bump
+    // `contextChangeSignal`, so the watch below that does this reload for
+    // mid-session switches never fires on boot. Mirror that watch exactly:
+    // `loadClientPrefs` bumps `themeChangeSignal`/`transparencyChangeSignal`
+    // only when the values actually change, so the watches above re-apply the
+    // account's theme/transparency; `reloadBlockColorize`/`reloadLocale` do the
+    // same for their per-account prefs. For local mode (ctx unchanged) the
+    // values are identical → no signal bumps → no-op.
+    settings.loadClientPrefs();
+    config.loadClientPrefs();
+    reloadBlockColorize();
+    reloadLocale();
     // Initialise the editor-layout store (root group) so the single-pane
     // editor has a group to open tabs in. Idempotent. Multi-pane splits are
     // Phase 4.2/4.3 (on-site).

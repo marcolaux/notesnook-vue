@@ -738,6 +738,31 @@ html[data-transparency="off"] .editor-tab-inactive {
   user-select: none;
   pointer-events: none;
 }
+/* Drag-to-reorder grip for outline list items — sits in the left gutter, left
+   of the chevron, and is revealed on hover. The `ListDragReorder` plugin moves
+   the item (and any nested outline subtree) as a group. */
+.ProseMirror li[data-type="outlineListItem"] .outline-drag-grip {
+  position: absolute;
+  top: 0;
+  left: -2.3rem;
+  width: 0.8rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in oklab, var(--paragraph) 55%, transparent);
+  cursor: grab;
+  user-select: none;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 120ms ease;
+}
+.ProseMirror li[data-type="outlineListItem"]:hover .outline-drag-grip {
+  opacity: 1;
+}
+.ProseMirror li[data-type="outlineListItem"] .outline-drag-grip:active {
+  cursor: grabbing;
+}
 
 /* Collapsible bullet/ordered lists. The stock `bulletList`/`orderedList` are
    extended with a `collapsed` attribute (serialised `data-collapsed="true"`)
@@ -757,6 +782,36 @@ html[data-transparency="off"] .editor-tab-inactive {
    bullet items also carry the self-drawn dot. */
 .ProseMirror li.collapsible-list-item {
   position: relative;
+}
+/* Drag-to-reorder grip for collapsible bullet/ordered list items — sits in the
+   left gutter, left of the chevron, revealed on hover. The `ListDragReorder`
+   plugin moves the item (and any nested list subtree) as a group. */
+.ProseMirror li.collapsible-list-item .collapsible-drag-grip {
+  position: absolute;
+  top: 0;
+  left: -2.3rem;
+  width: 0.8rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in oklab, var(--paragraph) 55%, transparent);
+  cursor: grab;
+  user-select: none;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 120ms ease;
+}
+/* Ordered lists use a wider 2rem gutter (for multi-digit numbers); shift the
+   grip left to clear it. */
+.ProseMirror ol > li.collapsible-list-item .collapsible-drag-grip {
+  left: -2.8rem;
+}
+.ProseMirror li.collapsible-list-item:hover .collapsible-drag-grip {
+  opacity: 1;
+}
+.ProseMirror li.collapsible-list-item .collapsible-drag-grip:active {
+  cursor: grabbing;
 }
 /* Self-drawn `•` bullet — identical to `.outline-bullet-dot` so a bullet list
    and an outline list look the same. Drawn for every item; hidden for ordered

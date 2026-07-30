@@ -75,6 +75,9 @@ import {
   // stamping `data-list-level` on list items; the host bridge toggles the
   // `.block-colorize` root class + `storage.blockColorize.enabled`.
   BlockColorize,
+  // List drag-reorder: takes over list-item drag/drop for every list type so an
+  // indented parent drags its sub-items as a group, with a drop marker.
+  ListDragReorder,
   filterByKey
 } from "@notesnook-vue/editor-vue";
 import { recordUserActivity, flushVectorIndexQueue } from "@/utils/vector-search";
@@ -686,7 +689,12 @@ const editor = useEditor({
       heading: false,
       bulletList: false,
       orderedList: false,
-      listItem: false
+      listItem: false,
+      // Dropcursor disabled: the `ListDragReorder` plugin draws its own
+      // theme-coloured drop marker for list drags, and StarterKit's black
+      // dropcursor caret would render a SECOND line on top of it. Non-list
+      // drags (image etc.) lose the native caret — accepted trade-off.
+      dropcursor: false
     }),
     Heading,
     OutlineList,
@@ -742,7 +750,11 @@ const editor = useEditor({
     // Block-colorize: list-depth `data-list-level` decorations, gated by
     // `storage.blockColorize.enabled` (set by the host bridge). Harmless when
     // off (no decorations emitted); the colour rules live in style.css.
-    BlockColorize
+    BlockColorize,
+    // List drag-reorder plugin (group move + drop marker). Registered after the
+    // list node extensions so its `handleDrop` prop sits in front of the
+    // attachments-bridge `editorProps.handleDrop` (plugin props run first).
+    ListDragReorder
   ],
   // NOTE: `content` is intentionally empty. The note's content is loaded after
   // mount via `loadCurrentNote()` (see below). Initialising with the note's

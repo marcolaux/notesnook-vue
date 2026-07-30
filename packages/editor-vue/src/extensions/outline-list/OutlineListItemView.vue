@@ -60,6 +60,17 @@ function toggleCollapse(): void {
     class="outline-list-item-wrapper"
     :class="{ 'has-list-child': hasChildList }"
   >
+    <!-- Drag-to-reorder grip (the `ListDragReorder` plugin moves this item and
+         any nested outline subtree as a group). Lives in the left gutter, left
+         of the chevron, revealed on hover via CSS. -->
+    <span
+      class="outline-drag-grip"
+      data-drag-handle
+      draggable="true"
+      contenteditable="false"
+      title="Drag to move"
+      >⠿</span
+    >
     <!-- The `•` marker is always present (the outline list uses list-style:
          none, so this dot IS the bullet). It is KEPT on hover/collapse (never
          faded), matching the bullet list keeping its native marker; the

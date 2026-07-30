@@ -75,6 +75,19 @@ function toggleCollapse(): void {
     class="collapsible-list-item"
     :class="{ 'has-list-child': hasChildList }"
   >
+    <!-- Drag-to-reorder grip (the `ListDragReorder` plugin moves this item and
+         any nested subtree as a group). Lives in the left gutter, left of the
+         chevron, and is revealed on hover via CSS. `data-drag-handle` +
+         `draggable="true"` let TipTap's NodeView turn a grip drag into a
+         NodeSelection the plugin reads. -->
+    <span
+      class="collapsible-drag-grip"
+      data-drag-handle
+      draggable="true"
+      contenteditable="false"
+      title="Drag to move"
+      >⠿</span
+    >
     <!-- Self-drawn `•` marker, identical to the outline list's dot. The native
          ::marker is suppressed via CSS (`list-style:none` on `ul`), so this dot
          IS the bullet. It is rendered for every item (leaf + parent), matching

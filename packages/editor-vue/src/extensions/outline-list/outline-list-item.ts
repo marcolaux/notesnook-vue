@@ -10,6 +10,11 @@ export const OutlineListItem = Node.create<OutlineListItemOptions>({
 
   priority: 1000,
 
+  // Enable drag-to-reorder (the `ListDragReorder` plugin moves a parent and its
+  // nested outline subtree as a group). The grip in `OutlineListItemView`
+  // (`data-drag-handle` + `draggable="true"`) initiates the drag.
+  draggable: true,
+
   addOptions() {
     return {
       HTMLAttributes: {}

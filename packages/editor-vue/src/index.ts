@@ -89,6 +89,13 @@ export { CollapsibleBulletList } from "./extensions/collapsible-list/bullet-list
 export { CollapsibleOrderedList } from "./extensions/collapsible-list/ordered-list";
 export { CollapsibleListItem } from "./extensions/collapsible-list/list-item";
 
+// List drag-reorder — a ProseMirror plugin that takes over list-item drag/drop
+// for ALL list types (task/check/bullet/ordered/outline) so an indented parent
+// drags its sub-items as a group, with a drop marker. Bullet/ordered/outline
+// items are `draggable` and carry a `data-drag-handle` grip (see their views);
+// checklist items already had one.
+export { ListDragReorder } from "./extensions/list-drag-reorder";
+
 // Block-colorize (port of the sn-super-colors Standard Notes theme): a pure
 // ProseMirror decoration plugin that stamps `data-list-level` on list items so
 // the host's gated CSS can colour them by nesting depth. The visual rules +

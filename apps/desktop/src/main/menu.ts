@@ -85,7 +85,20 @@ function buildAppMenu(preloadPath: string): Menu {
     },
     { role: "editMenu" },
     { role: "viewMenu" },
-    { role: "windowMenu" }
+    // Override the `windowMenu` role's default submenu. On Windows/Linux the
+    // default submenu injects a `close` item bound to `CmdOrCtrl+W`, which
+    // collides with the custom "Close Tab" item above (File menu) and — being
+    // registered later — wins the accelerator dispatch, closing the whole
+    // BrowserWindow instead of a tab. Building the submenu explicitly (minus
+    // the `close` role) leaves `CmdOrCtrl+W` bound only to "Close Tab" on every
+    // platform. macOS gets its native "Bring All to Front" via the `front` role.
+    {
+      role: "windowMenu",
+      submenu:
+        process.platform === "darwin"
+          ? [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }]
+          : [{ role: "minimize" }, { role: "zoom" }]
+    }
   ];
 
   return Menu.buildFromTemplate(template);
