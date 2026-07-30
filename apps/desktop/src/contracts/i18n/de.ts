@@ -876,7 +876,11 @@ export default {
     groupTab: "Tab",
     groupSearchTab: "Such-Tab",
     groupAttachment: "Anhang",
-    groupRecent: "Zuletzt"
+    groupRecent: "Zuletzt",
+    tierExact: "Genaue Treffer",
+    tierSemantic: "Semantische Treffer",
+    tierCluster: "Verwandt (Cluster)",
+    tierClusterLoading: "Verwandte Notizen werden gesucht…"
   },
   command: {
     newNote: "Neue Notiz",

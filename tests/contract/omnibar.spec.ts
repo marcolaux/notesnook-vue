@@ -160,9 +160,9 @@ describe("useOmnibarStore — notes mode", () => {
     const omnibar = useOmnibarStore();
     omnibar.setQuery("a");
     await omnibar.runSearch();
-    expect(omnibar.results).toHaveLength(2);
-    expect(omnibar.results[0].id).toBe("a");
-    expect(omnibar.resultsCache["a"]).toHaveLength(2);
+    expect(omnibar.results.exact).toHaveLength(2);
+    expect(omnibar.results.exact[0].id).toBe("a");
+    expect(omnibar.resultsCache["a"].exact).toHaveLength(2);
     expect(omnibar.open).toBe(true);
     expect(mockDb.lookup.notesWithHighlighting).toHaveBeenCalledWith(
       "a",
@@ -175,7 +175,7 @@ describe("useOmnibarStore — notes mode", () => {
     const omnibar = useOmnibarStore();
     omnibar.setQuery("   ");
     await omnibar.runSearch();
-    expect(omnibar.results).toEqual([]);
+    expect(omnibar.results).toEqual({ exact: [], semantic: [], cluster: [] });
     expect(omnibar.open).toBe(false);
     expect(mockDb.lookup.notesWithHighlighting).not.toHaveBeenCalled();
   });
@@ -186,7 +186,7 @@ describe("useOmnibarStore — notes mode", () => {
     const omnibar = useOmnibarStore();
     omnibar.setQuery("x");
     expect(mockDb.lookup.notesWithHighlighting).not.toHaveBeenCalled();
-    expect(omnibar.results).toEqual([]);
+    expect(omnibar.results).toEqual({ exact: [], semantic: [], cluster: [] });
     vi.advanceTimersByTime(200);
     vi.useRealTimers();
   });
@@ -285,7 +285,7 @@ describe("useOmnibarStore — notes mode", () => {
     expect(omnibar.activeIndex).toBe(0);
     omnibar.openResult();
     expect(omnibar.open).toBe(false);
-    expect(omnibar.results).toHaveLength(2);
+    expect(omnibar.results.exact).toHaveLength(2);
     const callsBefore = mockDb.lookup.notesWithHighlighting.mock.calls.length;
     omnibar.reopen();
     expect(omnibar.open).toBe(true);
@@ -297,7 +297,7 @@ describe("useOmnibarStore — notes mode", () => {
     const omnibar = useOmnibarStore();
     omnibar.setQuery("q");
     await omnibar.runSearch();
-    expect(omnibar.results).toHaveLength(0);
+    expect(omnibar.results.exact).toHaveLength(0);
     omnibar.reopen();
     expect(omnibar.open).toBe(false);
   });

@@ -141,6 +141,7 @@ watch(
       :top="top"
       :width="width"
       :mode="omnibar.mode"
+      :cluster-loading="omnibar.clusterLoading"
       @pick="omnibar.pick($event)"
       @hover="omnibar.setActiveIndex($event)"
       @open-all="omnibar.openResultsTab()"

@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
 import { useI18n } from "vue-i18n";
-import type { OmnibarItem, OmnibarMode } from "@/stores/omnibar";
+import type { OmnibarItem, OmnibarMode, SearchTier } from "@/stores/omnibar";
 
 const props = defineProps<{
   items: OmnibarItem[];
@@ -28,6 +28,8 @@ const props = defineProps<{
   top: number;
   width: number;
   mode: OmnibarMode;
+  /** True while the (async) cluster tier is being computed (notes mode only). */
+  clusterLoading?: boolean;
 }>();
 const emit = defineEmits<{
   pick: [index: number];
@@ -53,6 +55,49 @@ const emptyText = computed(() => {
   }
 });
 
+/** Notes-mode section header for a tier. */
+function tierLabel(tier: SearchTier | undefined): string {
+  switch (tier) {
+    case "exact":
+      return t("omnibar.tierExact");
+    case "semantic":
+      return t("omnibar.tierSemantic");
+    case "cluster":
+      return t("omnibar.tierCluster");
+    default:
+      return "";
+  }
+}
+
+/** Notes-mode rows grouped by tier (they arrive pre-grouped in priority order),
+ *  each carrying its flat `start` index so `is-active`/`pick`/`hover` keep
+ *  addressing the store's flat `items` coordinate space. Non-notes modes return
+ *  `null` and render the legacy flat list. */
+interface TierGroup {
+  tier: SearchTier;
+  label: string;
+  items: OmnibarItem[];
+  start: number;
+}
+const groups = computed<TierGroup[] | null>(() => {
+  if (props.mode !== "notes") return null;
+  const out: TierGroup[] = [];
+  for (let i = 0; i < props.items.length; i++) {
+    const tier = props.items[i]?.tier ?? "exact";
+    const last = out[out.length - 1];
+    if (!last || last.tier !== tier) {
+      out.push({ tier, label: tierLabel(tier), items: [], start: i });
+    }
+    last && last.items.push(props.items[i]!);
+  }
+  return out;
+});
+
+/** Whether the cluster tier is pending but not yet present (show a loading hint). */
+const clusterPending = computed(
+  () => props.mode === "notes" && !!props.clusterLoading && (groups.value ?? []).every((g) => g.tier !== "cluster")
+);
+
 // Keep the active row visible within the scrollable list.
 watch(
   () => props.activeIndex,
@@ -73,28 +118,54 @@ watch(
       @mousedown.prevent
     >
       <div class="omnibar-dropdown__list">
-        <button
-          v-for="(item, i) in props.items"
-          :key="item.key"
-          type="button"
-          class="omnibar-dropdown__item"
-          :class="{
-            'is-active': i === props.activeIndex,
-            'omnibar-dropdown__item--note': item.mode === 'notes'
-          }"
-          @mouseenter="emit('hover', i)"
-          @click="emit('pick', i)"
-        >
-          <template v-if="item.titleHtml !== undefined">
-            <span class="omnibar-dropdown__title" v-html="item.titleHtml" />
-            <span class="omnibar-dropdown__snippet" v-html="item.snippetHtml" />
+        <!-- Notes mode: tiered sections with sticky headers (Exact → Semantic →
+             Cluster). Flat indices are preserved via each group's `start` offset. -->
+        <template v-if="groups">
+          <template v-for="group in groups" :key="group.tier">
+            <div class="omnibar-dropdown__section-header">{{ group.label }}</div>
+            <button
+              v-for="(item, gi) in group.items"
+              :key="item.key"
+              type="button"
+              class="omnibar-dropdown__item omnibar-dropdown__item--note"
+              :class="{ 'is-active': group.start + gi === props.activeIndex }"
+              @mouseenter="emit('hover', group.start + gi)"
+              @click="emit('pick', group.start + gi)"
+            >
+              <span class="omnibar-dropdown__title" v-html="item.titleHtml" />
+              <span class="omnibar-dropdown__snippet" v-html="item.snippetHtml" />
+            </button>
           </template>
-          <template v-else>
-            <span class="omnibar-dropdown__label">{{ item.label }}</span>
-            <span v-if="item.group" class="omnibar-dropdown__group">{{ item.group }}</span>
-          </template>
-        </button>
-        <div v-if="props.items.length === 0" class="omnibar-dropdown__empty">{{ emptyText }}</div>
+          <div v-if="clusterPending" class="omnibar-dropdown__section-hint">
+            {{ t('omnibar.tierClusterLoading') }}
+          </div>
+          <div v-if="props.items.length === 0" class="omnibar-dropdown__empty">{{ emptyText }}</div>
+        </template>
+        <!-- Every other mode: the legacy flat list. -->
+        <template v-else>
+          <button
+            v-for="(item, i) in props.items"
+            :key="item.key"
+            type="button"
+            class="omnibar-dropdown__item"
+            :class="{
+              'is-active': i === props.activeIndex,
+              'omnibar-dropdown__item--note': item.mode === 'notes'
+            }"
+            @mouseenter="emit('hover', i)"
+            @click="emit('pick', i)"
+          >
+            <template v-if="item.titleHtml !== undefined">
+              <span class="omnibar-dropdown__title" v-html="item.titleHtml" />
+              <span class="omnibar-dropdown__snippet" v-html="item.snippetHtml" />
+            </template>
+            <template v-else>
+              <span class="omnibar-dropdown__label">{{ item.label }}</span>
+              <span v-if="item.group" class="omnibar-dropdown__group">{{ item.group }}</span>
+            </template>
+          </button>
+          <div v-if="props.items.length === 0" class="omnibar-dropdown__empty">{{ emptyText }}</div>
+        </template>
       </div>
       <button
         v-if="props.mode === 'notes' && props.items.length > 0"
@@ -129,6 +200,27 @@ watch(
 .omnibar-dropdown__list {
   overflow-y: auto;
   padding: 4px;
+}
+/* Tier section headers (Exact / Semantic / Cluster) — sticky like NotesList's
+   date buckets so they stay visible while their rows scroll past. */
+.omnibar-dropdown__section-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 10px 3px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.45));
+  background: var(--color-surface-solid, rgba(24, 24, 24, 0.92));
+  backdrop-filter: blur(var(--backdrop-blur-base, 24px));
+}
+.omnibar-dropdown__section-hint {
+  padding: 4px 10px 6px;
+  font-size: 10px;
+  font-style: italic;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.4));
 }
 .omnibar-dropdown__item {
   display: flex;

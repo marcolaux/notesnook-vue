@@ -32,7 +32,7 @@ import { cycleIndex, filterByKey } from "@notesnook-vue/editor-vue";
 import { getDatabase, getCurrentContext } from "@/platform/bootstrap";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useEditorStore } from "@/stores/editor";
-import { useNotesStore } from "@/stores/notes";
+import { useNotesStore, type NoteListItem } from "@/stores/notes";
 import { usePublishStore } from "@/stores/publish";
 import { useCollectionsStore } from "@/stores/collections";
 import { useTemplatesStore } from "@/stores/templates";
@@ -42,19 +42,33 @@ import { useSyncStore } from "@/stores/sync";
 import { useUpdaterStore } from "@/stores/updater";
 import { useSpellCheckerStore } from "@/stores/spell-checker";
 import { goToCollection } from "@/utils/collection-nav";
-import { matchesToHtml, snippetHtml, type HighlightedResult } from "@contracts/search";
+import { matchesToHtml, snippetHtml, type HighlightedResult, type Match } from "@contracts/search";
 import {
   getCommands,
   getCommandRouter,
   type Command,
   type CommandContext
 } from "@/commands/registry";
-import { searchVectorEmbeddings } from "@/utils/vector-search";
+import { searchVectorEmbeddingsByVector, computeEmbedding } from "@/utils/vector-search";
+import { getClusterTierNoteIds } from "@/utils/vector-search-clusters";
 import { readSemanticSearchEnabled } from "@/stores/settings";
 import { logger } from "@/utils/logger";
 import i18n from "@/i18n";
 
 export type OmnibarMode = "notes" | "commands" | "tags" | "notebooks" | "tabs";
+
+/** The result category a notes-mode row belongs to (tiered search). */
+export type SearchTier = "exact" | "semantic" | "cluster";
+
+/** Tiered search results — Exact (FTS5) → Semantic (vector KNN) → Cluster,
+ *  deduped downward (a note appears in the first tier it matches). Both the
+ *  omnibar dropdown and the Search Results tab render these as labeled,
+ *  sticky-header sections in this order. */
+export interface TieredSearchResults {
+  exact: HighlightedResult[];
+  semantic: HighlightedResult[];
+  cluster: HighlightedResult[];
+}
 
 /** A single renderable + pickable row in the dropdown, uniform across modes. */
 export interface OmnibarItem {
@@ -72,6 +86,8 @@ export interface OmnibarItem {
   group?: string;
   /** Pick payload — the id to act on (note / tag / notebook / tab). */
   refId?: string;
+  /** Notes mode: which search tier this row belongs to (drives section header). */
+  tier?: SearchTier;
   /** Tabs mode only: which pick action to run. */
   tabPick?: "tab" | "recent";
 }
@@ -79,6 +95,19 @@ export interface OmnibarItem {
 /** Max results fetched for the dropdown / results tab (VirtualizedGrouping
  *  batches in chunks of 20, so ~3 batched async fetches). */
 const MAX_RESULTS = 50;
+/** Per-tier caps for the cached (full) result set shown in the Search Results
+ *  tab. Exact (FTS5) is the priority tier; Semantic (vector KNN) and Cluster
+ *  (k-means) fill out the rest. */
+const EXACT_CAP = 50;
+const SEMANTIC_CAP = 30;
+const CLUSTER_CAP = 30;
+/** Per-tier caps for the dropdown (smaller — the dropdown is a quick picker,
+ *  the full set lives in the Search Results tab). */
+const DROPDOWN_EXACT = 20;
+const DROPDOWN_SEMANTIC = 15;
+const DROPDOWN_CLUSTER = 15;
+/** Reusable empty tiered result (spread to avoid sharing one object reference). */
+const EMPTY_TIERED: TieredSearchResults = { exact: [], semantic: [], cluster: [] };
 /** Debounce before hitting the DB (FTS + BM25 over body content). Notes mode only. */
 const DEBOUNCE_MS = 180;
 /** Bounded LRU of per-query result caches so the Search Results tab doesn't
@@ -144,12 +173,17 @@ export const useOmnibarStore = defineStore("omnibar", () => {
 
   // --- notes-mode state (lifted verbatim from the former search store) -------
   const loading = ref(false);
-  const results = ref<HighlightedResult[]>([]);
+  /** Tiered results for the current query (Exact → Semantic → Cluster). The
+   *  cluster tier is filled asynchronously after Exact + Semantic render. */
+  const results = ref<TieredSearchResults>({ ...EMPTY_TIERED });
+  /** True while the (async, cached) cluster tier is being computed. */
+  const clusterLoading = ref(false);
   /** The trimmed query that produced `results` — stale guard + scroll target. */
   const lastQuery = ref("");
-  /** Per-query result cache (bounded LRU via `cacheOrder`). The Search Results
-   *  tab reads from here so re-opening a results tab is instant. */
-  const resultsCache = ref<Record<string, HighlightedResult[]>>({});
+  /** Per-query tiered-result cache (bounded LRU via `cacheOrder`). The Search
+   *  Results tab reads from here so re-opening a results tab is instant; it
+   *  re-bumps when the async cluster tier lands so the tab updates live. */
+  const resultsCache = ref<Record<string, TieredSearchResults>>({});
   const cacheOrder = ref<string[]>([]);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -183,8 +217,6 @@ export const useOmnibarStore = defineStore("omnibar", () => {
   });
 
   // --- per-mode filtered lists ----------------------------------------------
-  /** Notes-mode rows (raw FTS results). */
-  const noteResults = computed<HighlightedResult[]>(() => results.value);
   /** Commands-mode rows (raw commands, for `execute` to look up by index).
    *  Filtering matches against the *resolved* title (`t(cmd.title)` for key
    *  strings) + the English-literal `keywords`, so multi-word queries like
@@ -245,18 +277,36 @@ export const useOmnibarStore = defineStore("omnibar", () => {
     return [...tabRows, ...recent];
   });
 
-  /** The current mode's renderable rows (drives the dropdown + nav length). */
+  /** The current mode's renderable rows (drives the dropdown + nav length).
+   *  Notes mode concatenates the three tiers in priority order (Exact →
+   *  Semantic → Cluster), each capped for the dropdown, tagging every row with
+   *  its `tier` so the dropdown can render sticky section headers. The flat
+   *  index here is the nav cursor's coordinate space (see `openResult`). */
   const items = computed<OmnibarItem[]>(() => {
     switch (mode.value) {
-      case "notes":
-        return noteResults.value.map((r) => ({
-          key: r.id,
-          mode: "notes" as const,
-          label: r.title.length ? matchesToHtml(r.title) : t("common.untitled"),
-          titleHtml: r.title.length ? matchesToHtml(r.title) : t("common.untitled"),
-          snippetHtml: snippetHtml(r),
-          refId: r.id
-        }));
+      case "notes": {
+        const r = results.value;
+        const out: OmnibarItem[] = [];
+        const pushTier = (list: HighlightedResult[], tier: SearchTier, cap: number): void => {
+          for (let i = 0; i < list.length && i < cap && out.length < MAX_RESULTS; i++) {
+            const item = list[i]!;
+            const titleHtml = item.title.length ? matchesToHtml(item.title) : t("common.untitled");
+            out.push({
+              key: item.id,
+              mode: "notes" as const,
+              tier,
+              label: titleHtml,
+              titleHtml,
+              snippetHtml: snippetHtml(item),
+              refId: item.id
+            });
+          }
+        };
+        pushTier(r.exact, "exact", DROPDOWN_EXACT);
+        pushTier(r.semantic, "semantic", DROPDOWN_SEMANTIC);
+        pushTier(r.cluster, "cluster", DROPDOWN_CLUSTER);
+        return out;
+      }
       case "commands":
         return commandItems.value.map((cmd) => ({
           key: cmd.id,
@@ -291,9 +341,9 @@ export const useOmnibarStore = defineStore("omnibar", () => {
   /** Length of the active mode's list (sentinel-aware nav + clamp source). */
   const currentListLength = computed(() => items.value.length);
 
-  // --- notes-mode FTS (lifted from the former search store) -----------------
-  function bumpCache(q: string, items: HighlightedResult[]): void {
-    const next = { ...resultsCache.value, [q]: items };
+  // --- notes-mode tiered search (Exact → Semantic → Cluster) -----------------
+  function bumpCache(q: string, tiered: TieredSearchResults): void {
+    const next = { ...resultsCache.value, [q]: tiered };
     const order = cacheOrder.value.filter((c) => c !== q);
     order.push(q);
     while (order.length > CACHE_MAX) {
@@ -304,92 +354,157 @@ export const useOmnibarStore = defineStore("omnibar", () => {
     cacheOrder.value = order;
   }
 
-  async function fetchResults(q: string): Promise<HighlightedResult[]> {
-    if (!q) return [];
+  /** A plain (un-highlighted) `Match` — the whole text sits in `prefix` so
+   *  `matchesToHtml` renders it verbatim with an empty `<mark>`. Used to fabricate
+   *  `HighlightedResult`s for Semantic/Cluster hits, which have no FTS highlight
+   *  fragments (the vendored core only highlights lexical matches). */
+  function plainMatch(text: string): Match {
+    return { prefix: text, match: "", suffix: "" };
+  }
+
+  /** Fabricate a `HighlightedResult` for a note that matched via a non-lexical
+   *  tier (Semantic/Cluster): plain title + a 150-char headline snippet, no
+   *  highlights. Replaces the former `as unknown as HighlightedResult` hack that
+   *  attached non-standard `body`/`note` fields. */
+  function toHighlightedResult(note: NoteListItem): HighlightedResult {
+    const title = note.title || t("common.untitled");
+    const headline = (note.headline || note.title || t("common.untitled")).slice(0, 150);
+    return {
+      id: note.id,
+      type: "searchResult",
+      dateCreated: note.dateCreated,
+      dateModified: note.dateEdited,
+      title: [plainMatch(title)],
+      content: [[plainMatch(headline)]],
+      rank: 0
+    };
+  }
+
+  /** Run the Exact (FTS5) + Semantic (vector KNN) tiers. Returns the query
+   *  embedding too so the async Cluster tier can reuse it (one inference per
+   *  query, not two). Semantic is skipped (and `queryVec` is null) when semantic
+   *  search is disabled. */
+  async function fetchExactAndSemantic(
+    q: string
+  ): Promise<{ exact: HighlightedResult[]; semantic: HighlightedResult[]; queryVec: Float32Array | null }> {
     const db = getDatabase();
-    
-    // 1. Lexical FTS5 search
+
+    // 1. Exact: lexical FTS5/BM25 with highlighting.
     const vg = await db.lookup.notesWithHighlighting(q, db.notes.all, {
       sortBy: "relevance",
       sortDirection: "desc"
     });
-    const count = Math.min(vg.length, MAX_RESULTS);
-    const ftsResults: HighlightedResult[] = [];
-    for (let i = 0; i < count; i++) {
+    const exactCount = Math.min(vg.length, EXACT_CAP);
+    const exact: HighlightedResult[] = [];
+    for (let i = 0; i < exactCount; i++) {
       const got = await vg.item(i);
-      if (got.item) ftsResults.push(got.item);
+      if (got.item) exact.push(got.item);
     }
 
-    // 2. Fall back to pure Lexical FTS5 if Semantic Search is disabled or query fails
     if (!readSemanticSearchEnabled(getCurrentContext())) {
-      return ftsResults;
+      return { exact, semantic: [], queryVec: null };
     }
 
+    // 2. Semantic: vector KNN over a single shared query embedding.
+    const queryVec = await computeEmbedding(q);
+    if (!queryVec) return { exact, semantic: [], queryVec: null };
+
+    const exactIds = new Set(exact.map((r) => r.id));
+    const semantic: HighlightedResult[] = [];
     try {
-      // 3. Vector KNN search
-      const vecResults = await searchVectorEmbeddings(q, MAX_RESULTS);
-      if (vecResults.length === 0) return ftsResults;
-
-      // 4. Reciprocal Rank Fusion (RRF) scoring
-      const rrfScores = new Map<string, number>();
-
-      ftsResults.forEach((item, index) => {
-        const rank = index + 1;
-        const current = rrfScores.get(item.id) ?? 0;
-        rrfScores.set(item.id, current + 1 / (60 + rank));
-      });
-
-      vecResults.forEach((item, index) => {
-        const rank = index + 1;
-        const current = rrfScores.get(item.noteId) ?? 0;
-        rrfScores.set(item.noteId, current + 1 / (60 + rank));
-      });
-
-      const ftsMap = new Map(ftsResults.map((r) => [r.id, r]));
-      const sortedIds = Array.from(rrfScores.keys()).sort(
-        (a, b) => (rrfScores.get(b) ?? 0) - (rrfScores.get(a) ?? 0)
-      );
-
-      const blended: HighlightedResult[] = [];
-      for (const id of sortedIds) {
-        if (ftsMap.has(id)) {
-          blended.push(ftsMap.get(id)!);
-        } else {
-          const note = notes.visibleItems.find((n) => n.id === id);
-          if (note) {
-            blended.push({
-              id: note.id,
-              title: [[note.title || t("common.untitled")]],
-              body: [[(note.headline || note.title || t("common.untitled")).slice(0, 150)]],
-              note
-            } as unknown as HighlightedResult);
-          }
-        }
+      const vecResults = await searchVectorEmbeddingsByVector(queryVec, SEMANTIC_CAP);
+      const seen = new Set<string>();
+      for (const v of vecResults) {
+        if (exactIds.has(v.noteId) || seen.has(v.noteId)) continue; // dedup downward
+        seen.add(v.noteId);
+        const note = notes.visibleItems.find((n) => n.id === v.noteId);
+        if (!note) continue;
+        semantic.push(toHighlightedResult(note));
+        if (semantic.length >= SEMANTIC_CAP) break;
       }
-
-      return blended.slice(0, MAX_RESULTS);
     } catch (e) {
-      logger.error("[omnibar] Vector RRF blend failed, falling back to FTS5:", e);
-      return ftsResults;
+      logger.error("[omnibar] semantic tier failed:", e);
     }
+
+    return { exact, semantic, queryVec };
+  }
+
+  /** Orchestrate one search: Exact + Semantic (cached immediately so they render
+   *  instantly), then the async Cluster tier (fades in). Shared by `runSearch`
+   *  (dropdown, `live=true`) and `loadResults` (Search Results tab, `live=false`).
+   *  `live` only changes whether the result is written to `results.value` (the
+   *  dropdown's live state) vs left for the cache to serve (the results tab). */
+  async function runQuery(q: string, live: boolean): Promise<TieredSearchResults> {
+    const { exact, semantic, queryVec } = await fetchExactAndSemantic(q);
+    const tiered: TieredSearchResults = { exact, semantic, cluster: [] };
+    bumpCache(q, tiered);
+    if (queryVec) void fillClusterTier(q, queryVec, exact, semantic, live);
+    return tiered;
+  }
+
+  /** Compute the Cluster tier asynchronously and merge it into the cache (always)
+   *  and into `results.value` (only when `live`, i.e. the dropdown is showing
+   *  this query) so both the dropdown and the Search Results tab update live.
+   *  Bails on a stale query in the live path. */
+  async function fillClusterTier(
+    q: string,
+    queryVec: Float32Array,
+    exact: HighlightedResult[],
+    semantic: HighlightedResult[],
+    live: boolean
+  ): Promise<void> {
+    const higher = [...exact, ...semantic];
+    const excludeIds = new Set(higher.map((r) => r.id));
+    const topHitNoteIds = higher.slice(0, 8).map((r) => r.id);
+    if (live) clusterLoading.value = true;
+    try {
+      const ids = await getClusterTierNoteIds(queryVec, topHitNoteIds, excludeIds, CLUSTER_CAP);
+      // Stale guard for the live dropdown path: bail if the user moved on.
+      if (live && (q !== lastQuery.value || q !== query.value.trim())) return;
+      const cluster: HighlightedResult[] = [];
+      for (const id of ids) {
+        const note = notes.visibleItems.find((n) => n.id === id);
+        if (note) cluster.push(toHighlightedResult(note));
+      }
+      if (live) results.value = { exact, semantic, cluster };
+      // The Search Results tab reads the cache reactively, so always re-bump.
+      bumpCache(q, { exact, semantic, cluster });
+    } catch (e) {
+      logger.error("[omnibar] cluster tier failed:", e);
+    } finally {
+      if (live && q === lastQuery.value) clusterLoading.value = false;
+    }
+  }
+
+  /** Backfill the cluster tier for a cache hit whose cluster is still empty
+   *  (e.g. the Search Results tab was re-opened before the async build landed).
+   *  Recomputes the query embedding — rare path. Does NOT touch `lastQuery` or
+   *  `results.value` (the dropdown may be showing a different query). */
+  async function refillClusterTier(q: string): Promise<void> {
+    const cached = resultsCache.value[q];
+    if (!cached || cached.cluster.length > 0) return;
+    if (!readSemanticSearchEnabled(getCurrentContext())) return;
+    const queryVec = await computeEmbedding(q);
+    if (!queryVec) return;
+    await fillClusterTier(q, queryVec, cached.exact, cached.semantic, false);
   }
 
   async function runSearch(): Promise<void> {
     const q = query.value.trim();
     if (!q) {
-      results.value = [];
+      results.value = { ...EMPTY_TIERED };
       loading.value = false;
       open.value = false;
       return;
     }
     lastQuery.value = q;
     loading.value = true;
+    clusterLoading.value = false;
     try {
-      const list = await fetchResults(q);
+      const tiered = await runQuery(q, true);
       if (q !== query.value.trim()) return; // stale guard
-      results.value = list;
+      results.value = tiered;
       activeIndex.value = -1;
-      bumpCache(q, list);
       open.value = true;
     } catch (e) {
       logger.error("[omnibar] search failed:", e);
@@ -398,16 +513,17 @@ export const useOmnibarStore = defineStore("omnibar", () => {
     }
   }
 
-  async function loadResults(q: string): Promise<HighlightedResult[]> {
+  async function loadResults(q: string): Promise<TieredSearchResults> {
     const cached = resultsCache.value[q];
-    if (cached) return cached;
+    if (cached) {
+      if (cached.cluster.length === 0) void refillClusterTier(q);
+      return cached;
+    }
     try {
-      const list = await fetchResults(q);
-      bumpCache(q, list);
-      return list;
+      return await runQuery(q, false);
     } catch (e) {
       logger.error("[omnibar] loadResults failed:", e);
-      return [];
+      return { ...EMPTY_TIERED };
     }
   }
 
@@ -425,7 +541,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
       timer = undefined;
     }
     mode.value = next;
-    results.value = [];
+    results.value = { ...EMPTY_TIERED };
     loading.value = false;
     resetActiveIndex();
   }
@@ -443,7 +559,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
       }
       const trimmed = raw.trim();
       if (!trimmed) {
-        results.value = [];
+        results.value = { ...EMPTY_TIERED };
         open.value = false;
         loading.value = false;
         return;
@@ -529,9 +645,9 @@ export const useOmnibarStore = defineStore("omnibar", () => {
   }
 
   function openResult(index = activeIndex.value, matchIndex = 0): void {
-    const r = results.value[index];
-    if (!r) return;
-    openNoteAt(r.id, lastQuery.value || query.value.trim(), matchIndex);
+    const it = items.value[index];
+    if (!it?.refId) return;
+    openNoteAt(it.refId, lastQuery.value || query.value.trim(), matchIndex);
   }
 
   function openResultsTab(): void {
@@ -543,7 +659,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
   }
 
   function reopen(): void {
-    if (results.value.length === 0) return;
+    if (items.value.length === 0) return;
     activeIndex.value = -1;
     open.value = true;
   }
@@ -599,7 +715,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
   function commitEnter(): void {
     switch (mode.value) {
       case "notes":
-        if (!open.value && results.value.length > 0) {
+        if (!open.value && items.value.length > 0) {
           reopen();
           return;
         }
@@ -626,9 +742,10 @@ export const useOmnibarStore = defineStore("omnibar", () => {
     }
     query.value = "";
     effectiveQuery.value = "";
-    results.value = [];
+    results.value = { ...EMPTY_TIERED };
     open.value = false;
     loading.value = false;
+    clusterLoading.value = false;
     activeIndex.value = -1;
   }
 
@@ -641,6 +758,7 @@ export const useOmnibarStore = defineStore("omnibar", () => {
     activeIndex,
     loading,
     results,
+    clusterLoading,
     lastQuery,
     resultsCache,
     focusSignal,

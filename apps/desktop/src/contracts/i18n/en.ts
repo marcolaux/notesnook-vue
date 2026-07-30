@@ -890,7 +890,11 @@ export default {
     groupTab: "Tab",
     groupSearchTab: "Search tab",
     groupAttachment: "Attachment",
-    groupRecent: "Recent"
+    groupRecent: "Recent",
+    tierExact: "Exact matches",
+    tierSemantic: "Semantic matches",
+    tierCluster: "Related (cluster)",
+    tierClusterLoading: "Finding related notes…"
   },
   // Phase 7.1 Batch 6 — command palette titles, context menus, status/updater.
   // `command.*` keys are stored in `Command.title` and resolved at omnibar render

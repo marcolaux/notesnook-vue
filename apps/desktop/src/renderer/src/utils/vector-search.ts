@@ -78,16 +78,18 @@ export interface VectorSearchResult {
 }
 
 /**
- * Perform a KNN vector search against the local SQLite `vec_notes` table.
+ * Perform a KNN vector search against the local SQLite `vec_notes` table using a
+ * precomputed query embedding. Shared by the omnibar's semantic tier and the
+ * cluster tier so a single `computeEmbedding` call serves both (one inference
+ * per query, not two).
  */
-export async function searchVectorEmbeddings(
-  queryText: string,
+export async function searchVectorEmbeddingsByVector(
+  queryVector: Float32Array,
   limit = 20
 ): Promise<VectorSearchResult[]> {
-  if (!readSemanticSearchEnabled(getCurrentContext()) || !queryText.trim()) return [];
-
-  const queryVector = await computeEmbedding(queryText);
-  if (!queryVector) return [];
+  if (!readSemanticSearchEnabled(getCurrentContext()) || !queryVector || queryVector.length === 0) {
+    return [];
+  }
 
   try {
     const rows = await runSql<{
@@ -96,10 +98,10 @@ export async function searchVectorEmbeddings(
       chunk_index: number;
       distance: number;
     }>(
-      `SELECT rowid, note_id, chunk_index, distance 
-       FROM vec_notes 
-       WHERE embedding MATCH ? 
-       ORDER BY distance 
+      `SELECT rowid, note_id, chunk_index, distance
+       FROM vec_notes
+       WHERE embedding MATCH ?
+       ORDER BY distance
        LIMIT ?`,
       [queryVector, limit]
     );
@@ -113,6 +115,38 @@ export async function searchVectorEmbeddings(
     logger.error("[vector-search] searchVectorEmbeddings query failed:", err);
     return [];
   }
+}
+
+/**
+ * Perform a KNN vector search against the local SQLite `vec_notes` table.
+ * Embeds the query text, then delegates to {@link searchVectorEmbeddingsByVector}.
+ */
+export async function searchVectorEmbeddings(
+  queryText: string,
+  limit = 20
+): Promise<VectorSearchResult[]> {
+  if (!readSemanticSearchEnabled(getCurrentContext()) || !queryText.trim()) return [];
+
+  const queryVector = await computeEmbedding(queryText);
+  if (!queryVector) return [];
+
+  return searchVectorEmbeddingsByVector(queryVector, limit);
+}
+
+/**
+ * Notify the (lazily-loaded) cluster-tier cache that the indexed-note set
+ * changed so it rebuilds on the next search. Dynamic import keeps
+ * `vector-search.ts` free of a static cycle with `vector-search-clusters.ts`
+ * (which imports `getAllNoteCentroidEmbeddings` from here). Fire-and-forget —
+ * invalidation is best-effort; a missed bump just yields a stale cluster tier
+ * until the next successful invalidation.
+ */
+function notifyVectorIndexChanged(): void {
+  void import("./vector-search-clusters")
+    .then((m) => m.invalidateClusterCache())
+    .catch(() => {
+      /* cluster module optional / not yet loaded */
+    });
 }
 
 let lastUserActivity = 0;
@@ -243,6 +277,7 @@ export async function indexNoteEmbeddings(
 
     // 3. Flush the collected writes as one transactional batch.
     await runSqlBatch(statements);
+    notifyVectorIndexChanged();
   } catch (err) {
     logger.error(`[vector-search] indexNoteEmbeddings failed for note ${noteId}:`, err);
   }
@@ -343,6 +378,7 @@ export async function deleteNoteEmbeddings(noteId: string): Promise<void> {
   if (!noteId) return;
   try {
     await runSql("DELETE FROM vec_notes WHERE note_id = ?", [noteId]);
+    notifyVectorIndexChanged();
   } catch (err) {
     logger.error(`[vector-search] deleteNoteEmbeddings failed for note ${noteId}:`, err);
   }
@@ -354,6 +390,7 @@ export async function deleteNoteEmbeddings(noteId: string): Promise<void> {
 export async function purgeVectorIndex(): Promise<void> {
   try {
     await runSql("DELETE FROM vec_notes;", []);
+    notifyVectorIndexChanged();
   } catch (err) {
     logger.error("[vector-search] purgeVectorIndex failed:", err);
   }
