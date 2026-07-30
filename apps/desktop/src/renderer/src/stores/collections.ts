@@ -43,6 +43,28 @@ export interface SelectedCollection {
   id: string;
 }
 
+/** Merge a freshly-fetched list into the existing one *in place*: for each id
+ *  already present, patch the existing object's fields (preserving identity so
+ *  Vue's `:key`-ed v-for reuses the DOM node and unchanged rows don't
+ *  re-render); append new ids; drop ids no longer present. Used by `load()` on
+ *  sync so the sidebar tree doesn't fully re-render (flash) on every
+ *  `syncCompleted`. Assigning identical values is a reactive no-op in Vue 3, so
+ *  unchanged rows trigger nothing. */
+function mergeById<T extends { id: string }>(prev: T[], next: T[]): T[] {
+  const byId = new Map(prev.map((x) => [x.id, x]));
+  const out: T[] = [];
+  for (const item of next) {
+    const existing = byId.get(item.id);
+    if (existing) {
+      Object.assign(existing, item);
+      out.push(existing);
+    } else {
+      out.push(item);
+    }
+  }
+  return out;
+}
+
 /** Sidebar sections that can be collapsed. */
 export type CollectionSection = "notebooks" | "tags";
 
@@ -145,9 +167,9 @@ export const useCollectionsStore = defineStore("collections", () => {
       db.trash.all().catch(() => []),
       db.notes.archived.ids().catch(() => [])
     ]);
-    notebooks.value = nb.map(toNotebookListItem);
-    roots.value = rt.map(toNotebookListItem);
-    tags.value = tg.map(toTagListItem);
+    notebooks.value = mergeById(notebooks.value, nb.map(toNotebookListItem));
+    roots.value = mergeById(roots.value, rt.map(toNotebookListItem));
+    tags.value = mergeById(tags.value, tg.map(toTagListItem));
     trashCount.value = Array.isArray(trash) ? trash.length : 0;
     archiveCount.value = Array.isArray(archivedIds) ? archivedIds.length : 0;
     notebookOrder.value = readNotebookOrder();

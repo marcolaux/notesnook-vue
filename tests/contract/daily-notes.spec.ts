@@ -14,7 +14,10 @@ import {
   buildDateParser,
   parseDateToken,
   findDateTokens,
-  textMentionsDate
+  textMentionsDate,
+  attributeTasks,
+  type NoteTaskInput,
+  type TaskAttribution
 } from "@/utils/daily-notes";
 
 describe("daily-notes — iso / day-range", () => {
@@ -129,5 +132,210 @@ describe("daily-notes — date token detection + parsing", () => {
   it("buildDateParser order tracks the format fields", () => {
     expect(buildDateParser("DD-MM-YYYY").order).toEqual(["day", "month", "year"]);
     expect(buildDateParser("YYYY-MM-DD").order).toEqual(["year", "month", "day"]);
+  });
+});
+
+describe("daily-notes — attributeTasks (per-day open task attribution)", () => {
+  // ISO tokens are detected regardless of `dateFormat` (buildDateRegex always
+  // includes the ISO alternative), so the default format suffices here.
+  const FMT = DEFAULT_DATE_FORMAT;
+  const D = "2026-07-30";
+  const NEXT = "2026-07-31";
+
+  /** Open item shorthand (`checked: false`). */
+  const open = (text: string) => ({ text, checked: false });
+
+  const count = (m: Map<string, TaskAttribution[]>, iso: string) =>
+    m.get(iso)?.length ?? 0;
+
+  it("channel 1 — attributes an item whose text mentions the date", () => {
+    const m = attributeTasks(
+      [
+        {
+          noteId: "n1",
+          noteTitle: "n1",
+          dailyDay: null,
+          createdDay: "2026-01-01",
+          items: [open("do X 2026-07-30")],
+          contentText: "do X 2026-07-30"
+        }
+      ],
+      FMT
+    );
+    expect(count(m, D)).toBe(1);
+  });
+
+  it("channel 2 — attributes every open item in the day's daily note", () => {
+    const m = attributeTasks(
+      [
+        {
+          noteId: "daily",
+          noteTitle: "daily",
+          dailyDay: D,
+          createdDay: "2026-01-01",
+          items: [open("task A"), open("task B")],
+          contentText: "task A task B"
+        }
+      ],
+      FMT
+    );
+    expect(count(m, D)).toBe(2);
+  });
+
+  it("channel 3 — attributes every open item in a note created that day (no other-day link)", () => {
+    const m = attributeTasks(
+      [
+        {
+          noteId: "n3",
+          noteTitle: "n3",
+          dailyDay: null,
+          createdDay: D,
+          items: [open("task A"), open("task B")],
+          contentText: "task A task B"
+        }
+      ],
+      FMT
+    );
+    expect(count(m, D)).toBe(2);
+  });
+
+  it("channel 3 exclusion — a note created that day but linking to another day is NOT attributed to it", () => {
+    const m = attributeTasks(
+      [
+        {
+          noteId: "n4",
+          noteTitle: "n4",
+          dailyDay: null,
+          createdDay: D,
+          items: [open("task A"), open("see 2026-07-31")],
+          // Mentions NEXT (≠ createdDay) → "links to another day" → ch3 gated off.
+          contentText: "task A see 2026-07-31"
+        }
+      ],
+      FMT
+    );
+    expect(m.get(D)).toBeUndefined(); // ch3 off; neither item mentions D
+    expect(count(m, NEXT)).toBe(1); // ch1: the item mentioning NEXT
+  });
+
+  it("dedup — an item matching several channels for one day is listed once", () => {
+    // Daily note for D, its single item also mentions D: ch1 + ch2 + ch3 all -> D.
+    const m = attributeTasks(
+      [
+        {
+          noteId: "daily",
+          noteTitle: "daily",
+          dailyDay: D,
+          createdDay: D,
+          items: [open("do 2026-07-30")],
+          contentText: "do 2026-07-30"
+        }
+      ],
+      FMT
+    );
+    expect(count(m, D)).toBe(1);
+  });
+
+  it("cross-day — a daily-note item mentioning another day counts on both days", () => {
+    const m = attributeTasks(
+      [
+        {
+          noteId: "daily",
+          noteTitle: "daily",
+          dailyDay: D,
+          createdDay: "2026-01-01",
+          items: [open("follow up 2026-07-31")],
+          contentText: "follow up 2026-07-31"
+        }
+      ],
+      FMT
+    );
+    expect(count(m, D)).toBe(1); // ch2 (inside D's daily note)
+    expect(count(m, NEXT)).toBe(1); // ch1 (item mentions NEXT)
+  });
+
+  it("aggregates across notes with per-item identity (no cross-note collisions)", () => {
+    const m = attributeTasks(
+      [
+        {
+          noteId: "a",
+          noteTitle: "a",
+          dailyDay: null,
+          createdDay: D,
+          items: [open("a1"), open("a2")],
+          contentText: "a1 a2"
+        },
+        {
+          noteId: "b",
+          noteTitle: "b",
+          dailyDay: D,
+          createdDay: "2026-01-01",
+          items: [open("b1")],
+          contentText: "b1"
+        }
+      ],
+      FMT
+    );
+    // 2 from note a (ch3) + 1 from note b (ch2) = 3 unique items on D.
+    expect(count(m, D)).toBe(3);
+  });
+
+  it("skips checked (completed) items — only OPEN tasks are listed", () => {
+    const m = attributeTasks(
+      [
+        {
+          noteId: "daily",
+          noteTitle: "daily",
+          dailyDay: D,
+          createdDay: "2026-01-01",
+          items: [open("open task"), { text: "done task", checked: true }],
+          contentText: "open task done task"
+        }
+      ],
+      FMT
+    );
+    expect(count(m, D)).toBe(1);
+    expect(m.get(D)?.[0]?.itemText).toBe("open task");
+  });
+
+  it("a checked item mentioning a date is NOT attributed to that date", () => {
+    const m = attributeTasks(
+      [
+        {
+          noteId: "n",
+          noteTitle: "n",
+          dailyDay: null,
+          createdDay: "2026-01-01",
+          items: [{ text: "done 2026-07-30", checked: true }],
+          contentText: "done 2026-07-30"
+        }
+      ],
+      FMT
+    );
+    expect(m.get(D)).toBeUndefined();
+  });
+
+  it("carries note title + stable item index for panel rows + list keys", () => {
+    const m = attributeTasks(
+      [
+        {
+          noteId: "daily",
+          noteTitle: "My Day",
+          dailyDay: D,
+          createdDay: "2026-01-01",
+          items: [open("first"), open("second")],
+          contentText: "first second"
+        }
+      ],
+      FMT
+    );
+    const rows = m.get(D)!;
+    expect(rows.map((r) => r.noteTitle)).toEqual(["My Day", "My Day"]);
+    expect(rows.map((r) => r.itemIndex)).toEqual([0, 1]);
+    expect(rows.map((r) => r.itemText)).toEqual(["first", "second"]);
+  });
+
+  it("returns an empty map for no checklist items", () => {
+    expect(attributeTasks([], FMT).size).toBe(0);
   });
 });

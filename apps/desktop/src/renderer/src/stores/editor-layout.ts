@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import {
   splitGroupLeaf,
   removeGroupLeaf,
@@ -878,6 +878,24 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
   /** The note id of the active tab (or `null` when no tab is open). The
    * notes-store facade reads this to derive `activeNote`. */
   const activeNoteId = computed<string | null>(() => activeTab.value?.noteId ?? null);
+
+  // Close any open editor suggestion popups (slash menu, `#` tag picker,
+  // note-link picker) when the active tab changes. Those are `@tiptap/suggestion`
+  // widgets teleported to <body>; switching tabs deactivates (but, via
+  // <KeepAlive>, keeps mounted) the source editor, so the Suggestion plugin
+  // never fires `onExit` on its own and the popup would stay painted over the
+  // new tab. Watching the active tab *id* (not the tab object) avoids firing on
+  // same-tab content/scroll updates. Each picker tears itself down on this
+  // event (NoteLinkPicker.vue already listens; slash-commands/tag-mention
+  // renderers `deleteRange` the trigger so the plugin fires `onExit`).
+  watch(
+    () => activeTab.value?.id,
+    () => {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("app:close-popups"));
+      }
+    }
+  );
 
   /** Close the active tab (no-op when none is open). */
   function closeActiveTab(): void {

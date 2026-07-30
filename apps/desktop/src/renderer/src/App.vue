@@ -52,6 +52,7 @@ import DatePickerPopup from "@/components/DatePickerPopup.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import NotebookPickerDialog from "@/components/NotebookPickerDialog.vue";
 import ColorEditorDialog from "@/components/ColorEditorDialog.vue";
+import LinkDialog from "@/components/LinkDialog.vue";
 import IconEditorDialog from "@/components/IconEditorDialog.vue";
 import ReminderEditorDialog from "@/components/ReminderEditorDialog.vue";
 import PublishDialog from "@/components/PublishDialog.vue";
@@ -650,6 +651,13 @@ onMounted(async () => {
     // active note's publish state + reloads the notes list. Safe pre-login —
     // no-op until a note is active / the event fires.
     publish.bindMonographsEvents();
+    // Bind the per-item sync-merge event once (idempotent): core emits
+    // `syncItemMerged` for each note/content item it pulls + merges, and the
+    // notes store accumulates the affected ids so the `syncCompletedSignal`
+    // watcher below can apply *incremental* in-place list updates instead of
+    // rebuilding the whole list (which flashed every row's tag chips + color
+    // tint on every sync). Safe pre-login — no-op until a sync pulls notes.
+    notes.bindSyncEvents();
     // If booting into an already-logged-in account (cached user — e.g. a
     // return visit, or right after login's reload), pull the account's server
     // data. A fresh login also lands here after its reload. Local mode is
@@ -658,9 +666,6 @@ onMounted(async () => {
     // main window owns sync to avoid double-sync across windows; the note
     // window still binds sync events above for status display.
     if (auth.isLoggedIn && config.syncEnabled && !isTornOffWindow) void sync.startSync();
-    // TEMP-DIAG sync-pull: did the boot-sync gate pass, and with what inputs?
-    // eslint-disable-next-line no-console
-    console.log("[sync] boot gate:", { isLoggedIn: auth.isLoggedIn, syncEnabled: config.syncEnabled, isNoteWindow });
     // Bind vault lock/unlock events once (idempotent) + seed vault existence
     // / lock state from `db.vault`. Safe pre-login — `exists()` is local.
     vault.bindVaultEvents();
@@ -855,19 +860,27 @@ if (!isSettingsWindow) {
     }
   );
 
-  // Reload notes + collections whenever a sync completes so freshly-synced
-  // server data (the account's notes pulled down after login, or later changes
-  // from other devices) appears in the list without a manual refresh. The
-  // status store bumps `syncCompletedSignal` on each `syncCompleted` event.
+  // Apply synced data whenever a sync completes so freshly-synced server data
+  // (notes pulled down after login, or later changes from other devices)
+  // appears without a manual refresh. The status store bumps
+  // `syncCompletedSignal` on each `syncCompleted` event.
+  //
+  // NOTES are applied *incrementally*: the notes store accumulated the note ids
+  // core merged during the sync (`syncItemMerged`), and `applySyncedNotes`
+  // patches/inserts/removes just those rows in place — no whole-list rebuild,
+  // so unaffected rows keep their tag chips + color tint (no flicker). When the
+  // sync pulled no notes (an upload-only save-driven auto-sync, or a tag/
+  // notebook-only pull) the notes list is left untouched entirely.
+  //
+  // Collections/colors/etc. may still change in a note-less sync, so they're
+  // refreshed on every completion — but `collections.load` diff-merges in place
+  // (no sidebar tree re-render), and the rest are cheap badge/refresh calls.
   watch(
     () => status.syncCompletedSignal,
     async () => {
-      // TEMP-DIAG sync-pull: is the reload-on-sync watch firing + gated?
-      // eslint-disable-next-line no-console
-      console.log("[sync] reload-on-sync firing; showShell:", auth.showShell);
       if (!auth.showShell) return;
       // Live-reload open notes the sync actually changed. Capture each open
-      // note's `dateEdited` BEFORE the reload so only notes the sync modified
+      // note's `dateEdited` BEFORE applying so only notes the sync modified
       // get their change signal bumped — bumping an unchanged open note would
       // reload it (Editor.vue skip-if-dirty) and reset the cursor even though
       // the content is identical. The skip-if-dirty guard still protects any
@@ -880,7 +893,14 @@ if (!isSettingsWindow) {
         const item = notes.items.find((n) => n.id === id);
         if (item) before.set(id, item.dateEdited);
       }
-      await notes.load();
+      // Drain the ids core merged during this sync (empty → nothing pulled).
+      const mergedIds = notes.drainSyncMergedNoteIds();
+      if (mergedIds.length > 0) {
+        await notes.applySyncedNotes(mergedIds);
+      }
+      // Sidebar + badges may change even on a note-less sync (tag/notebook-only
+      // pull), so always refresh these. `collections.load` diff-merges → no
+      // tree flicker.
       void useCollectionsStore().load();
       void useColorsStore().refresh();
       void useShortcutsStore().refresh();
@@ -1019,6 +1039,10 @@ if (!isSettingsWindow) {
       <!-- Color-editor dialog (note-row menu "New color…"). Teleports to
            <body>; driven by useColorDialogStore. -->
       <ColorEditorDialog />
+
+      <!-- Link dialog (editor context menu "Link…" / "Edit link…"). Teleports
+           to <body>; driven by useLinkDialogStore. -->
+      <LinkDialog />
 
       <!-- Icon-picker dialog (notebook-row menu "Set icon…"). Teleports to
            <body>; driven by useIconDialogStore. -->

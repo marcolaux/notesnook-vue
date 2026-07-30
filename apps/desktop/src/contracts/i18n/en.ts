@@ -653,7 +653,7 @@ export default {
   dailyNotes: {
     createdOnDay: "Created on this day ({n})",
     modifiedOnDay: "Modified on this day ({n})",
-    tasksOnDay: "Tasks mentioning this date ({n})",
+    tasksForDay: "Tasks for this day ({n})",
     createFor: "Create daily note for {date}"
   },
   insertDate: {
@@ -823,6 +823,16 @@ export default {
     all: "All",
     replaceAllTitle: "Replace all"
   },
+  linkDialog: {
+    createTitle: "Insert link",
+    editTitle: "Edit link",
+    url: "URL",
+    urlPlaceholder: "https://example.com",
+    text: "Link text",
+    textPlaceholder: "Text to display",
+    insert: "Insert",
+    save: "Save"
+  },
   tabs: {
     attachment: "Attachment",
     searchTitle: "Search: {query}",
@@ -899,6 +909,7 @@ export default {
     reloadWindow: "Reload window",
     searchNotes: "Search notes",
     findInNote: "Find in note",
+    openTodayDailyNote: "Open today's daily note",
     toggleSidebar: "Toggle sidebar",
     toggleNotesList: "Toggle notes list",
     toggleToc: "Toggle table of contents",
@@ -917,6 +928,7 @@ export default {
     unpublishNote: "Unpublish note",
     copyMonographUrl: "Copy monograph URL",
     openMonographInBrowser: "Open monograph in browser",
+    copyBlockLink: "Copy deep link to block",
     openSettings: "Open Settings",
     goTo: "Go to {label}",
     newNoteFrom: "New note from {title}",
@@ -965,7 +977,40 @@ export default {
       "Move {n} note to trash? You can restore them from the trash later. | Move {n} notes to trash? You can restore them from the trash later.",
     deleteNotebookConfirm: "Delete “{title}” and all of its sub-notebooks? Notes inside are moved to trash.",
     deleteTagConfirm: "Delete the tag “{title}”? It is removed from all notes (the notes themselves are kept).",
-    deleteColorConfirm: "Delete the color “{title}”? It is removed from all notes (the notes themselves are kept)."
+    deleteColorConfirm: "Delete the color “{title}”? It is removed from all notes (the notes themselves are kept).",
+    // Editor body right-click menu (clipboard / formatting / link / insert / list / actions).
+    cut: "Cut",
+    copy: "Copy",
+    paste: "Paste",
+    bold: "Bold",
+    italic: "Italic",
+    underline: "Underline",
+    strikethrough: "Strikethrough",
+    code: "Code",
+    highlight: "Highlight",
+    link: "Link…",
+    editLink: "Edit link…",
+    removeLink: "Remove link",
+    clearFormatting: "Clear formatting",
+    insert: "Insert",
+    list: "List",
+    findInNote: "Find in note",
+    replaceInNote: "Replace in note",
+    commandPalette: "Command palette",
+    copyBlockLink: "Copy deep link to block",
+    linkToNote: "Link to note…",
+    todayDate: "Today's date",
+    date: "Date…",
+    image: "Image",
+    table: "Table",
+    horizontalRule: "Horizontal rule",
+    codeBlock: "Code block",
+    blockquote: "Quote",
+    bulletList: "Bullet list",
+    numberedList: "Numbered list",
+    checkList: "Checklist",
+    simpleCheckList: "Simple checklist",
+    outlineList: "Outline list"
   },
   status: {
     neverSynced: "Never synced",

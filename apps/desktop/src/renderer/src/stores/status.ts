@@ -72,18 +72,10 @@ export const useStatusStore = defineStore("status", () => {
       syncState.value = "syncing";
     });
     EV.subscribe(EVENTS.syncCompleted, () => {
-      // TEMP-DIAG sync-pull: did core emit syncCompleted at all?
-      // eslint-disable-next-line no-console
-      logger.log("[sync] syncCompleted event fired");
       void refreshSync().then(() => {
         if (syncState.value === "syncing") syncState.value = "synced";
-        // Bump after refresh so watchers (App.vue) reload notes/collections
-        // with the freshly-synced data.
-        // TEMP-DIAG sync-pull: lastSynced value core reported after the sync,
-        // + whether the local DB still has unsynced local changes (a dirty
-        // local note can block pulling the server's newer version).
-        // eslint-disable-next-line no-console
-        logger.log("[sync] syncCompleted -> lastSynced:", lastSynced.value, "hasUnsyncedChanges:", hasUnsyncedChanges.value);
+        // Bump after refresh so watchers (App.vue) apply the freshly-synced
+        // data (incrementally for notes, diff-merged for collections).
         syncCompletedSignal.value += 1;
       });
     });

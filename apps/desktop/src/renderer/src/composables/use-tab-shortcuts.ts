@@ -7,12 +7,16 @@
  *  - Tab by index: `Cmd/Ctrl + 1` .. `8` (1st to 8th tab)
  *  - Last Tab: `Cmd/Ctrl + 9`
  *  - New Tab / Note: `Cmd/Ctrl + T`
+ *  - Open today's daily note: `Cmd/Ctrl + D`
  *  - Detach focused pane to new window: `Cmd/Ctrl + Shift + K` (Phase 4.6)
  */
 import { onMounted, onUnmounted } from "vue";
+import { useRouter } from "vue-router";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
+import { useDailyNotesStore } from "@/stores/daily-notes";
+import { todayIso } from "@/utils/daily-notes";
 import { desktop } from "@/platform/desktop-bridge";
 import { readCurrentContext } from "@/platform/account-context";
 import { getCurrentContext } from "@/platform/bootstrap";
@@ -21,6 +25,8 @@ export function useTabShortcuts(): void {
   const layout = useEditorLayoutStore();
   const notes = useNotesStore();
   const auth = useAuthStore();
+  const router = useRouter();
+  const daily = useDailyNotesStore();
 
   function onKeydown(e: KeyboardEvent): void {
     if (!auth.showShell) return;
@@ -84,6 +90,19 @@ export function useTabShortcuts(): void {
       e.preventDefault();
       e.stopPropagation();
       void notes.create();
+      return;
+    }
+
+    // --- Cmd/Ctrl + D -> Open today's daily note ---
+    // Mirrors the `app:open-today-daily-note` palette command: shows the
+    // `/daily` timeline and opens today's note (or a prefilled draft when none
+    // exists yet). The view's own mount watcher also opens today, but only
+    // fires on first entry — calling `openDailyNote` directly covers the
+    // already-on-`/daily` case.
+    if (metaOrCtrl && !e.shiftKey && !e.altKey && (e.key === "d" || e.key === "D")) {
+      e.preventDefault();
+      e.stopPropagation();
+      void router.push("/daily").then(() => daily.openDailyNote(todayIso()));
       return;
     }
 

@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { Color, Note, Tag } from "@notesnook-vue/contracts";
+import { EV, EVENTS } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
 import {
   filterNotes,
@@ -593,7 +594,24 @@ export const useNotesStore = defineStore("notes", () => {
   async function load(): Promise<void> {
     const db = getDatabase();
     const all = await db.notes.all.items();
-    items.value = all.map(toListItem);
+    // Carry forward each surviving row's already-resolved `tags` + `color` so
+    // the list doesn't flash empty chips/tint while the chunked `loadTags`/
+    // `loadColor` fan-out below re-queries them. `toListItem` resets `tags` to
+    // `[]` (Note.tags is @deprecated/empty) and leaves `color` undefined, so
+    // without this every full reload visibly drops and re-adds chips + tint.
+    const prev = new Map(items.value.map((n) => [n.id, n]));
+    items.value = all.map((n) => {
+      const item = toListItem(n);
+      const p = prev.get(n.id);
+      if (p) {
+        item.tags = p.tags;
+        // Only carry forward a *resolved* color (`null` = loaded, no color;
+        // `ColorListItem` = loaded). Leave `undefined` (never loaded yet) so
+        // `loadColor` still runs — and to satisfy `exactOptionalPropertyTypes`.
+        if (p.color !== undefined) item.color = p.color;
+      }
+      return item;
+    });
     pruneSelection();
     // Per-note enrichment (preview + tags + color) is fire-and-forget and
     // progressive: the list renders from `items` alone — `previewOf`/tags/
@@ -1191,6 +1209,142 @@ export const useNotesStore = defineStore("notes", () => {
     };
   }
 
+  // ── Incremental sync application ──────────────────────────────────────
+  //
+  // Core emits `EVENTS.syncItemMerged` (bridged in `event-bridge.ts`) once per
+  // note/content item it merges during a sync, with the merged item as
+  // payload. We collect the affected note ids across the in-flight sync, then
+  // on `syncCompleted` (the App.vue watcher drains the set) patch/insert/remove
+  // just those rows in place — instead of `notes.load()` rebuilding the whole
+  // `items` array (which flashed every row's tag chips + color tint because
+  // `toListItem` resets them and the chunked re-query is asynchronous).
+  //
+  // A note's metadata lives on the `note` item (`item.id` = note id); a body
+  // change arrives as a `content` item (`item.noteId` = note id). A deleted
+  // item arrives as a `DeletedItem` (`{ id, deleted: true }`, no `type`/
+  // `noteId`) — for a deleted *note* that id is the note id; for a deleted
+  // *content* item it's the content id (recorded harmlessly — `applySyncedNotes`
+  // fetches it, finds no note, no-ops). `db.notes.note(id)` returns `undefined`
+  // for deleted/trashed notes, so removal is handled by "fetch returns nothing".
+  const syncMergedNoteIds = new Set<string>();
+  let syncBound = false;
+
+  /** Subscribe once to `syncItemMerged` and accumulate affected note ids for
+   *  the in-flight sync. Idempotent — safe to call from `App.vue` boot (survives
+   *  `switchContext` since the global `EV` subscription persists; the bridge
+   *  re-binds per new `Database`). Tests never invoke this, so the store stays
+   *  unit-testable in isolation. */
+  function bindSyncEvents(): void {
+    if (syncBound) return;
+    syncBound = true;
+    EV.subscribe(EVENTS.syncItemMerged, (...args: unknown[]) => {
+      const item = args[0] as
+        | {
+            id: string;
+            deleted?: boolean;
+            type?: string;
+            noteId?: string;
+          }
+        | undefined;
+      if (!item || typeof item.id !== "string") return;
+      if (item.deleted === true) {
+        // Deleted item. A `DeletedItem` ({ id, deleted:true }) has no
+        // `noteId`/`type` — for a deleted *note* its `id` is the note id. A
+        // `Content`/`Note` carrying a `deleted` flag may still have `noteId`
+        // (content) — prefer it so the owning note gets refreshed (its body
+        // changed) rather than recording the content id (a harmless no-op on
+        // apply, but it would miss the note).
+        syncMergedNoteIds.add(
+          typeof item.noteId === "string" ? item.noteId : item.id
+        );
+      } else if (item.type === "tiptap" || item.type === "tiny") {
+        // Content item — body changed; refresh the owning note's row + preview.
+        if (typeof item.noteId === "string") syncMergedNoteIds.add(item.noteId);
+      } else if (item.type === "note") {
+        syncMergedNoteIds.add(item.id);
+      }
+    });
+  }
+
+  /** Drain the accumulated merged-note ids for the just-completed sync. Called
+   *  by the App.vue `syncCompletedSignal` watcher. Returns the ids and clears
+   *  the set so the next sync accumulates fresh. */
+  function drainSyncMergedNoteIds(): string[] {
+    const ids = [...syncMergedNoteIds];
+    syncMergedNoteIds.clear();
+    return ids;
+  }
+
+  /** Above this many changed notes, fall back to a full `load()` — a bulk pull
+   *  (first sync of a large account, reconnecting after offline) would otherwise
+   *  serialize N `db.notes.note()` round-trips through the SQLite mutex. The
+   *  common cross-device case is a handful of notes, well under the cap. */
+  const SYNC_INCREMENTAL_MAX = 32;
+
+  /** Apply the synced note ids incrementally: patch each affected row in place
+   *  (preserving its tags/color, only re-querying them in case assignments
+   *  changed cross-device), insert newly-pulled notes, and remove notes the
+   *  sync deleted/trashed/archived (`db.notes.note` returns `undefined` for
+   *  deleted/trashed; `archived` is checked explicitly since `notes.all`
+   *  excludes archived but `notes.note` does not). Never throws into the render
+   *  path. The `items` array is never wholesale replaced, so unaffected rows
+   *  don't re-render → no mass flicker. */
+  async function applySyncedNotes(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    if (ids.length > SYNC_INCREMENTAL_MAX) {
+      // Too many — a full load (with tags/color carry-forward in `load`) is
+      // cheaper than N serialized fetches and still doesn't flash.
+      await load();
+      return;
+    }
+    const db = getDatabase();
+    for (const id of ids) {
+      let n: Note | undefined;
+      try {
+        n = await db.notes.note(id);
+      } catch (e) {
+        logger.error("[notes] applySyncedNotes fetch failed:", e);
+        continue;
+      }
+      const existing = items.value.find((x) => x.id === id);
+      // `notes.note` returns undefined for deleted/trashed; `archived` notes
+      // are excluded from `notes.all` (the list source) but NOT by `notes.note`,
+      // so check it explicitly → drop archived notes from the list.
+      const inList = !!n && !(n as Note & { archived?: boolean }).archived;
+      if (!inList) {
+        if (existing) {
+          items.value = items.value.filter((x) => x.id !== id);
+          if (previews.value[id]) {
+            const nextPreviews = { ...previews.value };
+            delete nextPreviews[id];
+            previews.value = nextPreviews;
+          }
+        }
+        continue;
+      }
+      const note = n as Note;
+      if (existing) {
+        // Patch scalars in place; preserve tags/color until the re-query lands.
+        existing.headline = note.headline ?? existing.headline;
+        existing.dateEdited = note.dateEdited;
+        existing.pinned = note.pinned;
+        existing.favorite = note.favorite;
+        // Don't clobber an in-progress title edit in this window.
+        if (!titlePendingIds.has(id)) existing.title = note.title || "Untitled";
+      } else {
+        // Newly pulled note — append; `visibleItems` re-sorts, so order is fine.
+        items.value = [...items.value, toListItem(note)];
+      }
+      // Assignments (tags/color) + preview may have changed cross-device —
+      // refresh just this note (force preview past the cache).
+      void loadTags(id);
+      void loadColor(id);
+      void loadPreview(id, true);
+    }
+    // Publish state may have changed for the synced notes.
+    void loadPublishedIds();
+  }
+
   /**
    * Persist a note's HTML body. Uses `notes.add` with the existing id so the
    * collection upserts content + bumps `dateEdited`/`headline` atomically
@@ -1478,6 +1632,9 @@ export const useNotesStore = defineStore("notes", () => {
     saveContent,
     handleRemoteNoteChanged,
     bumpNoteChanged,
+    bindSyncEvents,
+    drainSyncMergedNoteIds,
+    applySyncedNotes,
     setTitle,
     flushTitle,
     moveToTrash,

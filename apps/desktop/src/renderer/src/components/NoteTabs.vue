@@ -50,6 +50,7 @@ import { useI18n } from "vue-i18n";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useContextMenuStore } from "@/stores/context-menu";
+import { useHorizontalWheelScroll } from "@/composables/use-horizontal-wheel-scroll";
 import { separator, type MenuItem } from "@/utils/context-menu";
 import { desktop } from "@/platform/desktop-bridge";
 import { readCurrentContext } from "@/platform/account-context";
@@ -78,6 +79,10 @@ const props = defineProps<{ groupId: string }>();
 const notes = useNotesStore();
 const layout = useEditorLayoutStore();
 const { t: $t } = useI18n();
+
+// Translate vertical wheel into horizontal scroll on the (overflow-x-auto) strip.
+const stripRef = ref<HTMLElement | null>(null);
+useHorizontalWheelScroll(stripRef);
 
 /** This group's tabs, joined with titles for the strip. Attachment tabs use
  *  their filename as the title (no note lookup). */
@@ -539,6 +544,7 @@ async function onTabDragEnd(e: DragEvent): Promise<void> {
 
 <template>
   <div
+    ref="stripRef"
     class="titlebar-no-drag flex min-h-8 shrink-0 items-end gap-px overflow-x-auto border-b border-glass-border bg-glass-surface"
     @dragover="onStripDragOver($event)"
     @dragleave="onStripDragLeave($event)"

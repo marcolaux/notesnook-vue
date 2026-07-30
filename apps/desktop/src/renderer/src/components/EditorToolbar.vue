@@ -43,6 +43,7 @@ import { useContextMenuStore } from "@/stores/context-menu";
 import { type MenuItem } from "@/utils/context-menu";
 import { NoteLinkPicker, insertNoteLink, type NoteLinkLabels, type NoteSuggestionItem, type ContentBlockItem, EDITOR_ACTION_BY_ID } from "@notesnook-vue/editor-vue";
 import { editorToolTitle } from "@/composables/use-editor-labels";
+import { useHorizontalWheelScroll } from "@/composables/use-horizontal-wheel-scroll";
 import ToolbarGroup from "./ToolbarGroup.vue";
 
 const props = defineProps<{
@@ -58,6 +59,10 @@ const shell = useShellStore();
 const notes = useNotesStore();
 const toolbar = useToolbarStore();
 const editorStore = useEditorStore();
+
+// Translate vertical wheel into horizontal scroll on the (overflow-x-auto) strip.
+const toolbarRef = ref<HTMLElement | null>(null);
+useHorizontalWheelScroll(toolbarRef);
 const layout = useEditorLayoutStore();
 const reminderDialog = useReminderDialogStore();
 const reminders = useRemindersStore();
@@ -256,6 +261,7 @@ function toggleBlockColorize(): void {
 
 <template>
   <div
+    ref="toolbarRef"
     class="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-glass-border px-2"
   >
     <template v-for="(group, i) in toolbar.toolbarConfig" :key="i">

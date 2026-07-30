@@ -16,6 +16,10 @@ import { useTemplatesStore } from "@/stores/templates";
 import { useContextMenuStore } from "@/stores/context-menu";
 import { usePropertiesStore } from "@/stores/properties";
 import { useEditorStore } from "@/stores/editor";
+import { useDailyNotesStore } from "@/stores/daily-notes";
+import { todayIso } from "@/utils/daily-notes";
+import { blockIdAtSelection } from "@/utils/editor-block-link";
+import { createInternalLink } from "@notesnook-vue/editor-vue";
 import {
   buildColorSubmenu,
   buildTagsSubmenu,
@@ -338,6 +342,20 @@ const appCommands: Command[] = [
       ctx.editorStore.requestFind();
     }
   },
+  // Open today's daily note — navigates to the `/daily` view (so the date
+  // timeline is visible) and opens today's note via `openDailyNote`, which
+  // reveals a prefilled draft when no daily note exists yet (lazy creation on
+  // first content). Also bound to `Cmd/Ctrl+D` in `use-tab-shortcuts`.
+  {
+    id: "app:open-today-daily-note",
+    title: "command.openTodayDailyNote",
+    keywords: ["today", "daily", "note", "journal", "open", "date"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => {
+      void ctx.router?.push("/daily").then(() => useDailyNotesStore().openDailyNote(todayIso()));
+    }
+  },
   // Pane/panel toggle commands (Phase 5.3) — the toolbar + "rest over command
   // palette" entry points for collapsing the sidebar / list and showing the
   // right-side ToC + properties panels. The panel UI itself is on-site.
@@ -558,6 +576,24 @@ const appCommands: Command[] = [
       // `window.open` is intercepted by `setWindowOpenHandler` → `shell.openExternal`,
       // so this opens the system browser, not an in-app window.
       if (url) window.open(url, "_blank", "noopener");
+    }
+  },
+  {
+    id: "app:copy-block-link",
+    title: "command.copyBlockLink",
+    keywords: ["copy", "link", "block", "deep", "share", "url"],
+    group: "editor",
+    // `ctx.editor` is the focused pane's editor; its selection pairs with the
+    // active note, so the block id targets the note the user is looking at.
+    when: (ctx) => !!ctx.editor && !!ctx.notes.activeNote,
+    run: (ctx) => {
+      const id = ctx.notes.activeNote?.id;
+      if (!id || !ctx.editor) return;
+      const blockId = blockIdAtSelection(ctx.editor);
+      const href = createInternalLink("note", id, blockId ? { blockId } : {});
+      void navigator.clipboard.writeText(href).catch(() => {
+        /* clipboard unavailable — ignore */
+      });
     }
   }
 ];

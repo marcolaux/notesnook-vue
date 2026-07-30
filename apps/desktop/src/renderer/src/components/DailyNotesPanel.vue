@@ -1,8 +1,12 @@
 <script setup lang="ts">
 /**
  * Daily-notes references panel — for the selected day, lists:
- *  (a) checklist/task items whose text MENTIONS that date (in ISO or the user's
- *      `dateFormat`) — shown FIRST so the day's actionable items are on top;
+ *  (a) OPEN checklist/task items attributed to that day across three channels
+ *      (shown FIRST so the day's actionable items are on top):
+ *       1. items whose text MENTIONS the date (in ISO or the user's
+ *          `dateFormat`),
+ *       2. items inside that day's daily note,
+ *       3. items inside notes CREATED that day that don't link to another day;
  *  (b) notes CREATED that day (`dateCreated` in the day range);
  *  (c) notes MODIFIED that day (`dateEdited` in range, excluding (b)).
  *
@@ -10,10 +14,12 @@
  * show whether or not a daily note exists — listing them for a no-note date is
  * the point of the non-creating draft flow. Created/modified are cheap in-memory
  * filters over `notes.items`. The tasks list comes from the daily-notes store's
- * aggregated `taskRefsByDate` scan (shared with the timeline's checkbox
- * indicator), so switching days is instant (no per-date re-scan). Clicking any
- * listed note opens it in the active editor group; right-clicking any row shows
- * the same note context menu the notes list shows.
+ * aggregated `taskRefsByDate` scan — the SAME deduplicated set the timeline's
+ * monochrome check + counter uses (so the count above a day and the list below
+ * the editor always agree), and only OPEN tasks. Switching days is instant (no
+ * per-date re-scan). Clicking any listed note opens it in the active editor
+ * group; right-clicking any row shows the same note context menu the notes list
+ * shows.
  */
 import { computed } from "vue";
 import { useNotesStore, type NoteListItem } from "@/stores/notes";
@@ -46,9 +52,9 @@ const modifiedToday = computed<NoteListItem[]>(() => {
   );
 });
 
-/** Task items (across all notes) mentioning this date — from the daily store's
- *  aggregated scan (shared with the timeline's checkbox indicator). Empty until
- *  the idle scan populates `taskRefsByDate`. */
+/** OPEN task items attributed to this date across all three channels — from the
+ *  daily store's aggregated scan (the same set the timeline's check + counter
+ *  shows). Empty until the idle scan populates `taskRefsByDate`. */
 const tasks = computed<TaskMatch[]>(() => daily.taskRefsByDate.get(props.date) ?? []);
 
 function openNote(noteId: string): void {
@@ -83,10 +89,10 @@ function onTaskContext(task: TaskMatch, e: MouseEvent): void {
   <div class="border-t border-glass-border bg-glass-surface px-3 py-2 text-sm">
     <details open>
       <summary class="cursor-pointer select-none py-1 text-text-muted">
-        {{ $t("dailyNotes.tasksOnDay", { n: tasks.length }) }}
+        {{ $t("dailyNotes.tasksForDay", { n: tasks.length }) }}
       </summary>
       <ul class="mt-1 flex flex-col gap-0.5">
-        <li v-for="(t, i) in tasks" :key="t.noteId + '-' + i" class="px-1 py-0.5">
+        <li v-for="t in tasks" :key="t.noteId + '-' + t.itemIndex" class="px-1 py-0.5">
           <button
             class="w-full truncate rounded text-left text-text hover:bg-glass-hover"
             @click="openNote(t.noteId)"

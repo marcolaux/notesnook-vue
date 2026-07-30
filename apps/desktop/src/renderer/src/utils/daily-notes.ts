@@ -264,3 +264,101 @@ export function findDateTokens(text: string, dateFormat: string = DEFAULT_DATE_F
 export function textMentionsDate(text: string, iso: string, dateFormat: string = DEFAULT_DATE_FORMAT): boolean {
   return findDateTokens(text, dateFormat).some((t) => t.iso === iso);
 }
+
+/** A single checklist item as parsed from a note's HTML. The index within
+ *  `NoteTaskInput.items` (paired with `noteId`) is the item's stable identity
+ *  for dedup. `checked` mirrors the `<li>`'s `checked` class so the attribution
+ *  can be restricted to OPEN tasks. */
+export interface NoteTaskItem {
+  text: string;
+  checked: boolean;
+}
+
+/** A note's checklist items + the metadata the task attribution needs. Built by
+ *  the daily-notes store's scan (which does the DOM parse) and fed to
+ *  {@link attributeTasks}, so the attribution logic stays pure / unit-testable
+ *  (no `DOMParser` / `db` deps here). */
+export interface NoteTaskInput {
+  noteId: string;
+  noteTitle: string;
+  /** ISO day this note is the daily note for, or `null` when the note is not a
+   *  daily note (its title isn't an ISO date or it isn't tagged daily). */
+  dailyDay: string | null;
+  /** ISO day the note was created (local) — precomputed by the store so this
+   *  helper is timezone-independent. */
+  createdDay: string;
+  /** Checklist items in DOM order. */
+  items: NoteTaskItem[];
+  /** The note's full body text — scanned for date tokens to decide whether the
+   *  note "links to another day" (channel-3 gate). */
+  contentText: string;
+}
+
+/** A task attributed to a day — the shape both the timeline counter (via the
+ *  per-day array's length) and the references panel (list rows) consume. */
+export interface TaskAttribution {
+  noteId: string;
+  noteTitle: string;
+  /** The item's index within its note's `items` (stable identity for dedup +
+   *  Vue list keys). */
+  itemIndex: number;
+  itemText: string;
+}
+
+/** Attribute each OPEN checklist item to the day(s) it's relevant to and return
+ *  a deduplicated per-day list. An item counts once per day it's attributed to
+ *  (identity = `noteId#index`), so an item matching several channels for the
+ *  same day appears once. Checked (completed) items are skipped — only OPEN
+ *  tasks are listed/counted. Channels:
+ *   1. LINKING — the item's text mentions a date `D` → attribute to `D`.
+ *   2. DAILY NOTE — the containing note is the daily note for `dailyDay` →
+ *      attribute every open item to `dailyDay`.
+ *   3. CREATED TODAY — attribute every open item to `createdDay`, UNLESS the
+ *      note mentions any date other than `createdDay` (a note "linking to
+ *      another day" is attributed to that other day via channel 1 instead, so
+ *      it's excluded here to avoid double attribution across days). */
+export function attributeTasks(
+  inputs: NoteTaskInput[],
+  dateFormat: string = DEFAULT_DATE_FORMAT
+): Map<string, TaskAttribution[]> {
+  const byDay = new Map<string, { keys: Set<string>; items: TaskAttribution[] }>();
+  for (const n of inputs) {
+    // Any date mentioned anywhere in the note (prose + items). Channel 3 is
+    // gated off when one of them is NOT the note's own created day.
+    const noteMentioned = new Set(
+      findDateTokens(n.contentText, dateFormat).map((t) => t.iso)
+    );
+    const linksToAnotherDay = [...noteMentioned].some((d) => d !== n.createdDay);
+    n.items.forEach((item, idx) => {
+      if (item.checked) return; // open tasks only
+      const key = `${n.noteId}#${idx}`;
+      const days = new Set<string>();
+      // Channel 1 — item text mentions a date.
+      for (const tok of findDateTokens(item.text, dateFormat)) days.add(tok.iso);
+      // Channel 2 — item lives in the daily note for `dailyDay`.
+      if (n.dailyDay) days.add(n.dailyDay);
+      // Channel 3 — item lives in a note created on `createdDay` that doesn't
+      // link to another day.
+      if (!linksToAnotherDay) days.add(n.createdDay);
+      for (const d of days) {
+        let bucket = byDay.get(d);
+        if (!bucket) {
+          bucket = { keys: new Set(), items: [] };
+          byDay.set(d, bucket);
+        }
+        if (!bucket.keys.has(key)) {
+          bucket.keys.add(key);
+          bucket.items.push({
+            noteId: n.noteId,
+            noteTitle: n.noteTitle,
+            itemIndex: idx,
+            itemText: item.text
+          });
+        }
+      }
+    });
+  }
+  const out = new Map<string, TaskAttribution[]>();
+  for (const [d, b] of byDay) out.set(d, b.items);
+  return out;
+}

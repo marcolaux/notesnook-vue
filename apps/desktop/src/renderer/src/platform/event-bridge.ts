@@ -14,6 +14,14 @@ const BRIDGED_EVENTS = [
   EVENTS.syncProgress,
   EVENTS.syncCompleted,
   EVENTS.syncAborted,
+  // Per note/content item merged during a sync (core publishes the merged
+  // item as payload from `api/sync/index.ts`). Bridging it lets the notes
+  // store apply *incremental* in-place list updates on `syncCompleted`
+  // (patch/insert/remove just the affected rows) instead of throwing away +
+  // rebuilding the whole list — which flashed every row's tag chips and color
+  // tint on every sync. Note: only fires for `note`/`content` item types, so
+  // tags/notebooks still need a `collections.load()` on completion.
+  EVENTS.syncItemMerged,
   // Server-pushed "another device synced, pull the changes" signal. Core
   // publishes this from the SSE `triggerSync` handler (`api/index.ts:434`),
   // from `onPushCompleted` (`api/sync/index.ts`), and from local-edit

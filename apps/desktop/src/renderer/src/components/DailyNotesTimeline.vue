@@ -85,9 +85,12 @@ function hasReferences(iso: string): boolean {
   return daily.createdModifiedByDate.has(iso);
 }
 
-/** Whether any checklist item anywhere mentions this date (checkbox icon). */
-function hasTaskRefs(iso: string): boolean {
-  return daily.taskRefsByDate.has(iso);
+/** Deduplicated OPEN task count for a day across all three channels (linking /
+ *  within the daily note / created that day not linking elsewhere) — the same
+ *  set the references panel lists. Drives the monochrome check + counter; 0
+ *  when no open tasks are attributed to the day. */
+function taskCount(iso: string): number {
+  return daily.taskRefsByDate.get(iso)?.length ?? 0;
 }
 
 /** Right-click a day row: if the date has a daily note, show the SAME note
@@ -139,7 +142,7 @@ function shiftWindow(deltaDays: number): void {
 
 onMounted(() => {
   // Refresh the daily-note set so dots are correct on entry, then centre today.
-  // Also kick off the task-reference aggregation scan so the checkbox indicators
+  // Also kick off the task-reference aggregation scan so the task counters
   // + the references panel's tasks list populate (the store otherwise only
   // re-scans on `notes.items` length change).
   void daily.refreshDailyNotes().finally(() => void nextTick(centerSelected));
@@ -199,13 +202,20 @@ watch(
              created/modified references (so a no-note day with references still
              draws the eye). -->
         <span class="ml-auto flex shrink-0 items-center gap-1">
-          <Icon
-            v-if="hasTaskRefs(d.iso)"
-            name="square-check-big"
-            :size="12"
-            class="text-amber-500"
-            :title="$t('dailyNotes.tasksOnDay', { n: daily.taskRefsByDate.get(d.iso)?.length ?? 0 })"
-          />
+          <!-- At-a-glance indicators (right-aligned): a monochrome check icon +
+               counter when tasks are attributed to this day (linking tasks,
+               tasks inside the day's daily note, or tasks in notes created that
+               day that don't link to another day — deduplicated); then a dot
+               marking the day — accent when a daily note exists, otherwise
+               orange when the day has created/modified references. -->
+          <span
+            v-if="taskCount(d.iso) > 0"
+            class="flex items-center gap-0.5 text-text-muted"
+            :title="$t('dailyNotes.tasksForDay', { n: taskCount(d.iso) })"
+          >
+            <Icon name="square-check-big" :size="12" />
+            <span class="text-[10px] tabular-nums">{{ taskCount(d.iso) }}</span>
+          </span>
           <span
             v-if="hasDailyNote(d.iso)"
             class="h-1.5 w-1.5 rounded-full bg-[var(--accent)]"

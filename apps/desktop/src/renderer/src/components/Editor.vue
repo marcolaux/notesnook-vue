@@ -97,6 +97,7 @@ import {
   type MimeCategory
 } from "@/utils/attachments";
 import { useNoteFooter } from "@/composables/use-note-footer";
+import { useEditorContextMenu } from "@/composables/use-editor-context-menu";
 import { readEditorStats } from "@/utils/status";
 import { scrollEditorToMatch } from "@/utils/search-scroll";
 import {
@@ -217,6 +218,11 @@ const categorizedAttachments = computed(() => {
 // by `Cmd/Ctrl+F` (only when this pane is focused — each instance listens) or by
 // the "Find in note" palette command (via `editorStore.findSignal`).
 const findOpen = ref(false);
+// Whether the find bar opens with the replace row expanded. Set by the
+// `replaceSignal` watcher ("Replace in note" context-menu entry) and cleared
+// by the `findSignal` watcher ("Find in note" / ⌘F) so the two entries drive
+// different initial modes on the same `FindBar`.
+const findReplaceMode = ref(false);
 
 // `Cmd/Ctrl+F` opens this pane's find bar — but ONLY when this editor is the
 // focused one. Every `Editor.vue` instance mounts this listener; the focused
@@ -235,7 +241,22 @@ function onFindHotkey(e: KeyboardEvent): void {
 watch(
   () => editorStore.findSignal,
   () => {
-    if (editorStore.editor === editor.value) findOpen.value = true;
+    if (editorStore.editor === editor.value) {
+      findReplaceMode.value = false;
+      findOpen.value = true;
+    }
+  }
+);
+
+// The editor context menu's "Replace in note" entry bumps `replaceSignal`;
+// open this pane's bar in replace mode when focused (mirrors `findSignal`).
+watch(
+  () => editorStore.replaceSignal,
+  () => {
+    if (editorStore.editor === editor.value) {
+      findReplaceMode.value = true;
+      findOpen.value = true;
+    }
   }
 );
 
@@ -751,6 +772,11 @@ const editor = useEditor({
     scheduleSave(html);
   }
 });
+
+// Right-click context menu for the editor body (clipboard / formatting / link
+// / insert / list / find / palette). Bound on `<EditorContent>` above; the
+// composable captures the PM selection snapshot + builds the dep bag per click.
+const { onEditorContext } = useEditorContextMenu(editor, myNoteId);
 
 // --- Autosave (debounced), instance-local (flushed on switch/deactivate) -----
 // INSTANCE-LOCAL (setup scope, not module scope): a split layout mounts several
@@ -1543,6 +1569,7 @@ function onEditorAreaClick(e: MouseEvent): void {
     <FindBar
       v-if="findOpen && editor"
       :editor="editor"
+      :replace-mode="findReplaceMode"
       class="titlebar-no-drag"
       @close="findOpen = false"
     />
@@ -1567,7 +1594,11 @@ function onEditorAreaClick(e: MouseEvent): void {
           :placeholder="isDraft ? t('editor.titlePlaceholderDraft') : t('editor.titlePlaceholder')"
           @keydown.enter.prevent="onTitleEnter"
         />
-        <EditorContent :editor="editor" class="prose max-w-none text-sm text-text" />
+        <EditorContent
+          :editor="editor"
+          class="prose max-w-none text-sm text-text"
+          @contextmenu="onEditorContext"
+        />
         <div
           v-if="!isDraft"
           class="editor-notebooks editor-tags mt-4 flex flex-wrap items-center gap-2 border-t border-glass-border pt-3"

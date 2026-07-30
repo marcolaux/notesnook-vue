@@ -172,12 +172,22 @@ export const useEditorStore = defineStore("editor", () => {
     focusedKey.value = key;
   }
 
-  /** Bump the find-signal (called by the "Find in note" palette command).
-   *  Each `Editor.vue` watches it and opens its find bar when it is the focused
-   *  pane (mirrors `notes.focusSearchSignal` — a palette entry point that needs
-   *  no global keybinding to reach the per-tab component state). */
+  /** Bump the find-signal (called by the "Find in note" palette command + the
+   *  editor context menu's "Find in note" entry). Each `Editor.vue` watches it
+   *  and opens its find bar when it is the focused pane (mirrors
+   *  `notes.focusSearchSignal` — a palette entry point that needs no global
+   *  keybinding to reach the per-tab component state). */
   function requestFind(): void {
     findSignal.value++;
+  }
+
+  /** Bump the replace-signal (called by the editor context menu's "Replace in
+   *  note" entry). Like `findSignal` but each focused `Editor.vue` opens its
+   *  find bar in REPLACE mode (the replace row expanded). Kept separate from
+   *  `findSignal` so the two entries can drive different initial modes. */
+  const replaceSignal = ref(0);
+  function requestReplace(): void {
+    replaceSignal.value++;
   }
 
   /** Bump the find-toggle-signal: like `requestFind` but the focused pane
@@ -239,6 +249,7 @@ export const useEditorStore = defineStore("editor", () => {
     focusedKey,
     findSignal,
     findToggleSignal,
+    replaceSignal,
     pendingScrollTargets,
     editor,
     isEditable,
@@ -246,6 +257,7 @@ export const useEditorStore = defineStore("editor", () => {
     unregister,
     setFocusedKey,
     requestFind,
+    requestReplace,
     requestFindToggle,
     setPendingScrollTarget,
     pendingScrollTargetFor,

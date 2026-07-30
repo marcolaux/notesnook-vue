@@ -649,7 +649,7 @@ export default {
   dailyNotes: {
     createdOnDay: "An diesem Tag erstellt ({n})",
     modifiedOnDay: "An diesem Tag bearbeitet ({n})",
-    tasksOnDay: "Aufgaben mit diesem Datum ({n})",
+    tasksForDay: "Aufgaben für diesen Tag ({n})",
     createFor: "Tagesnotiz für {date} erstellen"
   },
   insertDate: {
@@ -809,6 +809,16 @@ export default {
     all: "Alle",
     replaceAllTitle: "Alle ersetzen"
   },
+  linkDialog: {
+    createTitle: "Link einfügen",
+    editTitle: "Link bearbeiten",
+    url: "URL",
+    urlPlaceholder: "https://example.com",
+    text: "Linktext",
+    textPlaceholder: "Anzuzeigender Text",
+    insert: "Einfügen",
+    save: "Speichern"
+  },
   tabs: {
     attachment: "Anhang",
     searchTitle: "Suche: {query}",
@@ -880,6 +890,7 @@ export default {
     reloadWindow: "Fenster neu laden",
     searchNotes: "Notizen suchen",
     findInNote: "In Notiz suchen",
+    openTodayDailyNote: "Tägliche Notiz von heute öffnen",
     toggleSidebar: "Seitenleiste umschalten",
     toggleNotesList: "Notizliste umschalten",
     toggleToc: "Inhaltsverzeichnis umschalten",
@@ -898,6 +909,7 @@ export default {
     unpublishNote: "Veröffentlichung aufheben",
     copyMonographUrl: "Monograph-URL kopieren",
     openMonographInBrowser: "Monograph im Browser öffnen",
+    copyBlockLink: "Tiefenlink zum Block kopieren",
     openSettings: "Einstellungen öffnen",
     goTo: "Zu {label}",
     newNoteFrom: "Neue Notiz von {title}",
@@ -940,7 +952,40 @@ export default {
       "{n} Notiz in den Papierkorb verschieben? Du kannst sie später aus dem Papierkorb wiederherstellen. | {n} Notizen in den Papierkorb verschieben? Du kannst sie später aus dem Papierkorb wiederherstellen.",
     deleteNotebookConfirm: "„{title}“ und alle Unter-Notizbücher löschen? Enthaltene Notizen werden in den Papierkorb verschoben.",
     deleteTagConfirm: "Tag „{title}“ löschen? Er wird von allen Notizen entfernt (die Notizen selbst bleiben erhalten).",
-    deleteColorConfirm: "Farbe „{title}“ löschen? Sie wird von allen Notizen entfernt (die Notizen selbst bleiben erhalten)."
+    deleteColorConfirm: "Farbe „{title}“ löschen? Sie wird von allen Notizen entfernt (die Notizen selbst bleiben erhalten).",
+    // Editor-Körper Rechtsklick-Menü (Zwischenablage / Formatierung / Link / Einfügen / Liste / Aktionen).
+    cut: "Ausschneiden",
+    copy: "Kopieren",
+    paste: "Einfügen",
+    bold: "Fett",
+    italic: "Kursiv",
+    underline: "Unterstrichen",
+    strikethrough: "Durchgestrichen",
+    code: "Code",
+    highlight: "Hervorheben",
+    link: "Link…",
+    editLink: "Link bearbeiten…",
+    removeLink: "Link entfernen",
+    clearFormatting: "Formatierung entfernen",
+    insert: "Einfügen",
+    list: "Liste",
+    findInNote: "In Notiz suchen",
+    replaceInNote: "In Notiz ersetzen",
+    commandPalette: "Befehlspalette",
+    copyBlockLink: "Tiefenlink zum Block kopieren",
+    linkToNote: "Mit Notiz verlinken…",
+    todayDate: "Heutiges Datum",
+    date: "Datum…",
+    image: "Bild",
+    table: "Tabelle",
+    horizontalRule: "Horizontale Linie",
+    codeBlock: "Codeblock",
+    blockquote: "Zitat",
+    bulletList: "Aufzählungsliste",
+    numberedList: "Nummerierte Liste",
+    checkList: "Checkliste",
+    simpleCheckList: "Einfache Checkliste",
+    outlineList: "Gliederungsliste"
   },
   status: {
     neverSynced: "Nie synchronisiert",

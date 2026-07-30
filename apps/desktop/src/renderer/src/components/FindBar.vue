@@ -20,7 +20,7 @@ import { useI18n } from "vue-i18n";
 import { findReplacePluginKey } from "@notesnook-vue/editor-vue";
 import { Icon } from "@notesnook-vue/ui-vue";
 
-const props = defineProps<{ editor: Editor | undefined }>();
+const props = defineProps<{ editor: Editor | undefined; replaceMode?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
 
@@ -85,7 +85,10 @@ function close(): void {
 
 // On open: pre-fill the query from the editor's current text selection (if it's
 // a non-empty, in-doc range), then push + focus. Mirrors the browser find bar.
+// When opened in `replaceMode` (the context menu's "Replace in note" entry),
+// expand the replace row up front.
 onMounted(() => {
+  if (props.replaceMode) showReplace.value = true;
   const ed = props.editor;
   if (ed) {
     const { from, to, empty } = ed.state.selection;

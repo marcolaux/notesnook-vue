@@ -24,6 +24,7 @@ import type { Slice } from "@tiptap/pm/model";
 import type { ImageAttributes, FileAttachment } from "@notesnook-vue/editor-vue";
 import { EVENTS } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
+import { handleDeepLinkPaste } from "./deep-link-paste";
 
 /** Mime-routed result of ingesting one file. */
 export type IngestedFile =
@@ -218,12 +219,20 @@ export function createImageDropPasteProps(
       _slice: Slice
     ): boolean => {
       const files = dropFilesFrom(event.clipboardData);
-      if (files.length === 0) return false;
+      if (files.length > 0) {
+        const editor = getEditor();
+        if (!editor) return false;
+        event.preventDefault();
+        void insertIngestedAt(editor, files, view.state.selection.from);
+        return true;
+      }
+      // A pasted `nn://note/<id>` deep link (e.g. from "Copy deep link to
+      // block") → insert it as a titled note link instead of literal URL text.
+      // Returns false for everything else so ProseMirror's default text/HTML
+      // paste runs unchanged.
       const editor = getEditor();
-      if (!editor) return false;
-      event.preventDefault();
-      void insertIngestedAt(editor, files, view.state.selection.from);
-      return true;
+      if (editor && handleDeepLinkPaste(editor, event)) return true;
+      return false;
     }
   };
 }

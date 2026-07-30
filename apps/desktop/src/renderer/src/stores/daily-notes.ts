@@ -37,22 +37,20 @@ import { useSettingsStore } from "@/stores/settings";
 import { logger } from "@/utils/logger";
 import {
   DAILY_TAG_TITLE,
+  attributeTasks,
   dayRange,
-  findDateTokens,
   isoDate,
   parseIsoDate,
-  todayIso
+  todayIso,
+  type NoteTaskInput,
+  type TaskAttribution
 } from "@/utils/daily-notes";
 import type { Note } from "@notesnook-vue/contracts";
 
-/** A checklist/task item (in some note) whose text mentions a date — the
- *  shape the references panel lists under "Tasks mentioning this date" and the
- *  aggregated `taskRefsByDate` map stores per ISO date. */
-export interface TaskMatch {
-  noteId: string;
-  noteTitle: string;
-  itemText: string;
-}
+/** A task attributed to a day — the shape the references panel lists and the
+ *  aggregated `taskRefsByDate` map stores per ISO date. Re-exported from the
+ *  pure helper so the panel/scan share one definition. */
+export type TaskMatch = TaskAttribution;
 
 /** CSS selector for both checklist node types (rich `task-list` + simple
  *  `check-list`) — mirrors `DailyNotesPanel`'s selector so the scan counts the
@@ -96,12 +94,19 @@ export const useDailyNotesStore = defineStore("daily-notes", () => {
    *  + cleared by {@link claimDraft} / when a daily note is opened. */
   const pendingDailyDate = ref<string | null>(null);
 
-  /** Aggregated task references: ISO date → the checklist items (across ALL
-   *  notes) whose text mentions that date. Drives the timeline's task checkbox
-   *  indicator (per-date existence) + the references panel's "Tasks mentioning
-   *  this date" list (the selected date's items). Built by a single idle/
-   *  debounced scan over `notes.items` (only notes whose cached preview has
-   *  checklist items), re-run on `notes.items` length change + invalidate. */
+  /** Aggregated OPEN task references: ISO date → the deduplicated OPEN checklist
+   *  items attributed to that day across THREE channels (so the timeline counter
+   *  and the references panel list the SAME set):
+   *   1. LINKING — the item's text mentions the day;
+   *   2. DAILY NOTE — the item lives in that day's daily note;
+   *   3. CREATED TODAY — the item lives in a note created that day that does NOT
+   *      link to another day (else it's attributed to that other day via Ch1).
+   *  Each item counts once per day (identity `noteId#index`); checked (completed)
+   *  items are skipped — only OPEN tasks are listed/counted. The timeline's
+   *  per-day counter is `taskRefsByDate.get(iso)?.length`. Built by a single
+   *  idle/debounced scan over `notes.items` (only notes whose cached preview has
+   *  at least one OPEN checklist item), re-run on `notes.items` length change,
+   *  `notes.previews` (autosave), and invalidate. */
   const taskRefsByDate = ref<Map<string, TaskMatch[]>>(new Map());
 
   /** ISO dates that have at least one note CREATED or MODIFIED that day (a cheap
@@ -141,40 +146,52 @@ export const useDailyNotesStore = defineStore("daily-notes", () => {
     if (token !== scanToken) return;
     const settings = useSettingsStore();
     const dateFormat = settings.dateFormat;
-    const byDate = new Map<string, TaskMatch[]>();
+    const taskInputs: NoteTaskInput[] = [];
     try {
       const db = getDatabase();
       for (const n of notes.items) {
         if (token !== scanToken) return;
-        // Gate on the cached preview: only notes with checklist items can match,
-        // and only those are fetched. Notes without a preview yet are skipped —
+        // Gate on the cached preview: only notes with at least one OPEN
+        // checklist item can contribute (completed-only notes are skipped), and
+        // only those are fetched. Notes without a preview yet are skipped —
         // they'll be picked up once their preview loads (a re-scan fires on
         // `notes.items` length change; previews load progressively).
         const preview = notes.previews[n.id];
-        if (!preview?.checklist || preview.checklist.total === 0) continue;
+        const cl = preview?.checklist;
+        if (!cl || cl.total === 0 || cl.checked >= cl.total) continue;
         const item = await db.content.findByNoteId(n.id);
         if (!item || ("locked" in item && item.locked)) continue;
         const html = typeof item.data === "string" ? item.data : "";
         if (!html) continue;
         if (token !== scanToken) return;
         const doc = new DOMParser().parseFromString(html, "text/html");
-        for (const li of Array.from(doc.querySelectorAll(CHECKLIST_SELECTOR))) {
-          const text = (li.textContent ?? "").trim();
-          if (!text) continue;
-          for (const tok of findDateTokens(text, dateFormat)) {
-            let arr = byDate.get(tok.iso);
-            if (!arr) {
-              arr = [];
-              byDate.set(tok.iso, arr);
-            }
-            arr.push({ noteId: n.id, noteTitle: n.title || "Untitled", itemText: text });
-          }
-        }
+        const lis = Array.from(doc.querySelectorAll(CHECKLIST_SELECTOR));
+        if (!lis.length) continue;
+        // `checked` mirrors the `<li>`'s `checked` class (rich `task-list` +
+        // simple `check-list` both use it — see `utils/note-preview.ts`); the
+        // helper skips checked items so only OPEN tasks are attributed.
+        const items = lis.map((li) => ({
+          text: (li.textContent ?? "").trim(),
+          checked: li.classList.contains("checked")
+        }));
+        const parsedTitle = parseIsoDate(n.title);
+        const dailyDay =
+          dailyNoteIds.value.has(n.id) && parsedTitle ? isoDate(parsedTitle) : null;
+        taskInputs.push({
+          noteId: n.id,
+          noteTitle: n.title || "Untitled",
+          dailyDay,
+          createdDay: isoDate(new Date(n.dateCreated)),
+          items,
+          contentText: (doc.body.textContent ?? "").trim()
+        });
       }
     } catch (e) {
       logger.error("[daily-notes] task-ref scan failed:", e);
     } finally {
-      if (token === scanToken) taskRefsByDate.value = byDate;
+      if (token === scanToken) {
+        taskRefsByDate.value = attributeTasks(taskInputs, dateFormat);
+      }
     }
   }
 

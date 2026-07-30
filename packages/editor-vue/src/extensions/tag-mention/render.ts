@@ -36,6 +36,21 @@ export function tagMenuRenderer(): {
 } {
   const state: RenderState = { component: null, props: null };
 
+  // Close the menu when the host asks all popups to close — e.g. a new note is
+  // created → the active tab switches → this editor is deactivated but kept
+  // alive by <KeepAlive>, so the Suggestion plugin never fires `onExit` on its
+  // own and the teleported menu would stay painted. Mirroring Escape: delete
+  // the `#`-trigger + query so the decoration is removed → the plugin fires
+  // `onExit` → the renderer cleans up and removes this listener.
+  function closeOnExternal(): void {
+    const p = state.props;
+    if (p) {
+      try {
+        p.editor.chain().focus().deleteRange(p.range).run();
+      } catch {}
+    }
+  }
+
   return {
     onStart(props: RenderProps) {
       state.component = new VueRenderer(TagMenu, {
@@ -47,6 +62,9 @@ export function tagMenuRenderer(): {
         editor: props.editor as unknown as Editor
       });
       state.props = props;
+      if (typeof window !== "undefined") {
+        window.addEventListener("app:close-popups", closeOnExternal);
+      }
     },
 
     onUpdate(props: RenderProps) {
@@ -80,6 +98,9 @@ export function tagMenuRenderer(): {
     },
 
     onExit() {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("app:close-popups", closeOnExternal);
+      }
       state.component?.destroy();
       state.component = null;
       state.props = null;
