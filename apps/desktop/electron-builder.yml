@@ -132,15 +132,19 @@ mac:
     NSLocalNetworkUsageDescription: >-
       Notesnook Vue connects to your self-hosted Notesnook server and to other
       devices on your local network to sync your notes.
-  # Ad-hoc sign the built `.app` with the Hardened Runtime + entitlements when no
-  # signing identity is configured (see scripts/after-pack.mjs). Gives macOS a
-  # code-signing identity it can list under Local Network so the toggle becomes
-  # settable. No-op once a real cert is wired (CSC_NAME / CSC_LINK) — the hook
-  # skips itself when those are set so electron-builder signs with the cert.
-  # NB: `afterSign` is skipped by electron-builder when no signing occurred, so
-  # this MUST be `afterPack` (unconditional) for the no-cert path to run.
-  afterPack: scripts/after-pack.mjs
   # hardenedRuntime / notarize / entitlements = release gate (needs certs).
+
+# Root-level afterPack hook (NOT under `mac` — `afterPack` is a top-level
+# electron-builder key; placing it under `mac` fails schema validation).
+# Ad-hoc signs the built macOS `.app` with the Hardened Runtime + entitlements
+# when no signing identity is configured (see scripts/after-pack.mjs). Gives
+# macOS a code-signing identity it can list under Local Network so the toggle
+# becomes settable. No-op once a real cert is wired (CSC_NAME / CSC_LINK) — the
+# hook skips itself when those are set so electron-builder signs with the cert.
+# NB: `afterSign` is skipped by electron-builder when no signing occurred, so
+# this MUST be `afterPack` (unconditional) for the no-cert path to run. The hook
+# itself no-ops on non-darwin platforms.
+afterPack: scripts/after-pack.mjs
 
 dmg:
   title: "Install Notesnook Vue"
