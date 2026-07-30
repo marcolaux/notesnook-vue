@@ -792,6 +792,8 @@ export default {
     showNotesTagged: "Show notes tagged #{title}",
     links: "Links",
     files: "Files",
+    references: "References",
+    backlinks: "Backlinks ({n})",
     outgoing: "Outgoing:",
     incoming: "Incoming:",
     linkToNotePlaceholder: "Link to note…",

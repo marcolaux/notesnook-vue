@@ -47,14 +47,14 @@ import {
 } from "@/utils/daily-notes";
 import type { Note } from "@notesnook-vue/contracts";
 
-/** A task attributed to a day — the shape the references panel lists and the
- *  aggregated `taskRefsByDate` map stores per ISO date. Re-exported from the
- *  pure helper so the panel/scan share one definition. */
+/** A task attributed to a day — the shape the editor footer's References
+ *  section lists and the aggregated `taskRefsByDate` map stores per ISO date.
+ *  Re-exported from the pure helper so the section/scan share one definition. */
 export type TaskMatch = TaskAttribution;
 
 /** CSS selector for both checklist node types (rich `task-list` + simple
- *  `check-list`) — mirrors `DailyNotesPanel`'s selector so the scan counts the
- *  same items the panel did. */
+ *  `check-list`) — mirrors the references section's selector so the scan counts the
+ *  same items the section lists. */
 const CHECKLIST_SELECTOR = "li.checklist--item, li.simple-checklist--item";
 
 export const useDailyNotesStore = defineStore("daily-notes", () => {
@@ -96,7 +96,7 @@ export const useDailyNotesStore = defineStore("daily-notes", () => {
 
   /** Aggregated OPEN task references: ISO date → the deduplicated OPEN checklist
    *  items attributed to that day across THREE channels (so the timeline counter
-   *  and the references panel list the SAME set):
+   *  and the references section list the SAME set):
    *   1. LINKING — the item's text mentions the day;
    *   2. DAILY NOTE — the item lives in that day's daily note;
    *   3. CREATED TODAY — the item lives in a note created that day that does NOT
@@ -129,9 +129,10 @@ export const useDailyNotesStore = defineStore("daily-notes", () => {
   });
 
   // --- Task-reference aggregation scan --------------------------------------
-  // Mirrors the scan `DailyNotesPanel` ran for the SELECTED date, generalised to
-  // aggregate EVERY date token found into `taskRefsByDate` so the timeline can
-  // show a per-date task indicator without a per-date re-scan. Gated on the
+  // Mirrors the scan the (now-removed) daily panel ran for the SELECTED date,
+  // generalised to aggregate EVERY date token found into `taskRefsByDate` so the
+  // timeline can show a per-date task indicator without a per-date re-scan. The
+  // editor footer's References section consumes the same map. Gated on the
   // cached preview's checklist (only notes with checklist items are fetched),
   // run on `requestIdleCallback` + a debounce, token-guarded so a stale
   // (superseded) scan is discarded.
@@ -361,7 +362,7 @@ export const useDailyNotesStore = defineStore("daily-notes", () => {
    *  panel (bound to the selected date) lists the day's references either way. */
   async function openDailyNote(iso: string): Promise<void> {
     selectedDate.value = iso;
-    // Re-scan task references so the references panel is fresh for this date on
+    // Re-scan task references so the references section is fresh for this date on
     // view — a date just added to a checklist item elsewhere may not have been
     // picked up yet (the scan is debounced + idle, and opening a date doesn't
     // otherwise change notes.items/previews). Debounced inside refreshTaskRefs.

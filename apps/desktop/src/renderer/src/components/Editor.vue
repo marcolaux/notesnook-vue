@@ -117,7 +117,7 @@ import { scrollTopFromFraction } from "@/utils/minimap";
 import { findHeading } from "@/utils/toc";
 import EditorToolbar from "./EditorToolbar.vue";
 import FindBar from "./FindBar.vue";
-import DailyNotesPanel from "./DailyNotesPanel.vue";
+import EditorReferences from "./EditorReferences.vue";
 
 const props = defineProps<{ tabId?: string; groupId?: string }>();
 
@@ -155,7 +155,7 @@ const myNote = computed(() =>
  *  a real note, `ensureDraft` calls `daily.claimDraft` to tag it daily. */
 const daily = useDailyNotesStore();
 /** When the open note is a daily note (tagged "daily" + ISO-date title), this is
- *  its ISO date — used to show the day's references panel inside THIS tab. `null`
+ *  its ISO date — used to show the day's references in THIS tab's footer. `null`
  *  for non-daily notes. (A prefilled daily draft is handled by `dailyPanelDate`
  *  below, which falls back to `pendingDailyDate`.) */
 const dailyNoteDate = computed<string | null>(() => {
@@ -171,10 +171,11 @@ const myContentState = computed(
  *  that creates a note on the first keystroke. Drives the minimal draft UI —
  *  no toolbar, no tags/links footer, and a "create a note" title placeholder. */
 const isDraft = computed(() => !myNoteId.value);
-/** The date whose references panel lives inside THIS editor: an open daily-note
- *  tab's own day, OR — for a prefilled daily draft (a no-note date) — the
- *  pending date. `null` for non-daily notes/drafts, so the panel is hidden there
- *  (the panel is per-editor, never a global window-bottom strip). */
+/** The date whose references live inside THIS editor's footer: an open daily-
+ *  note tab's own day, OR — for a prefilled daily draft (a no-note date) — the
+ *  pending date. `null` for non-daily notes/drafts, so the References section's
+ *  daily groups are hidden there (the section is per-editor, never a global
+ *  window-bottom strip). Backlinks are shown regardless of this date. */
 const dailyPanelDate = computed<string | null>(
   () => dailyNoteDate.value ?? (isDraft.value ? daily.pendingDailyDate : null)
 );
@@ -1781,20 +1782,13 @@ function onEditorAreaClick(e: MouseEvent): void {
               </ul>
             </div>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-text-muted">{{ t("editor.incoming") }}</span>
-            <button
-              v-for="l in incoming"
-              :key="'in-' + l.id"
-              class="inline-flex items-center rounded-full bg-glass-surface px-2.5 py-1 text-xs text-text hover:bg-glass-hover"
-              :title="t('editor.openTitle', { title: l.title })"
-              @click="openLinkedNote(l.id)"
-            >
-              <span class="max-w-40 truncate">{{ l.title }}</span>
-            </button>
-            <span v-if="incoming.length === 0" class="text-text-muted">{{ t("common.none") }}</span>
-          </div>
         </div>
+        <EditorReferences
+          v-if="!isDraft || dailyPanelDate"
+          :incoming="incoming"
+          :daily-date="dailyPanelDate"
+          :group-id="myGroupId"
+        />
         <div v-if="!isDraft" class="editor-attachments mt-4 border-t border-glass-border pt-3 text-xs text-text-muted">
           <div class="mb-1 font-medium text-text">{{ t("editor.files") }}</div>
           <div v-if="attachments.length === 0" class="text-text-muted">{{ t("common.none") }}</div>
@@ -1822,15 +1816,5 @@ function onEditorAreaClick(e: MouseEvent): void {
         </div>
       </template>
     </div>
-    <!-- Daily-note references (created / modified / tasks mentioning this date),
-         shown ONLY inside an editor whose note is a daily note (that day's refs)
-         OR a prefilled daily draft for a no-note date (the pending day's refs).
-         Per-editor — never a global window-bottom strip — so each daily-note tab
-         carries its own day's references and a non-daily note hides it. -->
-    <DailyNotesPanel
-      v-if="dailyPanelDate"
-      :date="dailyPanelDate"
-      class="shrink-0 max-h-[40%] overflow-y-auto"
-    />
   </div>
 </template>

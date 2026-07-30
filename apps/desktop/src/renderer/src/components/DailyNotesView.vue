@@ -2,8 +2,9 @@
 /**
  * The "Daily Notes" view — a date-timeline left panel (instead of `NotesList`)
  * + the shared split-layout editor surface showing the selected day's daily
- * note, with a {@link DailyNotesPanel} beneath the editor listing notes
- * created/modified that day and tasks mentioning that date.
+ * note. The day's references (notes created/modified that day and tasks
+ * mentioning that date) are shown as cards/rows in the editor footer's
+ * References section (`EditorReferences.vue`), not a separate panel.
  *
  * Modeled on `TasksView.vue` (the template for a mode that swaps the center
  * column): `onMounted` clears the collection/tasks filters for mutual exclusion;

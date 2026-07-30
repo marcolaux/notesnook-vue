@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-30
+
+### 🗂️ References as cards in the editor footer
+The editor footer now shows a note's references as rich cards — title, tags as pills, and an excerpt — replacing the former title-only backlink chips and the separate daily-notes references panel. Backlinks (notes linking to the current note) appear as cards for every note; for a daily note (or a no-note date reached from the timeline) the day's tasks, created, and modified notes are listed too — tasks as task rows (the checklist block, not the whole note), created/modified as cards. Clicking a card opens the note in the same pane; right-click shows the standard note context menu.
+
+- **One footer section, no separate panel.** The deleted `DailyNotesPanel.vue` (a per-editor panel mounted below the footer) and the title-only incoming chips are replaced by a single `EditorReferences.vue` section inside the editor's scroll area, per-pane.
+- **Cards via `ReferenceCard.vue`** — title (+ pinned/favorite glyphs), `#tag` pills, a 2-line excerpt from the note `headline`, and a subtle color tint when the note has an assigned color. Backlinks are enriched to card data by joining the in-memory `notes.items` list (a trashed/archived backlink degrades to a title-only card).
+- **Daily references ported from the panel** — tasks read the daily store's aggregated `taskRefsByDate` scan (counts still match the timeline dots); created/modified are in-memory `notes.items` filters by `dayRange`. The section always renders for a selected date (empty groups show "None"), so clicking a timeline date surfaces the day's references even before a daily note exists.
+- **No contract change** — `use-note-footer.ts`'s `incoming` stays `NoteLinkRef[]` (enrichment is a view-layer join), so the footer/links contract tests and the note-link/tag-mention bridges are untouched. i18n `editor.references` / `editor.backlinks` added (en + de).
+
 ### 🔎 Tiered, categorized search results (Exact → Semantic → Cluster)
 Global search now shows results in three labeled, priority-ordered categories instead of one blended list: **Exact** (FTS5/BM25 word matches) first, then **Semantic** (vector similarity over the embeddings already indexed), then **Cluster** (notes related to the query via k-means clusters of note centroids). A note appears in the first tier it matches — lower tiers exclude anything already shown above — so exact word hits always win. Both the omnibar dropdown and the full-page Search Results tab render the three tiers as sticky-header sections.
 

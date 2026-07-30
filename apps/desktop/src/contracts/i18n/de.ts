@@ -778,6 +778,8 @@ export default {
     showNotesTagged: "Notizen mit Tag #{title} anzeigen",
     links: "Links",
     files: "Dateien",
+    references: "Referenzen",
+    backlinks: "Rückverweise ({n})",
     outgoing: "Ausgehend:",
     incoming: "Eingehend:",
     linkToNotePlaceholder: "Mit Notiz verknüpfen…",

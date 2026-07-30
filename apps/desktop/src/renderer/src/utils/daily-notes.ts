@@ -1,7 +1,8 @@
 /**
  * Daily-notes pure helpers (no Pinia / no `db` deps) — shared by the daily-notes
- * store, the `DailyNotesPanel`, the `date-link` editor extension's matcher, and
- * the host bridge. Self-contained so it is unit-tested in isolation like
+ * store, the editor footer's References section (`EditorReferences.vue`), the
+ * `date-link` editor extension's matcher, and the host bridge. Self-contained
+ * so it is unit-tested in isolation like
  * `utils/notes-list.ts` / `utils/note-preview.ts`.
  *
  * A daily note is identified by a reserved `"daily"` tag + an ISO-date title
@@ -245,7 +246,7 @@ export interface DateTokenMatch {
 
 /** Find every date token in `text` (in ISO or `dateFormat` form) and normalize
  *  each to its ISO date. Invalid date-shaped runs (e.g. `2026-13-40`) are
- *  skipped. Used by the `DailyNotesPanel` to match task-item text to a day. */
+ *  skipped. Used by the references section to match task-item text to a day. */
 export function findDateTokens(text: string, dateFormat: string = DEFAULT_DATE_FORMAT): DateTokenMatch[] {
   const re = buildDateRegex(dateFormat);
   const out: DateTokenMatch[] = [];
