@@ -88,5 +88,13 @@ class Vaults {
             return (yield this.db.relations.to(reference, "vault").count()) > 0;
         });
     }
+    removeAll() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const vaults = yield this.all.items();
+            for (const vault of vaults) {
+                yield this.remove(vault.id);
+            }
+        });
+    }
 }
 exports.Vaults = Vaults;

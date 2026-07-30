@@ -342,11 +342,13 @@ class UserManager {
     getDataEncryptionKeys() {
         return __awaiter(this, void 0, void 0, function* () {
             const masterKey = yield this.getMasterKey();
+            logger.info("master key exists: ", { masterKey: !!masterKey });
             if (!masterKey)
                 return;
             const dataEncryptionKey = yield this.keyManager.get("dataEncryptionKey", {
                 refetchUser: false
             });
+            logger.info("DEK exists: ", { dataEncryptionKey: !!dataEncryptionKey });
             if (!dataEncryptionKey)
                 return [
                     {
@@ -358,6 +360,9 @@ class UserManager {
             const legacyDataEncryptionKey = yield this.keyManager.get("legacyDataEncryptionKey", {
                 refetchUser: false
             });
+            logger.info("legacy DEK exists: ", {
+                legacyDataEncryptionKey: !!legacyDataEncryptionKey
+            });
             if (legacyDataEncryptionKey)
                 keys.push({
                     key: yield this.keyManager.unwrapKey(legacyDataEncryptionKey, masterKey),
@@ -366,6 +371,10 @@ class UserManager {
             keys.push({
                 key: yield this.keyManager.unwrapKey(dataEncryptionKey, masterKey),
                 version: KEY_VERSION.DEK
+            });
+            logger.info("Keys:", {
+                keys: keys.length,
+                keyVersions: keys.map((k) => k.version)
             });
             return keys;
         });

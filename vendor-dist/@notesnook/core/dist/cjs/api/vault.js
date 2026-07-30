@@ -152,17 +152,30 @@ class Vault {
             }
         });
     }
+    /**
+     *
+     * There's an unintentional and unrelated bug where multiple vaults
+     * can be created.
+     * So when user triggers delete, we should delete all vaults.
+     */
     delete() {
         return __awaiter(this, arguments, void 0, function* (deleteAllLockedNotes = false) {
-            const vault = yield this.db.vaults.default();
-            if (!vault)
+            const vaults = yield this.db.vaults.all.items();
+            if (!vaults.length)
                 return;
             if (deleteAllLockedNotes) {
-                const relations = yield this.db.relations.from(vault, "note").get();
-                const lockedIds = relations.map((r) => r.toId);
-                yield this.db.notes.remove(...lockedIds);
+                const lockedIds = new Set();
+                for (const vault of vaults) {
+                    const relations = yield this.db.relations.from(vault, "note").get();
+                    for (const { toId } of relations) {
+                        lockedIds.add(toId);
+                    }
+                }
+                if (lockedIds.size) {
+                    yield this.db.notes.remove(...lockedIds);
+                }
             }
-            yield this.db.vaults.remove(vault.id);
+            yield this.db.vaults.removeAll();
             this.password = undefined;
         });
     }

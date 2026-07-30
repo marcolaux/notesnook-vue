@@ -18,4 +18,5 @@ export declare class Vaults implements ICollection {
     default(): Promise<Vault | undefined>;
     get all(): import("../database/sql-collection.js").FilteredSelector<Vault>;
     itemExists(reference: ItemReference): Promise<boolean>;
+    removeAll(): Promise<void>;
 }

@@ -25,7 +25,7 @@ export interface UpstreamBaseline {
 
 export const UPSTREAM_BASELINE: UpstreamBaseline = {
   repo: "streetwriters/notesnook",
-  baselineTag: "v3.4.4",
-  baselinePublishedAt: "2026-07-13T09:23:12Z",
-  pinnedSha: "d4658aa0329d25c2a313ae6fe6ae33b62d235821"
+  baselineTag: "v3.4.5",
+  baselinePublishedAt: "2026-07-28T16:19:40Z",
+  pinnedSha: "b5140d9947d01d34635d5e8b1d4653bea26a73a7"
 };

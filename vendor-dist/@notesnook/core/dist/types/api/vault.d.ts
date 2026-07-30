@@ -21,6 +21,12 @@ export default class Vault {
     unlock(password: string): Promise<boolean>;
     changePassword(oldPassword: string, newPassword: string): Promise<void>;
     clear(password: string): Promise<void>;
+    /**
+     *
+     * There's an unintentional and unrelated bug where multiple vaults
+     * can be created.
+     * So when user triggers delete, we should delete all vaults.
+     */
     delete(deleteAllLockedNotes?: boolean): Promise<void>;
     /**
      * Locks (add to vault) a note

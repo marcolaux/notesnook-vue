@@ -38,11 +38,12 @@ export declare function withSubNotebooks(db: Kysely<DatabaseSchema> | Transactio
         rootId: any;
     };
 }>) => import("@streetwriters/kysely").SelectQueryBuilder<{
-    notebooks: import("../database/index.js").SQLiteItem<TrashOrItem<Notebook>>;
+    monographs: import("../database/index.js").SQLiteItem<import("../types.js").Monograph>;
     content: import("../database/index.js").SQLiteItem<import("../types.js").ContentItem>;
     sessioncontent: import("../database/index.js").SQLiteItem<import("../types.js").SessionContentItem>;
-    settings: import("../database/index.js").SQLiteItem<import("../types.js").SettingItem<"groupOptions:notebooks" | "groupOptions:trash" | "groupOptions:tags" | "groupOptions:home" | "groupOptions:notes" | "groupOptions:favorites" | "groupOptions:reminders" | "groupOptions:archive" | "groupOptions:search" | "groupOptions:notes:notebooks" | "groupOptions:notes:tags" | "groupOptions:notes:colors" | "toolbarConfig:desktop" | "toolbarConfig:mobile" | "toolbarConfig:tablet" | "toolbarConfig:smallTablet" | "sideBarOrder:routes" | "sideBarOrder:colors" | "sideBarOrder:shortcuts" | "sideBarHiddenItems:routes" | "sideBarHiddenItems:colors" | "trashCleanupInterval" | "titleFormat" | "timeFormat" | "dayFormat" | "weekFormat" | "dateFormat" | "defaultNotebook" | "defaultTag" | "profile" | "vault:lockAfter">>;
+    settings: import("../database/index.js").SQLiteItem<import("../types.js").SettingItem<"groupOptions:trash" | "groupOptions:tags" | "groupOptions:notebooks" | "groupOptions:home" | "groupOptions:notes" | "groupOptions:favorites" | "groupOptions:reminders" | "groupOptions:archive" | "groupOptions:search" | "groupOptions:notes:notebooks" | "groupOptions:notes:tags" | "groupOptions:notes:colors" | "toolbarConfig:desktop" | "toolbarConfig:mobile" | "toolbarConfig:tablet" | "toolbarConfig:smallTablet" | "sideBarOrder:routes" | "sideBarOrder:colors" | "sideBarOrder:shortcuts" | "sideBarHiddenItems:routes" | "sideBarHiddenItems:colors" | "trashCleanupInterval" | "titleFormat" | "timeFormat" | "dayFormat" | "weekFormat" | "dateFormat" | "defaultNotebook" | "defaultTag" | "profile" | "vault:lockAfter">>;
     tags: import("../database/index.js").SQLiteItem<import("../types.js").Tag>;
+    notebooks: import("../database/index.js").SQLiteItem<TrashOrItem<Notebook>>;
     notes: import("../database/index.js").SQLiteItem<TrashOrItem<import("../types.js").Note>>;
     reminders: import("../database/index.js").SQLiteItem<import("../types.js").Reminder>;
     colors: import("../database/index.js").SQLiteItem<import("../types.js").Color>;
@@ -51,7 +52,6 @@ export declare function withSubNotebooks(db: Kysely<DatabaseSchema> | Transactio
     attachments: import("../database/index.js").SQLiteItem<import("../types.js").Attachment>;
     notehistory: import("../database/index.js").SQLiteItem<import("../types.js").HistorySession>;
     vaults: import("../database/index.js").SQLiteItem<import("../types.js").Vault>;
-    monographs: import("../database/index.js").SQLiteItem<import("../types.js").Monograph>;
     inboxitemshistory: import("../database/index.js").SQLiteItem<import("../types.js").InboxItemHistory>;
     subNotebooks: {
         id: any;
