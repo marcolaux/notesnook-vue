@@ -115,6 +115,31 @@ mac:
       arch: [arm64]
     - target: zip
       arch: [arm64]
+  # Hardened Runtime + entitlements. With no Developer ID cert (the repo's
+  # current release gate) electron-builder skips signing, so these are
+  # APPLIED by the ad-hoc `afterPack` hook below rather than by electron-builder
+  # itself. Once a cert is added (CSC_LINK), electron-builder signs with these
+  # directly and the hook skips itself (same entitlements, idempotent path).
+  hardenedRuntime: true
+  entitlements: entitlements.mac.plist
+  entitlementsInherit: entitlements.mac.plist
+  # macOS won't prompt for — or list an app under — System Settings → Privacy &
+  # Security → Local Network without this Info.plist key. Required so a
+  # self-hoster's built app can reach LAN servers (e.g. 192.168.178.30). Dev
+  # mode already has it via Electron's signed dev binary; the built app did not,
+  # which is why local-network access silently failed after a macOS update.
+  extendInfo:
+    NSLocalNetworkUsageDescription: >-
+      Notesnook Vue connects to your self-hosted Notesnook server and to other
+      devices on your local network to sync your notes.
+  # Ad-hoc sign the built `.app` with the Hardened Runtime + entitlements when no
+  # signing identity is configured (see scripts/after-pack.mjs). Gives macOS a
+  # code-signing identity it can list under Local Network so the toggle becomes
+  # settable. No-op once a real cert is wired (CSC_NAME / CSC_LINK) — the hook
+  # skips itself when those are set so electron-builder signs with the cert.
+  # NB: `afterSign` is skipped by electron-builder when no signing occurred, so
+  # this MUST be `afterPack` (unconditional) for the no-cert path to run.
+  afterPack: scripts/after-pack.mjs
   # hardenedRuntime / notarize / entitlements = release gate (needs certs).
 
 dmg:

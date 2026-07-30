@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS entitlements for Notesnook Vue.
+
+  The app is NOT sandboxed (no `com.apple.security.app-sandbox`): the desktop
+  build needs unfettered filesystem access for per-account encrypted SQLite DBs
+  in `userData`, auto-backup, and drag-drop attachment writes. These entitlements
+  are for the Hardened Runtime (applied at sign time) so the app runs under
+  `--options runtime` without breaking, and so macOS grants a settable
+  "Local Network" privacy toggle in System Settings → Privacy & Security.
+
+  Why each key:
+    cs.allow-jit / cs.allow-unsigned-executable-memory
+        V8's JIT needs these under the Hardened Runtime, or the renderer crashes
+        on startup. Electron's own frameworks are normally signed with these by
+        electron-builder; our ad-hoc `afterSign` pass applies them to the whole
+        bundle (ad-hoc = same entitlements everywhere is the documented
+        community pattern and runs fine).
+    cs.disable-library-validation
+        We ship unpacked native modules (`better-sqlite3-multiple-ciphers.node`,
+        the M4 FTS5 `.dylib` tokenizers) that are NOT signed by us or Apple.
+        Hardened Runtime blocks unsigned libraries by default; this lets them
+        load.
+    network.client / network.server
+        Outgoing sync/auth/SSE connections (client) + the local dev-tools /
+        deep-link handler loopback (server). Also what the Local Network
+        privacy prompt keys off for LAN access (self-hosted servers, sync
+        between devices on the same network).
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <key>com.apple.security.network.server</key>
+  <true/>
+</dict>
+</plist>
