@@ -89,6 +89,12 @@ export {
   FilteredSelector,
   Monographs,
   hosts,
+  /** Strict server-compatibility gate (`COMPATIBLE_SERVER_VERSION === version`)
+   *  from core's `utils/constants`. Used by the login "Test connection" flow to
+   *  reject a server reporting an incompatible API version before the user
+   *  saves a self-hosted config — mirrors upstream web's
+   *  `servers-configuration.tsx` "Test connection" step. */
+  isServerCompatible,
   EV,
   EVENTS,
   isReminderActive,

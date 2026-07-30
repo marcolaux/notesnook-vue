@@ -25,6 +25,12 @@ import {
   type Hosts,
   type ServerProfile
 } from "@/platform/server-config";
+import {
+  testServerConnections,
+  EDITABLE_HOST_KEYS,
+  HOST_LABEL_KEY,
+  type ServerTestResult
+} from "@/platform/server-health";
 import { listAccounts } from "@/platform/account-registry";
 import type { AccountEntry } from "@contracts/server-config";
 
@@ -105,6 +111,71 @@ const secondaryMethodLabel = computed(() => {
 const localError = ref("");
 const formError = computed(() => localError.value || auth.error);
 const resending = ref(false);
+
+// --- "Test connection" (upstream web Settings → Servers parity) ---
+// The custom-server form validates each host before saving, mirroring
+// upstream's `servers-configuration.tsx`: fetch `${url}${versionEndpoint}` per
+// server, check the reported `id` and `isServerCompatible(version)`. Results
+// are cleared whenever the inputs change so a stale "passed" can't gate Apply
+// after an edit. Apply (custom mode) is gated on `testPassed` — upstream gates
+// Save the same way — so a misrouted or incompatible self-hosted URL can't be
+// saved without an explicit, verified test. Sign in bypasses the gate (login
+// is itself the test); Test connection is the pre-flight diagnostic.
+const testing = ref(false);
+const testResults = ref<ServerTestResult[]>([]);
+const testPassed = computed(
+  () =>
+    testResults.value.length === EDITABLE_HOST_KEYS.length &&
+    testResults.value.every((r) => r.ok)
+);
+
+// A per-server status line for the result list under the Test button.
+function statusText(r: ServerTestResult): string {
+  const field = t(HOST_LABEL_KEY[r.key]);
+  if (r.ok) return t("login.serverConnected", { field });
+  if (r.reason === "unreachable")
+    return t("login.serverUnreachable", { field });
+  if (r.reason === "wrongServer")
+    return t("login.serverWrongId", { field, id: r.reportedId ?? "?" });
+  if (r.reason === "incompatible")
+    return t("login.serverIncompatible", {
+      field,
+      version: r.reportedVersion ?? "?"
+    });
+  return field;
+}
+
+// Invalidate results on any input edit or profile switch so Apply re-disables
+// until the new config is re-tested — mirrors upstream's "test then save".
+watch(customHosts, () => { testResults.value = []; }, { deep: true });
+watch(serverProfile, () => { testResults.value = []; });
+
+async function testConnection(): Promise<void> {
+  localError.value = "";
+  // Build the merged bag the same way `applyServerConfig` does (without
+  // writing it) so empty fields are tested against their production default —
+  // our custom profile is a partial bag, not the all-required upstream model.
+  const merged = defaultHosts();
+  for (const f of HOST_FIELDS) {
+    const raw = (customHosts.value[f.key] ?? "").trim();
+    if (raw === "") continue;
+    try {
+      const u = new URL(raw);
+      if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("scheme");
+      merged[f.key] = raw;
+    } catch {
+      localError.value = t("login.invalidUrl", { field: t(f.labelKey) });
+      testResults.value = [];
+      return;
+    }
+  }
+  testing.value = true;
+  try {
+    testResults.value = await testServerConnections(merged);
+  } finally {
+    testing.value = false;
+  }
+}
 
 // Clear the MFA code when leaving the MFA step.
 watch(showMfa, (v) => {
@@ -391,7 +462,35 @@ function skip(): void {
                 :variant="formError && formError.includes(t(f.labelKey)) ? 'error' : 'default'"
               />
             </label>
-            <Button variant="secondary" block size="sm" type="button" @click="applyServerConfig">
+            <Button
+              variant="ghost"
+              block
+              size="sm"
+              type="button"
+              :disabled="testing"
+              @click="testConnection"
+            >
+              {{ testing ? t('login.testing') : t('login.testConnection') }}
+            </Button>
+            <Flex v-if="testResults.length" direction="column" :gap="1" class="mt-1">
+              <Text
+                v-for="r in testResults"
+                :key="r.key"
+                variant="body"
+                size="xs"
+                :class="r.ok ? 'text-emerald-500' : 'text-[var(--red-static)]'"
+              >
+                {{ statusText(r) }}
+              </Text>
+            </Flex>
+            <Button
+              variant="secondary"
+              block
+              size="sm"
+              type="button"
+              :disabled="testing || !testPassed"
+              @click="applyServerConfig"
+            >
               {{ t('login.apply') }}
             </Button>
             <Text v-if="formError" variant="body" size="xs" class="text-[var(--red-static)]">{{ formError }}</Text>
