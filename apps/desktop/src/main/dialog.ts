@@ -81,6 +81,25 @@ export function createDialogServer(
       const fullPath = join(dir, defaultName);
       await writeFile(fullPath, data, "utf-8");
       return true;
+    },
+    async confirm(
+      message: string,
+      options: { title?: string | undefined; okLabel?: string | undefined; cancelLabel?: string | undefined } = {}
+    ): Promise<boolean> {
+      const win = getParent();
+      // `defaultId`/`cancelId` index the buttons array; defaulting the cancel
+      // button (index 1) so Enter/Escape doesn't accidentally trigger "Yes".
+      const buttons = [options.okLabel ?? tMain("common.confirm"), options.cancelLabel ?? tMain("common.cancel")];
+      const opts: Electron.MessageBoxOptions = {
+        type: "question",
+        buttons,
+        message,
+        defaultId: 1,
+        cancelId: 1
+      };
+      if (options.title) opts.title = options.title;
+      const result = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts);
+      return result.response === 0;
     }
   };
 }

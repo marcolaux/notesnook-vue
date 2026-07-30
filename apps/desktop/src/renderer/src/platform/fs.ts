@@ -106,16 +106,28 @@ export interface FileStorageOptions {
   crypto?: NNCryptoLike;
 }
 
-/** Desktop-only extension to `IFileStorage`: a raw encrypted-byte read used by
- *  the auto-backup scheduler. Backup stores the encrypted blob verbatim (plus
- *  the `.attachments_key` core yields) — `readEncrypted` would DECRYPT, which is
- *  wrong for backup. This exposes the underlying `streamablefs` `readable`
- *  stream (the encrypted bytes) without touching core's `IFileStorage` type. */
+/** Desktop-only extension to `IFileStorage`: raw encrypted-byte read/write used
+ *  by the auto-backup scheduler + restore. Backup stores the encrypted blob
+ *  verbatim (plus the `.attachments_key` core yields) — `readEncrypted` would
+ *  DECRYPT, which is wrong for backup. These expose the underlying `streamablefs`
+ *  `readable`/`writeable` streams (the encrypted bytes) without touching core's
+ *  `IFileStorage` type. */
 export interface DesktopFileStorage extends IFileStorage {
   /** Open a raw encrypted-byte read stream for `filename`, or `undefined` when
    *  the file isn't cached locally. The scheduler buffers + writes this to
    *  disk as `attachments/<hash>` for a full-mode backup. */
   __rawReadStream(filename: string): Promise<ReadableStream<Uint8Array> | undefined>;
+  /** Write raw encrypted bytes for `filename` back into the local chunk store
+   *  (restore path). `opts` carries the attachment's plaintext `size`, `mimeType`,
+   *  and `chunkSize` (from the restored `Attachment` record) so the bytes are
+   *  re-chunked into `chunkSize + ABYTES` pieces exactly as `downloadFile` would
+   *  lay them down. Idempotent: a complete existing file is left as-is. Returns
+   *  `false` only if the write fails (never throws). */
+  __rawWriteBytes(
+    filename: string,
+    bytes: Uint8Array,
+    opts: { size: number; mimeType: string; chunkSize: number }
+  ): Promise<boolean>;
 }
 
 export function createFileStorage(options: FileStorageOptions = {}): DesktopFileStorage {
@@ -488,6 +500,42 @@ export function createFileStorage(options: FileStorageOptions = {}): DesktopFile
       return handle?.readable;
     },
 
+    /** Raw encrypted-byte write (desktop-only; see {@link DesktopFileStorage}).
+     *  Used by the restore flow to put a backed-up encrypted blob back into the
+     *  local chunk store so the attachment opens offline without a sync-server
+     *  round-trip. Mirrors `downloadFileImpl`'s write step: re-chunk the bytes
+     *  into `chunkSize + ABYTES` pieces and pipe to `fileHandle.writeable`. Do NOT
+     *  use `ReadableStream.from(bytes)` — it iterates a `Uint8Array` byte-by-byte
+     *  as numbers and breaks `chunkedStream`; the explicit constructor enqueues the
+     *  whole blob as one `Uint8Array` chunk. Idempotent: a complete existing file
+     *  is left untouched. */
+    async __rawWriteBytes(filename, bytes, opts): Promise<boolean> {
+      try {
+        const existing = await streamablefs.readFile(filename);
+        if (existing && (await handleIsComplete(existing))) return true;
+        if (existing) await existing.delete();
+        const fileHandle = await streamablefs.createFile(
+          filename,
+          opts.size,
+          opts.mimeType || "application/octet-stream",
+          { overwrite: true }
+        );
+        await new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          }
+        })
+          .pipeThrough(chunkedStream(opts.chunkSize + ABYTES))
+          .pipeTo(fileHandle.writeable);
+        return true;
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[fs] __rawWriteBytes failed:", e);
+        return false;
+      }
+    },
+
     async deleteFile(filename, requestOptions?): Promise<boolean> {
       if (!requestOptions) {
         return !(await streamablefs.exists(filename)) || (await streamablefs.deleteFile(filename));
@@ -573,34 +621,70 @@ export function createFileStorage(options: FileStorageOptions = {}): DesktopFile
   };
 }
 
-// --- Auto-backup scheduler: raw encrypted attachment read -------------------
+// --- Auto-backup scheduler + restore: raw encrypted attachment read/write ---
 //
 // The per-account auto-backup scheduler (`stores/auto-backup.ts`) copies each
-// cached attachment's ENCRYPTED bytes to disk verbatim for a full-mode backup
-// (backup stores the encrypted blob + the `.attachments_key` core yields, NOT
-// the decrypted plaintext). Core's `Database.fs()` is typed as `IFileStorage`,
-// which has no raw-read method — but every desktop `Database` (the singleton
-// AND `openAccountDb` throwaways, both built on `createDesktopPlatform` →
-// `createFileStorage`) returns a `DesktopFileStorage` at runtime with
-// `__rawReadStream`. Reach it via a structural cast; absent/undefined → the
-// scheduler skips that attachment (mirrors core's own skip at `backup.ts` when
-// `downloadFile` can't fetch a signed URL offline).
+// cached attachment's ENCRYPTED bytes to disk verbatim for a full-mode backup,
+// and the restore flow (`stores/backup.ts`) writes them back into the local
+// chunk store. Backup stores the encrypted blob + the `.attachments_key` core
+// yields, NOT the decrypted plaintext.
+//
+// IMPORTANT: `db.fs()` returns core's `FileStorage` WRAPPER (constructed in
+// `Database.fs()` at `vendor/.../core/src/api/index.ts`), which exposes only the
+// standard `IFileStorage` methods — NOT `__rawReadStream`/`__rawWriteBytes` or
+// the underlying desktop impl. So reaching them through `db.fs()` is a no-op
+// (the property is `undefined` and every attachment would be silently skipped).
+// The local chunk store is GLOBAL (`userData/attachments/`, shared across every
+// context — see `main/file-storage.ts`), so a single `DesktopFileStorage`
+// instance reads/writes any context's cached blobs. We keep one lazily here and
+// bypass the wrapper entirely.
 
-/** Open a raw encrypted-byte read stream for `hash` on `db`'s file storage, or
- *  `undefined` when the desktop raw-read isn't present or the file isn't cached
- *  locally. Never throws — a failure logs + returns `undefined` so the scheduler
- *  can skip the attachment. */
+let rawFileStorage: DesktopFileStorage | undefined;
+function getRawFileStorage(): DesktopFileStorage {
+  if (!rawFileStorage) rawFileStorage = createFileStorage();
+  return rawFileStorage;
+}
+
+/** Open a raw encrypted-byte read stream for `hash` from the global local chunk
+ *  store, or `undefined` when the file isn't cached locally. Never throws — a
+ *  failure logs + returns `undefined` so the scheduler can skip the attachment
+ *  (mirrors core's own skip at `backup.ts` when `downloadFile` can't fetch a
+ *  signed URL offline). */
 export async function readAttachmentStream(
-  db: Database,
   hash: string
 ): Promise<ReadableStream<Uint8Array> | undefined> {
   try {
-    const fs = db.fs() as unknown as { __rawReadStream?: (f: string) => Promise<ReadableStream<Uint8Array> | undefined> };
-    if (!fs.__rawReadStream) return undefined;
-    return await fs.__rawReadStream(hash);
+    return await getRawFileStorage().__rawReadStream(hash);
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("[fs] readAttachmentStream failed:", e);
     return undefined;
+  }
+}
+
+/** Write a backed-up encrypted blob back into the local chunk store so the
+ *  attachment opens offline after a restore (core's `db.backup.import` restores
+ *  only the metadata + per-attachment key; the blob write is the app's job).
+ *  Looks up the restored `Attachment` record for `size`/`mimeType`/`chunkSize`,
+ *  then re-chunks + pipes the bytes via `__rawWriteBytes`. Never throws — a
+ *  failure logs + returns `false` (the attachment stays not-uploaded so sync
+ *  re-fetches it). */
+export async function writeAttachmentBytes(
+  db: Database,
+  hash: string,
+  bytes: Uint8Array
+): Promise<boolean> {
+  try {
+    const attachment = await db.attachments.attachment(hash);
+    if (!attachment) return false;
+    return await getRawFileStorage().__rawWriteBytes(hash, bytes, {
+      size: attachment.size,
+      mimeType: attachment.mimeType,
+      chunkSize: attachment.chunkSize
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[fs] writeAttachmentBytes failed:", e);
+    return false;
   }
 }

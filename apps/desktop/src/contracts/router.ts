@@ -376,6 +376,14 @@ export interface DialogServer {
   selectDirectory(): Promise<string | undefined>;
   /** Write `data` directly to `dir/defaultName`. Returns `true` if written, rejects on error. */
   saveFileToDir(dir: string, defaultName: string, data: string): Promise<boolean>;
+  /** Show a yes/no confirmation dialog. Returns `true` if the user chose the
+   *  affirmative button, `false` otherwise (cancel or the negative button). The
+   *  option fields are `string | undefined` for `exactOptionalPropertyTypes`
+   *  compat with the zod-inferred bridge input. */
+  confirm(
+    message: string,
+    options?: { title?: string | undefined; okLabel?: string | undefined; cancelLabel?: string | undefined }
+  ): Promise<boolean>;
 }
 
 let dialogServer: DialogServer | undefined;
@@ -427,15 +435,17 @@ function requireImportFs(): ImportFsServer {
 }
 
 // ---------------------------------------------------------------------------
-// Backup-FS server — directory-scoped writes for the per-account auto-backup
-// scheduler (`stores/auto-backup.ts`). Implemented in `src/main/backup-fs.ts`.
-// Distinct from `ImportFsServer` (read-only bulk read for the importer) and the
-// `dialog` router (single user-picked UTF-8 file): this is a write-oriented,
-// directory-scoped API (mkdir, write text/bytes, list, delete file/dir) used
-// only by the scheduler to lay down each account's backup tree under the shared
-// `backupDirectory`. Each method takes `root` (the backup directory) plus a
-// relative `path` so the impl re-derives containment statelessly — a crafted
-// `path` ("../../etc/passwd") cannot escape `root` (mirrors `import-fs.ts`).
+// Backup-FS server — directory-scoped reads + writes for the per-account
+// auto-backup scheduler (`stores/auto-backup.ts`) and the restore flow
+// (`stores/backup.ts`). Implemented in `src/main/backup-fs.ts`. Distinct from
+// `ImportFsServer` (read-only bulk read for the importer) and the `dialog`
+// router (single user-picked UTF-8 file): this is a directory-scoped API used to
+// lay down each account's backup tree under the shared `backupDirectory` and to
+// read it back on restore — writes (mkdir, write text/bytes, delete file/dir)
+// plus reads (exists, read text/bytes, list). Each method takes `root` (the
+// backup directory) plus a relative `path` so the impl re-derives containment
+// statelessly — a crafted `path` ("../../etc/passwd") cannot escape `root`
+// (mirrors `import-fs.ts`).
 // ---------------------------------------------------------------------------
 export interface BackupFsServer {
   /** Ensure `<root>/<path>` exists as a directory (recursive). `path` is
@@ -447,6 +457,17 @@ export interface BackupFsServer {
   /** Write raw bytes to `<root>/<path>` (overwrites). Used for encrypted
    *  attachment blobs. `path` is enforced to stay inside `root`. */
   writeFileBytes(root: string, path: string, data: Uint8Array): Promise<void>;
+  /** Test whether `<root>/<path>` exists (file or directory). Returns `false`
+   *  on any missing path / stat error — never throws. `path` is enforced to stay
+   *  inside `root`. Used by the dedup pool's skip-if-exists write rule. */
+  exists(root: string, path: string): Promise<boolean>;
+  /** Read UTF-8 text from `<root>/<path>`. `path` is enforced to stay inside
+   *  `root`. Used by restore/GC to read the manifest + `.attachments_key`. */
+  readFileText(root: string, path: string): Promise<string>;
+  /** Read raw bytes from `<root>/<path>`. `path` is enforced to stay inside
+   *  `root`. Used by restore to read encrypted attachment blobs back from the
+   *  dedup pool. */
+  readFileBytes(root: string, path: string): Promise<Uint8Array>;
   /** List entry names directly under `<root>/<path>` (non-recursive). Returns
    *  `[]` when the directory does not exist. `path` is enforced to stay inside
    *  `root`. */
@@ -838,6 +859,29 @@ function requireReminders(): RemindersServer {
 }
 
 // ---------------------------------------------------------------------------
+// Notifications — one-shot OS notifications (e.g. the auto-backup scheduler
+// announcing a completed backup). Implemented in `src/main/notifications.ts`
+// via Electron `Notification`. Distinct from `RemindersServer` (scheduled).
+// Injected via `registerNotificationsServer`.
+// ---------------------------------------------------------------------------
+
+export interface NotificationsServer {
+  /** Show an OS notification immediately. No-op when the OS doesn't support
+   *  notifications. Never throws. `body` is `string | undefined` for
+   *  `exactOptionalPropertyTypes` compat with the zod-inferred bridge input. */
+  show(notification: { title: string; body?: string | undefined }): Promise<void>;
+}
+
+let notificationsServer: NotificationsServer | undefined;
+export function registerNotificationsServer(server: NotificationsServer): void {
+  notificationsServer = server;
+}
+function requireNotifications(): NotificationsServer {
+  if (!notificationsServer) throw new Error("Notifications server not registered (main boot incomplete)");
+  return notificationsServer;
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -1152,6 +1196,22 @@ export const appRouter = t.router({
       .input(z.object({ dir: z.string(), defaultName: z.string(), data: z.string() }))
       .mutation(({ input }) =>
         requireDialog().saveFileToDir(input.dir, input.defaultName, input.data)
+      ),
+    confirm: t.procedure
+      .input(
+        z.object({
+          message: z.string(),
+          title: z.string().optional(),
+          okLabel: z.string().optional(),
+          cancelLabel: z.string().optional()
+        })
+      )
+      .mutation(({ input }) =>
+        requireDialog().confirm(input.message, {
+          title: input.title,
+          okLabel: input.okLabel,
+          cancelLabel: input.cancelLabel
+        })
       )
   }),
 
@@ -1190,6 +1250,15 @@ export const appRouter = t.router({
         })
       )
       .mutation(({ input }) => requireBackupFs().writeFileBytes(input.root, input.path, input.data)),
+    exists: t.procedure
+      .input(z.object({ root: z.string(), path: z.string() }))
+      .query(({ input }) => requireBackupFs().exists(input.root, input.path)),
+    readFileText: t.procedure
+      .input(z.object({ root: z.string(), path: z.string() }))
+      .query(({ input }) => requireBackupFs().readFileText(input.root, input.path)),
+    readFileBytes: t.procedure
+      .input(z.object({ root: z.string(), path: z.string() }))
+      .query(({ input }) => requireBackupFs().readFileBytes(input.root, input.path)),
     listDir: t.procedure
       .input(z.object({ root: z.string(), path: z.string() }))
       .query(({ input }) => requireBackupFs().listDir(input.root, input.path)),
@@ -1239,6 +1308,14 @@ export const appRouter = t.router({
       )
       .mutation(({ input }) => requireReminders().schedule(input)),
     clear: t.procedure.mutation(() => requireReminders().clear())
+  }),
+
+  // Notifications — one-shot OS notifications. Implemented in
+  // `src/main/notifications.ts` via Electron `Notification`.
+  notifications: t.router({
+    show: t.procedure
+      .input(z.object({ title: z.string(), body: z.string().optional() }))
+      .mutation(({ input }) => requireNotifications().show(input))
   }),
 
   // Session persistence — the editor session (open tabs + split layout, torn-off

@@ -5,18 +5,19 @@
  * attachment blobs) into its own subdirectory of the shared `backupDirectory`.
  *
  * Distinct from `import-fs.ts` (read-only bulk read for the importer) and the
- * `dialog` router (single user-picked UTF-8 file): this is a write-oriented,
- * directory-scoped API (mkdir, write text/bytes, list, delete file/dir). The
- * scheduler passes `root` (the configured backup directory) plus a relative
- * `path` to every call, and we re-derive containment statelessly here — a
- * crafted `path` ("../../etc/passwd", or an absolute path outside `root`)
- * cannot escape. Mirrors `import-fs.ts`'s `safeChild`.
+ * `dialog` router (single user-picked UTF-8 file): this is a directory-scoped
+ * API for the scheduler and restore — writes (mkdir, write text/bytes, delete
+ * file/dir) plus the reads the dedup pool + restore need (exists, read text/
+ * bytes, list). The scheduler/restore passes `root` (the configured backup
+ * directory) plus a relative `path` to every call, and we re-derive containment
+ * statelessly here — a crafted `path` ("../../etc/passwd", or an absolute path
+ * outside `root`) cannot escape. Mirrors `import-fs.ts`'s `safeChild`.
  *
  * Electron + node only; not contract-tested directly (the renderer reaches it
  * via the typed `desktop.backupFs.*` bridge). `safeChild` is exported for a
  * containment unit test.
  */
-import { mkdir, writeFile, readdir, rm, unlink } from "node:fs/promises";
+import { mkdir, writeFile, readdir, rm, unlink, stat, readFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { registerBackupFsServer, type BackupFsServer } from "../contracts/router";
 
@@ -42,6 +43,26 @@ export function createBackupFsServer(): BackupFsServer {
     },
     async writeFileBytes(root, path, data): Promise<void> {
       await writeFile(safeChild(root, path), data);
+    },
+    async exists(root, path): Promise<boolean> {
+      try {
+        await stat(safeChild(root, path));
+        return true;
+      } catch {
+        // Missing path (ENOENT) or any other stat error → not present. Never
+        // throws: the dedup pool's skip-if-exists rule treats a missing blob as
+        // "not yet backed up" and writes it.
+        return false;
+      }
+    },
+    async readFileText(root, path): Promise<string> {
+      return readFile(safeChild(root, path), "utf-8");
+    },
+    async readFileBytes(root, path): Promise<Uint8Array> {
+      // `readFile` returns a Node `Buffer`; expose it as a `Uint8Array` view
+      // (Buffer is a Uint8Array subclass, so this is zero-copy and structured-
+      // clone-safe across Electron IPC for restore's blob read-back).
+      return readFile(safeChild(root, path));
     },
     async listDir(root, path): Promise<string[]> {
       try {

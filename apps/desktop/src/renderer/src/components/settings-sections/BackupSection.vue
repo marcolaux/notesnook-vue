@@ -27,12 +27,14 @@ import { ref, computed, onMounted } from "vue";
 import { Surface, Flex, Text, Button, Input } from "@notesnook-vue/ui-vue";
 import { useI18n } from "vue-i18n";
 import { useBackupsStore } from "@/stores/backup";
+import { useAutoBackupStore } from "@/stores/auto-backup";
 import { useConfigStore } from "@/stores/config";
 import { desktop } from "@/platform/desktop-bridge";
-import { formatBackupTime, backupFilename } from "@/utils/backup";
+import { formatBackupTime, backupFilename, relativeChild } from "@/utils/backup";
 import type { BackupFile, LegacyBackupFile } from "@notesnook-vue/contracts";
 
 const backups = useBackupsStore();
+const auto = useAutoBackupStore();
 const config = useConfigStore();
 const { t } = useI18n();
 
@@ -68,10 +70,17 @@ function pickBackupMode(e: Event): void {
   backupMode.value = (e.target as HTMLSelectElement).value as "-" | "partial" | "full";
 }
 function pickReminder(e: Event): void {
-  config.setBackupReminderOffset(Number((e.target as HTMLSelectElement).value));
+  const newVal = Number((e.target as HTMLSelectElement).value);
+  const wasEnabled = config.backupReminderOffset !== 0;
+  config.setBackupReminderOffset(newVal);
+  // Just enabled (Never → a schedule): offer to create one immediately.
+  if (!wasEnabled && newVal !== 0) void maybeCreateNow("partial");
 }
 function pickFullReminder(e: Event): void {
-  config.setFullBackupReminderOffset(Number((e.target as HTMLSelectElement).value));
+  const newVal = Number((e.target as HTMLSelectElement).value);
+  const wasEnabled = config.fullBackupReminderOffset !== 0;
+  config.setFullBackupReminderOffset(newVal);
+  if (!wasEnabled && newVal !== 0) void maybeCreateNow("full");
 }
 function pickRetention(e: Event): void {
   config.setBackupRetentionCount(Number((e.target as HTMLSelectElement).value));
@@ -93,8 +102,11 @@ function onClearBackupDirectory(): void {
   info.value = t("settings.backup.dirCleared");
 }
 
-/** Export a backup and save it to a user-chosen `.nnbackup` file (or configured backup directory). Refuses
- *  multi-chunk exports (would need `.nnbackupz` zip) instead of truncating. */
+/** Export a backup. Partial → a single `.nnbackup` file (user-chosen or in the
+ *  backup directory). Full → a dated folder in the backup directory via the
+ *  auto-backup writer (dir-tree + dedup pool + rotate + GC), so manual and auto
+ *  full backups share one attachment pool per account. Refuses multi-chunk
+ *  PARTIAL exports (would need `.nnbackupz` zip) instead of truncating. */
 async function onBackupNow(): Promise<void> {
   formError.value = null;
   info.value = null;
@@ -103,15 +115,24 @@ async function onBackupNow(): Promise<void> {
     formError.value = t("settings.backup.chooseFormatFirst");
     return;
   }
-  // Build options conditionally — `exactOptionalPropertyTypes` rejects an
-  // explicit `undefined` for an optional prop (TS2379), so only set `encrypt`
-  // when the toggle is on.
-  const exportInput: { mode: "partial" | "full"; encrypt?: boolean } = { mode };
+  if (mode === "full") {
+    await onBackupNowFull();
+    return;
+  }
+  await runPartialBackupNow();
+}
+
+/** Run a partial (notes-only) backup now: collect the export and save a single
+ *  `.nnbackup` data chunk to the backup directory (or a user-chosen file when
+ *  none is set). Shared by "Back up now → Partial" and the enable-cadence
+ *  "create now?" prompt. Refuses multi-chunk exports (would need `.nnbackupz`). */
+async function runPartialBackupNow(): Promise<void> {
+  const exportInput: { mode: "partial"; encrypt?: boolean } = { mode: "partial" };
   if (config.encryptBackups) exportInput.encrypt = true;
   const result = await backups.exportBackup(exportInput);
   if (!result) return; // error surfaced via backups.lastError
   // Data chunks = everything except the `.nnbackup` index marker (empty data)
-  // and attachment files (only present in full mode; handled separately).
+  // and attachment files (partial mode never yields any).
   const dataChunks = result.files.filter(
     (f) => f.path !== ".nnbackup" && !f.path.startsWith("attachments/")
   );
@@ -127,16 +148,50 @@ async function onBackupNow(): Promise<void> {
   if (config.backupDirectory) {
     saved = await desktop.dialog.saveFileToDir.mutate({
       dir: config.backupDirectory,
-      defaultName: backupFilename(mode),
+      defaultName: backupFilename("partial"),
       data: dataChunks[0]!.data
     });
   } else {
     saved = await desktop.dialog.saveFile.mutate({
-      defaultName: backupFilename(mode),
+      defaultName: backupFilename("partial"),
       data: dataChunks[0]!.data
     });
   }
   if (!saved) return; // user cancelled
+  info.value = t("settings.backup.backupSaved");
+}
+
+/** When the user enables an automatic-backup cadence (Never → a schedule),
+ *  offer to create a backup of that mode immediately. */
+async function maybeCreateNow(mode: "partial" | "full"): Promise<void> {
+  formError.value = null;
+  const yes = await desktop.dialog.confirm.mutate({
+    message: t("settings.backup.createNowPrompt"),
+    title: t("settings.backup.createNowTitle")
+  });
+  if (!yes) return;
+  if (mode === "partial") await runPartialBackupNow();
+  else await onBackupNowFull();
+}
+
+/** Manual "Back up now → Full": requires a backup directory (prompts for one if
+ *  unset), then writes the full backup through the shared dir-tree + dedup pool
+ *  path. */
+async function onBackupNowFull(): Promise<void> {
+  let root = config.backupDirectory;
+  if (!root) {
+    const picked = await desktop.dialog.selectDirectory.mutate();
+    if (!picked) return; // user cancelled
+    config.setBackupDirectory(picked);
+    root = picked;
+    info.value = t("settings.backup.dirSet", { dir: picked });
+  }
+  const res = await auto.backupNowFull(root, config.encryptBackups);
+  if (!res.ok) {
+    formError.value = res.error || t("settings.backup.noData");
+    return;
+  }
+  await backups.refresh(); // update the "Last backup" display (core stamps on export)
   info.value = t("settings.backup.backupSaved");
 }
 
@@ -172,6 +227,35 @@ async function onRestore(): Promise<void> {
     });
   }
 }
+
+/** Restore a directory-tree full backup (the "Backup with attachments" layout):
+ *  the user picks the dated `…-full` folder inside the configured backup
+ *  directory; the store method imports every data chunk + writes the
+ *  referenced attachment blobs back into the local chunk store. */
+async function onRestoreFromDir(): Promise<void> {
+  formError.value = null;
+  info.value = null;
+  const root = config.backupDirectory;
+  if (!root) {
+    formError.value = t("settings.backup.backupFullNeedsDir");
+    return;
+  }
+  const picked = await desktop.dialog.selectDirectory.mutate();
+  if (!picked) return; // user cancelled
+  const dir = relativeChild(root, picked);
+  if (dir === null) {
+    formError.value = t("settings.backup.restoreDirOutside");
+    return;
+  }
+  const importInput: { password?: string } = {};
+  if (restorePassword.value) importInput.password = restorePassword.value;
+  const ok = await backups.restoreFullBackupFromDir(root, dir, importInput);
+  if (!ok) return; // error surfaced via backups.lastError
+  info.value = t("settings.backup.backupRestored");
+  void desktop.window.notifyDataChanged.mutate().catch(() => {
+    /* main unreachable (e.g. tests) — the import still succeeded */
+  });
+}
 </script>
 
 <template>
@@ -193,7 +277,9 @@ async function onRestore(): Promise<void> {
             <option value="partial">{{ t("settings.backup.backupPartial") }}</option>
             <option value="full">{{ t("settings.backup.backupFull") }}</option>
           </select>
-          <Button variant="primary" :disabled="backups.busy" @click="onBackupNow">{{ t("settings.backup.backup") }}</Button>
+          <Button variant="primary" :disabled="backups.busy || auto.busy" @click="onBackupNow">{{
+            t("settings.backup.backup")
+          }}</Button>
         </Flex>
         <Text variant="body" size="xs" class="text-text-muted"
           >{{ t("settings.backup.backupHint") }}</Text
@@ -213,6 +299,16 @@ async function onRestore(): Promise<void> {
         <Button variant="secondary" :disabled="backups.busy" @click="onRestore">{{ t("settings.backup.restore") }}</Button>
         <Text variant="body" size="xs" class="text-text-muted"
           >{{ t("settings.backup.restoreHint") }}</Text
+        >
+      </Flex>
+
+      <!-- Restore from folder (full backup with attachments) -->
+      <Flex direction="column" :gap="2">
+        <Button variant="secondary" :disabled="backups.busy" @click="onRestoreFromDir">{{
+          t("settings.backup.restoreFromDir")
+        }}</Button>
+        <Text variant="body" size="xs" class="text-text-muted"
+          >{{ t("settings.backup.restoreFromDirHint") }}</Text
         >
       </Flex>
 

@@ -33,6 +33,7 @@ import { registerImportFs } from "./import-fs";
 import { registerBackupFs } from "./backup-fs";
 import { registerShell } from "./shell";
 import { registerReminders } from "./reminders";
+import { registerNotifications } from "./notifications";
 import { registerAppState } from "./app-state";
 import { registerAccountRegistry } from "./account-registry";
 import { initMainLocale, setMainLocale } from "./i18n";
@@ -262,6 +263,9 @@ void app.whenReady().then(() => {
   // repeats / drop fired once-reminders). The renderer computes fire times and
   // pushes the schedule over `desktop.reminders.schedule`.
   registerReminders(window);
+  // Notifications — one-shot OS notifications (e.g. the auto-backup scheduler
+  // announcing a completed backup). Bound to the main window (focused on click).
+  registerNotifications(window);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
