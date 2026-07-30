@@ -1122,11 +1122,18 @@ function restoreScrollPosition(): void {
 /** Force-reload this tab's content from DB and `setContent` ONLY when it differs
  *  from the editor's current HTML — so a re-activated (KeepAlive) or remotely-
  *  changed tab refreshes without clobbering the caret when nothing changed.
- *  Skipped while a save is in-flight so an unsaved edit is never overwritten. */
+ *
+ *  A clean editor reloads even while focused: a cross-device sync that changed
+ *  the open note should surface in the editor the user is looking at, not just
+ *  in background panes. Unsaved local edits are never clobbered — the watcher's
+ *  skip-if-dirty gate blocks a reload while typing is pending, and the post-await
+ *  check below aborts a reload that was in flight when the user started typing.
+ *  `setContent(…, false)` fires no `onUpdate`, so a reload can't mark the note
+ *  dirty or re-broadcast (no feedback loop). */
 async function reloadIfStale(): Promise<void> {
   if (saving.value) return;
   const inst = editor.value;
-  if (!inst || inst.isFocused) return;
+  if (!inst) return;
   const id = myNoteId.value;
   if (!id) return;
   const [fresh, tagIds] = await Promise.all([
@@ -1135,7 +1142,9 @@ async function reloadIfStale(): Promise<void> {
     ),
     properties.getAssignedTagIds(id)
   ]);
-  if (!inst || inst.isFocused) return;
+  // Re-check after the await: a save may have started, or the user may have
+  // begun typing while we were loading content. Bail rather than clobber.
+  if (!inst || saving.value || pendingNoteId !== null || saveTimer) return;
   if (inst.getHTML() !== fresh) {
     const selFrom = inst.state.selection.from;
     const selTo = inst.state.selection.to;
@@ -1196,12 +1205,15 @@ watch(
   { immediate: true }
 );
 
-// Cross-window note sync: another window saved this tab's note. Reload its
-// content from DB only when we have no pending save (skip-if-dirty — never
+// Remote note change: another window saved this tab's note (cross-window
+// broadcast) OR a cross-device sync pulled a newer version of it (App.vue bumps
+// this same signal on `syncCompleted` when the open note's `dateEdited` moved).
+// Reload from DB only when we have no pending save (skip-if-dirty — never
 // clobber our own unsaved typing; our next save will win and propagate back).
 // `reloadIfStale` `setContent`s with `false`, so the reload does not fire
-// `onUpdate` and won't mark the note dirty or re-broadcast. Per-note signal so
-// a background split pane showing this note reloads too.
+// `onUpdate` and won't mark the note dirty or re-broadcast. Per-note signal so a
+// background split pane showing this note reloads too — and a clean FOCUSED pane
+// reloads as well, so a sync made on another device shows up live.
 watch(
   () => notes.noteChangedSignalFor(myNoteId.value ?? ""),
   () => {

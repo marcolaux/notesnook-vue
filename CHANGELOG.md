@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔄 Open note now refreshes after a cross-device sync
+A note open in the editor now updates live when a sync from another device changes it — including the editor you're actively viewing, not just background split panes. Previously `reloadIfStale()` bailed whenever the editor had focus, so the focused (active) pane kept stale content after a sync even though background panes refreshed. The `isFocused` early-bail is removed; a clean focused editor now reloads. Unsaved local edits are still never clobbered — the skip-if-dirty gate blocks a reload while typing is pending, and a new post-`await` check aborts a reload that was mid-flight (loading content from the DB) when the user started typing. `setContent(…, false)` fires no `onUpdate`, so a reload can't mark the note dirty or re-broadcast (no feedback loop). The same change lets a KeepAlive-reactivated tab show remote edits made while it was hidden.
+
 ### 🖱️ List drag-to-reorder (all list types, group move + drop marker)
 List items can now be dragged to reorder them, moving an indented parent and its sub-items as a group with a visible drop marker — across every list type (rich task list, simple checklist, collapsible bullet/ordered, outline). All list types share one vertical 3-band interaction, so they behave identically.
 
