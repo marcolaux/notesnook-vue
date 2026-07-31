@@ -833,8 +833,8 @@ export const DEFAULT_TOOLBAR: ToolbarDefinition = [
     "bold",
     "italic",
     "underline",
+    "strikethrough",
     [
-      "strikethrough",
       "code",
       "subscript",
       "superscript",
