@@ -116,11 +116,14 @@ export async function bootstrap(contextId?: ContextId): Promise<Database> {
     if (isLocal(ctx)) await ensureLocalUser(db);
     await desktop.log.mutate({ level: "info", message: `database initialised (context: ${ctx})` });
 
-    // Schedule background idle vector search catch-up indexing for unindexed notes
+    // Schedule background idle vector search catch-up indexing for unindexed
+    // notes. `migrateEmbeddingModelIfNeeded` purges + re-indexes once if the
+    // configured embedding model has changed (e.g. the multilingual granite
+    // swap), otherwise it just runs the ordinary catch-up scan.
     const triggerScanner = (): void => {
       import("@/utils/vector-search")
-        .then(({ indexUnindexedNotes }) => {
-          void indexUnindexedNotes();
+        .then(({ migrateEmbeddingModelIfNeeded }) => {
+          void migrateEmbeddingModelIfNeeded();
         })
         .catch(() => undefined);
     };

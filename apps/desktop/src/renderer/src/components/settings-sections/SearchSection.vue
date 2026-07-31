@@ -8,13 +8,23 @@ import { ref } from "vue";
 import { Surface, Flex, Text } from "@notesnook-vue/ui-vue";
 import { useI18n } from "vue-i18n";
 import { useSettingsStore } from "@/stores/settings";
-import { purgeVectorIndex } from "@/utils/vector-search";
+import { purgeVectorIndex, migrateEmbeddingModelIfNeeded } from "@/utils/vector-search";
 import { rebuildSearchIndexWithConfirm } from "@/utils/rebuild-search-index";
 
 const settings = useSettingsStore();
 const { t } = useI18n();
 const purgeStatus = ref<string | null>(null);
 const rebuildStatus = ref<string | null>(null);
+
+/** Toggle semantic search on/off. When enabling mid-session, kick off the
+ *  model-change migration (purge + re-index if the embedding model changed)
+ *  + catch-up indexing so vectors start building immediately, not only on the
+ *  next app restart. */
+function onToggleSemantic(e: Event): void {
+  const enabled = (e.target as HTMLInputElement).checked;
+  settings.setSemanticSearchEnabled(enabled);
+  if (enabled) void migrateEmbeddingModelIfNeeded();
+}
 
 async function handlePurgeIndex(): Promise<void> {
   purgeStatus.value = t("settings.search.purging");
@@ -62,7 +72,7 @@ async function handleRebuildLexical(): Promise<void> {
               type="checkbox"
               :checked="settings.semanticSearchEnabled"
               class="sr-only peer"
-              @change="settings.setSemanticSearchEnabled(($event.target as HTMLInputElement).checked)"
+              @change="onToggleSemantic"
             />
             <div class="w-9 h-5 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-accent"></div>
           </label>

@@ -117,6 +117,8 @@ import { scrollTopFromFraction } from "@/utils/minimap";
 import { findHeading } from "@/utils/toc";
 import EditorToolbar from "./EditorToolbar.vue";
 import FindBar from "./FindBar.vue";
+import NoteSuggestions from "./NoteSuggestions.vue";
+import { useNoteSuggestions } from "@/composables/use-note-suggestions";
 import EditorReferences from "./EditorReferences.vue";
 
 const props = defineProps<{ tabId?: string; groupId?: string }>();
@@ -192,6 +194,20 @@ const myKey = computed(() => props.tabId ?? "draft:" + (props.groupId ?? ""));
 // bridge, which needs the refs).
 const footer = useNoteFooter(myNoteId);
 const { tags, notebooks, outgoing, incoming, attachments, wordCount } = footer;
+
+// Proactive notebook/tag/color suggestions for a note that has content but no
+// organization yet (per-pane: bound to THIS note via `footer`). `onContentChange`
+// is fed from the editor's `onUpdate`; the overlay renders while `sugOpen` holds
+// a non-empty, confidence-gated result. One-click assign via the footer mutators.
+const {
+  open: sugOpen,
+  suggestions: sugSuggestions,
+  onContentChange: onSuggestionContentChange,
+  dismiss: dismissSuggestions,
+  assignNotebook: assignSuggestedNotebook,
+  assignTag: assignSuggestedTag,
+  assignColor: assignSuggestedColor
+} = useNoteSuggestions(myNoteId, footer);
 
 const ATTACHMENT_CATEGORY_ORDER: MimeCategory[] = [
   "image",
@@ -792,6 +808,9 @@ const editor = useEditor({
       return;
     }
     scheduleSave(html);
+    // Feed the proactive-suggestion engine (debounced inside the composable;
+    // no-ops when the gate — no notebook/tag/color + enough content — doesn't hold).
+    onSuggestionContentChange(inst.getText({ blockSeparator: "\n" }), myNote.value?.title ?? "");
   }
 });
 
@@ -1606,6 +1625,16 @@ function onEditorAreaClick(e: MouseEvent): void {
       :replace-mode="findReplaceMode"
       class="titlebar-no-drag"
       @close="findOpen = false"
+    />
+    <NoteSuggestions
+      v-if="sugOpen && sugSuggestions"
+      :suggestions="sugSuggestions"
+      @assign-notebook="assignSuggestedNotebook"
+      @assign-tag="assignSuggestedTag"
+      @assign-color="assignSuggestedColor"
+      @open-note="openLinkedNote"
+      @link-note="addOutgoingLink"
+      @dismiss="dismissSuggestions"
     />
     <div
       ref="scrollEl"

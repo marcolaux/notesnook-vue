@@ -20,7 +20,7 @@
  * composable stays headless-testable.
  */
 import { ref, watch, type Ref } from "vue";
-import type { Attachment, Note, Notebook, Tag } from "@notesnook-vue/contracts";
+import type { Attachment, Color, Note, Notebook, Tag } from "@notesnook-vue/contracts";
 import { getDatabase } from "@/platform/bootstrap";
 import { usePropertiesStore } from "@/stores/properties";
 import { useLinksStore, toLinkRef, type NoteLinkRef } from "@/stores/links";
@@ -28,8 +28,10 @@ import { useCollectionsStore } from "@/stores/collections";
 import {
   toAssignedTag,
   toAssignedNotebook,
+  toAssignedColor,
   uniqueById,
   type AssignedNotebook,
+  type AssignedColor,
   type AssignedTag
 } from "@/utils/properties";
 
@@ -38,6 +40,11 @@ export interface NoteFooter {
   tags: Ref<AssignedTag[]>;
   /** Notebooks this pane's note belongs to. */
   notebooks: Ref<AssignedNotebook[]>;
+  /** The color assigned to this pane's note, or `null` when none. A note has at
+   *  most one color. Read via `db.relations.to(note,"color")` (same pattern as
+   *  tags/notebooks); exposed so the proactive-suggestion gate + overlay can
+   *  read/assign color per-pane, consistent with tags/notebooks. */
+  color: Ref<AssignedColor | null>;
   /** Notes this pane's note links to (outgoing). */
   outgoing: Ref<NoteLinkRef[]>;
   /** Notes that link to this pane's note (incoming / backlinks). */
@@ -64,6 +71,11 @@ export interface NoteFooter {
   /** Create a new notebook + add this note to it; refreshes the sidebar. Returns
    *  the new `{id,title}` or `null` on failure (mirrors `properties.createNotebook`). */
   createNotebook: (title: string) => Promise<AssignedNotebook | null>;
+  /** Assign a color to this pane's note (replaces any existing color; a note has
+   *  at most one). Id-aware DB write + local reload. */
+  addColor: (colorId: string) => Promise<void>;
+  /** Remove this pane's note's color. Id-aware DB write + local reload. */
+  removeColor: () => Promise<void>;
   /** Link this pane's note → `targetId` (outgoing). No-op for self-links. */
   link: (targetId: string) => Promise<void>;
   /** Remove this pane's note → `targetId` outgoing link. */
@@ -77,6 +89,7 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
 
   const tags = ref<AssignedTag[]>([]);
   const notebooks = ref<AssignedNotebook[]>([]);
+  const color = ref<AssignedColor | null>(null);
   const outgoing = ref<NoteLinkRef[]>([]);
   const incoming = ref<NoteLinkRef[]>([]);
   const attachments = ref<Attachment[]>([]);
@@ -88,6 +101,7 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
     if (!id) {
       tags.value = [];
       notebooks.value = [];
+      color.value = null;
       outgoing.value = [];
       incoming.value = [];
       attachments.value = [];
@@ -97,15 +111,18 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
     try {
       const db = getDatabase();
       const ref = { id, type: "note" as const };
-      const [tagItems, nbItems, out, inc, attItems] = await Promise.all([
+      const [tagItems, nbItems, colorItems, out, inc, attItems] = await Promise.all([
         db.relations.to(ref, "tag").resolve().catch(() => [] as Tag[]),
         db.relations.to(ref, "notebook").resolve().catch(() => [] as Notebook[]),
+        db.relations.to(ref, "color").resolve().catch(() => [] as Color[]),
         db.relations.from(ref, "note").resolve().catch(() => [] as Note[]),
         db.relations.to(ref, "note").resolve().catch(() => [] as Note[]),
         db.relations.from(ref, "attachment").resolve().catch(() => [] as Attachment[])
       ]);
       tags.value = uniqueById((tagItems as Tag[]).map(toAssignedTag));
       notebooks.value = uniqueById((nbItems as Notebook[]).map(toAssignedNotebook));
+      const colors = (colorItems as Color[]).map(toAssignedColor);
+      color.value = colors[0] ?? null;
       outgoing.value = (out as Note[]).map(toLinkRef);
       incoming.value = (inc as Note[]).map(toLinkRef);
       attachments.value = attItems as Attachment[];
@@ -114,6 +131,7 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
       console.error("[note-footer] reload failed:", e);
       tags.value = [];
       notebooks.value = [];
+      color.value = null;
       outgoing.value = [];
       incoming.value = [];
       attachments.value = [];
@@ -170,6 +188,20 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
     return created;
   }
 
+  async function addColor(colorId: string): Promise<void> {
+    const id = noteId.value;
+    if (!id) return;
+    await properties.setColor(colorId, id);
+    await reload();
+  }
+
+  async function removeColor(): Promise<void> {
+    const id = noteId.value;
+    if (!id) return;
+    await properties.clearColor(id);
+    await reload();
+  }
+
   async function link(targetId: string): Promise<void> {
     const id = noteId.value;
     if (!id) return;
@@ -188,5 +220,5 @@ export function useNoteFooter(noteId: Ref<string | null>): NoteFooter {
   // note seeds the footer on first mount.
   watch(noteId, () => void reload(), { immediate: true });
 
-  return { tags, notebooks, outgoing, incoming, attachments, wordCount, loading, reload, addTag, removeTag, createTag, addNotebook, removeNotebook, createNotebook, link, unlink };
+  return { tags, notebooks, color, outgoing, incoming, attachments, wordCount, loading, reload, addTag, removeTag, createTag, addNotebook, removeNotebook, createNotebook, addColor, removeColor, link, unlink };
 }

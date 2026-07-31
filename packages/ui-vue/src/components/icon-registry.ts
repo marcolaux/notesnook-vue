@@ -104,7 +104,9 @@ import {
   // Pane detach grip (Phase 4.6) — tab-strip drag handle, chrome, first paint.
   GripVertical,
   // Block-colorize toolbar toggle (port of sn-super-colors) — chrome, first paint.
-  Palette
+  Palette,
+  // Proactive suggestion overlay (editor) — chrome, first paint.
+  Sparkles
 } from "@lucide/vue";
 
 
@@ -190,7 +192,9 @@ export const ICONS: Record<string, Component> = {
   map: Map,
   "rows-3": Rows3,
   // Pane detach grip (Phase 4.6) — tab-strip drag handle.
-  "grip-vertical": GripVertical
+  "grip-vertical": GripVertical,
+  // Proactive suggestion overlay (editor).
+  sparkles: Sparkles
 };
 
 /**

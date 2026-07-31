@@ -4,9 +4,18 @@ import { desktop } from "@/platform/desktop-bridge";
 import { getCurrentContext } from "@/platform/bootstrap";
 import { dbFileName } from "@/platform/account-context";
 import { readSemanticSearchEnabled } from "@/stores/settings";
+import { readCtxStringWithLegacy, writeCtxString } from "@/platform/per-context-prefs";
 import { embed } from "@/utils/worker-embedding-client";
+import { EMBEDDING_MODEL_ID } from "./embedding-model";
 import type { SQLiteParameter } from "@contracts/router";
 import { logger } from "./logger";
+
+/** Per-context localStorage key recording which embedding model produced the
+ *  vectors in `vec_notes`. When the configured model changes (e.g. the
+ *  English-only all-MiniLM-L6-v2 → multilingual granite swap), the existing
+ *  vectors live in a different space (and granite uses CLS, not mean, pooling)
+ *  → they must be purged and rebuilt. */
+const EMBEDDING_MODEL_KEY = "notesnook.embeddingModel";
 
 export const isIndexing = ref(false);
 
@@ -430,6 +439,36 @@ export async function indexUnindexedNotes(): Promise<void> {
     }
   } catch (err) {
     logger.error("[vector-search] indexUnindexedNotes failed:", err);
+  }
+}
+
+/**
+ * One-time model-change migration: if the configured embedding model differs
+ * from the one that produced the vectors currently in `vec_notes` (recorded in
+ * per-context prefs), purge the index and re-queue every note for embedding —
+ * a different model (and granite's CLS vs the old mean pooling) makes existing
+ * vectors incompatible. If the model is unchanged, this just falls through to
+ * the normal catch-up scan. No-op when semantic search is off. Called on boot
+ * (idle) and when the user enables semantic search.
+ */
+export async function migrateEmbeddingModelIfNeeded(): Promise<void> {
+  const ctx = getCurrentContext();
+  if (!readSemanticSearchEnabled(ctx)) return;
+  const { value: stored } = readCtxStringWithLegacy(EMBEDDING_MODEL_KEY, ctx);
+  if (stored === EMBEDDING_MODEL_ID) {
+    // unchanged — ordinary catch-up of any unindexed notes
+    return indexUnindexedNotes();
+  }
+  logger.log("[vector-search] embedding model changed — re-indexing", {
+    from: stored ?? "(none)",
+    to: EMBEDDING_MODEL_ID
+  });
+  await purgeVectorIndex();
+  await indexUnindexedNotes();
+  try {
+    writeCtxString(EMBEDDING_MODEL_KEY, ctx, EMBEDDING_MODEL_ID);
+  } catch {
+    /* best-effort — persistence is optional */
   }
 }
 

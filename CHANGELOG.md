@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No published changes yet._
+
+## [0.17.0] - 2026-07-31
+
+### ✨ Proactive notebook / tag / color suggestions while you write
+When you're writing a note that has no notebook, tag, or color yet, a floating glass bar appears below the editor toolbar offering one-click suggestions derived from your existing notes — so organizing a new note takes a single click instead of remembering to do it later. Dismiss it and it stays hidden for that note until you've added ~40 more words; assign any one of notebook/tag/color and it closes. The bar also surfaces the most similar notes it found, each clickable to open in this pane or to link into the current note.
+
+- **Three signals, merged.** (1) **Semantic** — the note text is embedded and matched against your indexed notes (vector KNN); the notebooks/tags/colors of the most similar ones are aggregated with a relative-to-top confidence gate (weak signal → no bar). (2) **Lexical FTS5 fallback** when semantic search is off. (3) **Direct keyword** — the text is scanned for existing tag/notebook names, so typing "AI" suggests the `AI/Hermes` + `AI/Claude` tags and "NAS" suggests `NAS`; this bypasses the confidence gate (a literal name hit is a strong signal). Tags match on any `/`-segment; notebooks match the full title as a phrase.
+- **Related notes (Open / Link).** The top similar notes are shown as chips regardless of the confidence gate — click the title to open in this pane, click the link icon to link the current note to it.
+- **Multilingual embeddings.** Replaced the English-only `all-MiniLM-L6-v2` with `granite-embedding-97m-multilingual-r2` (384-dim — same `vec_notes` schema, int8 ~94 MB, CLS pooling) so German (and 200+ languages) get real semantic matches instead of falling back to the commonest notebook/tag. A one-time re-index (purge + re-queue) runs automatically when the model changes — on boot, and when semantic search is enabled mid-session.
+- **Bilingual glossary.** A small German↔English term map (KI↔AI, Speicher↔storage, Datenbank↔database, …) lets the keyword path bridge languages for single-token tag names.
+- **Per-pane + non-intrusive.** One controller per editor pane (split panes are independent); inference runs in the existing Web Worker so typing stays fluid; re-runs are debounced after a typing pause and refresh the chips as content grows (an empty re-run never clears the bar — only dismiss/assign closes it). The overlay is a floating, rounded glass pill that fades in from the top, with a pinned close button (always visible even when the chip list overflows) and wheel→horizontal-scroll like the toolbar/tabs. New `utils/note-similarity.ts`, `composables/use-note-suggestions.ts`, `components/NoteSuggestions.vue`, `utils/embedding-model.ts`; color added to `useNoteFooter`; `sparkles`/`file-text`/`link` added to the static icon set. Typecheck clean; 22 new contract tests.
+
 ### 🚪 Sign out now actually signs you out (forgets the account on this device)
 Clicking **Sign out of this account** ("Abmelden") in the sidebar account switcher did not really log you out — it only live-swapped the window to the local database and cleared the local-mode skip flag. The account's auth token (in its encrypted SQLite DB's KV), its `databaseKey` + `userEncryptionKey` in the OS keychain, its DB file, and its `accounts.json` registry entry all survived untouched, so re-selecting the account from the switcher or the login-screen chips silently re-entered the shell via `switchToAccount` → `finalize()` → `db.user.getUser()` — no password, no MFA. Sign out now forgets the account on this device and revokes the refresh token server-side: reusing it requires a fresh "Add account" + password login (notes re-sync from the server).
 

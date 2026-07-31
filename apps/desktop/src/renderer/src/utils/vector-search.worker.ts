@@ -18,12 +18,11 @@
 
 import { pipeline, env } from "@huggingface/transformers";
 import { logger } from "./logger";
+import { EMBEDDING_MODEL_ID, EMBEDDING_DTYPE, EMBEDDING_POOLING } from "./embedding-model";
 
 // Preserve prior behavior: fetch the model from the Hugging Face Hub on first
 // use and rely on the transformers.js browser Cache API for subsequent loads.
 env.allowRemoteModels = true;
-
-const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
 let extractorInstance: any = null;
 let initPromise: Promise<void> | null = null;
@@ -37,8 +36,8 @@ async function getExtractor(): Promise<any> {
 
   initPromise = (async () => {
     try {
-      extractorInstance = await pipeline("feature-extraction", MODEL_ID, {
-        dtype: "fp32"
+      extractorInstance = await pipeline("feature-extraction", EMBEDDING_MODEL_ID, {
+        dtype: EMBEDDING_DTYPE
       });
     } catch (err) {
       logger.error("[vector-search.worker] Failed to initialize embedding pipeline:", err);
@@ -79,7 +78,7 @@ ctx.onmessage = async (event: MessageEvent<EmbedRequest>): Promise<void> => {
       return;
     }
 
-    const output = await extractor(text, { pooling: "mean", normalize: true });
+    const output = await extractor(text, { pooling: EMBEDDING_POOLING, normalize: true });
     const embedding = new Float32Array(output.data);
 
     // Transfer the underlying buffer (zero-copy) — it is neutered on the
