@@ -115,6 +115,17 @@
   background-color: color-mix(in oklab, black 14%, transparent);
 }
 
+/* The floating suggestion pill sits over editor content. The default
+   `bg-glass-surface` (a 5% paragraph tint) is too faint on a dark theme — the
+   editor text shows through and the chips lose contrast. Lift it to a
+   near-opque dark surface (the theme's `--background`) so the pill reads as a
+   solid panel while keeping a hair of translucency for the acrylic feel. Keys
+   on the generic `data-color-scheme` so built-in AND custom dark themes get
+   it (see `packages/theme-vue/src/inject.ts`). */
+[data-color-scheme="dark"] .note-suggestions {
+  background-color: color-mix(in oklab, var(--background) 92%, transparent);
+}
+
 html,
 body,
 #app {

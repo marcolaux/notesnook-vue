@@ -48,6 +48,10 @@ export function injectTheme(theme: VueTheme): void {
   const html = document.documentElement;
   html.classList.add("theme-scope-base", "theme-scope-base-primary");
   html.setAttribute("data-theme", theme.id);
+  // Generic dark/light marker (the per-theme `data-theme` id is too specific for
+  // CSS that wants to key off "is this a dark theme" across built-in + custom
+  // themes). Mirrors `color-scheme` but as a queryable attribute.
+  html.dataset.colorScheme = theme.colorScheme;
   html.style.colorScheme = theme.colorScheme; // native CSS color-scheme (UA widgets)
 
   current = theme;
