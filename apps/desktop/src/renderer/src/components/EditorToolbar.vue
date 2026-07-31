@@ -18,8 +18,8 @@
  * ToC + properties panel toggles (`useShellStore`), and a context-sensitive
  * Publish button: a "Publish" text button (opens the publish dialog) when the
  * active note is unpublished, or the globe icon, title "Published", opening a
- * note-actions context menu (Unpublish / Copy monograph URL / Open in browser)
- * when it is published — built via `useContextMenuStore` (NOT the editor-vue
+ * note-actions context menu (Update / Unpublish / Copy monograph URL / Open in
+ * browser) when it is published — built via `useContextMenuStore` (NOT the editor-vue
  * `EditorAction` path, which is formatting-only).
  * Theme tokens (`bg-glass-*`/`text-text*`/`border-glass-border`) follow the app
  * theme.
@@ -157,15 +157,35 @@ function openPublishDialog(): void {
   });
 }
 
-/** Open the "Published" submenu — unpublish / copy URL / open in browser for
- *  the active note. Only called when the note is already published (the
- *  published button opens this; the publish dialog path is separate). Uses the
- *  context-menu store (the same surface as right-click) rather than the
+/** Open the "Published" submenu — update / unpublish / copy URL / open in
+ *  browser for the active note. Only called when the note is already published
+ *  (the published button opens this; the publish dialog path is separate). Uses
+ *  the context-menu store (the same surface as right-click) rather than the
  *  editor-vue `EditorAction` path, which is formatting-only. */
 function openPublishedMenu(): void {
   const n = notes.activeNote;
   if (!n || !publishBtn.value) return;
   const items: MenuItem[] = [
+    {
+      id: "update",
+      label: t("editorToolbar.updateMonograph"),
+      icon: "refresh-cw",
+      onSelect: () => {
+        // Republish (Update): open the publish dialog seeded for an edit from
+        // the persisted `Monograph` row's `selfDestruct` (the password is a
+        // one-way cipher so the field starts empty with a "leave blank to keep"
+        // hint). On confirm, `publishById` re-runs `db.monographs.publish`,
+        // which core treats as a PATCH (update) because the note is already
+        // published — pushing the latest content to the existing public page.
+        void publishDialog
+          .openEdit(n.id, n.title, { selfDestruct: publish.selfDestruct })
+          .then((input) => {
+            if (!input) return;
+            const { title, ...opts } = input;
+            void publish.publishById(n.id, title, opts);
+          });
+      }
+    },
     {
       id: "unpublish",
       label: t("editorToolbar.unpublishNote"),
@@ -355,7 +375,7 @@ function toggleBlockColorize(): void {
     <!-- Publish button — a single affordance that reflects publish state:
          - Not published: a "Publish" text button → opens the publish dialog.
          - Published: the globe icon, title "Published" → opens the submenu
-           (Unpublish / Copy monograph URL / Open in browser).
+           (Update / Unpublish / Copy monograph URL / Open in browser).
          Hidden in local-only mode — publishing is a server call that needs a
          logged-in account (`auth.isLoggedIn`, NOT `showShell` which is also true
          when the login was skipped). -->

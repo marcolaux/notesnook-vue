@@ -47,6 +47,11 @@ export const usePublishStore = defineStore("publish", () => {
   const publishUrl = ref("");
   /** When the active note was published (0 while unpublished/unknown). */
   const datePublished = ref(0);
+  /** Whether the active note's monograph self-destructs after its first view
+   *  (from the persisted `Monograph` row; `false` while unpublished/unknown).
+   *  Used to seed the republish (Update) dialog so the toggle reflects the
+   *  current setting. */
+  const selfDestruct = ref(false);
   /** True while the publish state is being (re)loaded for a note switch. */
   const loading = ref(false);
   /** True while a publish/unpublish mutation is in flight (gates the UI). */
@@ -61,6 +66,7 @@ export const usePublishStore = defineStore("publish", () => {
     published.value = false;
     publishUrl.value = "";
     datePublished.value = 0;
+    selfDestruct.value = false;
   }
 
   /** Push pending attachment blobs to the server before publishing. Inserted
@@ -110,9 +116,11 @@ export const usePublishStore = defineStore("publish", () => {
         const m: Monograph | undefined = await db.monographs.get(id);
         publishUrl.value = formatPublishUrl(m);
         datePublished.value = m?.datePublished ?? 0;
+        selfDestruct.value = m?.selfDestruct ?? false;
       } else {
         publishUrl.value = "";
         datePublished.value = 0;
+        selfDestruct.value = false;
       }
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -158,6 +166,24 @@ export const usePublishStore = defineStore("publish", () => {
       }
       await uploadPendingAttachments();
       await db.monographs.publish(id, resolvedTitle, buildPublishOptions(opts));
+      // Copy the now-published note's public URL to the clipboard so the user
+      // can share it immediately. Best-effort + never-throws: a clipboard
+      // failure (headless test env, missing permissions) is logged + swallowed
+      // so it never affects the publish result. The URL is the authoritative
+      // server-returned `Monograph.publishUrl` (read via `formatPublishUrl`
+      // from the just-persisted row), never hand-constructed. Fetches the row
+      // directly (NOT `publishUrl`) so this works for non-active notes too —
+      // `refresh()` only reseeds the active note's state.
+      try {
+        const m = await db.monographs.get(id);
+        const url = formatPublishUrl(m);
+        if (url && typeof navigator !== "undefined" && navigator.clipboard) {
+          await navigator.clipboard.writeText(url);
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        logger.error("[publish] copy-url after publish failed:", e);
+      }
       if (id === activeNoteId.value) await refresh();
       await notes.load();
       lastError.value = null;
@@ -259,6 +285,7 @@ export const usePublishStore = defineStore("publish", () => {
     published,
     publishUrl,
     datePublished,
+    selfDestruct,
     loading,
     publishing,
     lastError,

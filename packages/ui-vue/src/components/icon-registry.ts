@@ -98,6 +98,9 @@ import {
   Copy,
   Eye,
   Network,
+  // "Update published note" (editor toolbar publish menu + command palette) —
+  // chrome, must render at first paint.
+  RefreshCw,
   // ToC/Minimap right-sidebar header toggle — chrome, must render at first paint.
   Map,
   Rows3,
@@ -188,6 +191,7 @@ export const ICONS: Record<string, Component> = {
   copy: Copy,
   eye: Eye,
   network: Network,
+  "refresh-cw": RefreshCw,
   // ToC/Minimap right-sidebar header toggle.
   map: Map,
   "rows-3": Rows3,

@@ -527,6 +527,32 @@ const appCommands: Command[] = [
       });
     }
   },
+  // "Update published note" — republish an already-published note to push its
+  // latest content to the existing public page. Opens the publish dialog
+  // seeded for an edit (title prefilled, selfDestruct from the persisted
+  // `Monograph` row, password empty with a "leave blank to keep" hint). On
+  // confirm, `publishById` re-runs `db.monographs.publish`, which core treats
+  // as a PATCH (update) because the note is already published. Only shown when
+  // the active note is published (the inverse of `app:publish-note`).
+  {
+    id: "app:update-monograph",
+    title: "command.updateMonograph",
+    keywords: ["update", "republish", "monograph", "public", "web", "publish", "refresh"],
+    group: "app",
+    when: (ctx) => ctx.auth.isLoggedIn && !!ctx.notes.activeNote && ctx.publish.published,
+    run: (ctx) => {
+      const note = ctx.notes.activeNote;
+      if (!note) return;
+      const dialog = usePublishDialogStore();
+      void dialog
+        .openEdit(note.id, note.title, { selfDestruct: ctx.publish.selfDestruct })
+        .then((input) => {
+          if (!input) return;
+          const { title, ...opts } = input;
+          void ctx.publish.publishById(note.id, title, opts);
+        });
+    }
+  },
   {
     id: "app:unpublish-note",
     title: "command.unpublishNote",

@@ -334,6 +334,67 @@ describe("usePublishStore", () => {
     expect(pub.lastError).toBeNull();
   });
 
+  it("publishById copies the public URL to the clipboard after a successful publish", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    // Stub the clipboard on the Node global `navigator` (absent in the node
+    // env by default); restored by removing the property after the test.
+    (navigator as Navigator & { clipboard?: unknown }).clipboard = { writeText };
+    const pub = usePublishStore();
+    try {
+      const ok = await pub.publishById("a", "A");
+      expect(ok).toBe(true);
+      // The authoritative server-returned URL is copied so the user can share
+      // it immediately — read from the just-persisted `Monograph` row.
+      expect(writeText).toHaveBeenCalledWith("https://monogr.ph/a");
+    } finally {
+      delete (navigator as Navigator & { clipboard?: unknown }).clipboard;
+    }
+  });
+
+  it("publishById copies the URL for a non-active note too (reads the row, not publishUrl)", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    (navigator as Navigator & { clipboard?: unknown }).clipboard = { writeText };
+    const pub = usePublishStore();
+    try {
+      // "b" is NOT the active note → `refresh()` is skipped, so the URL must
+      // come from `db.monographs.get(id)`, not from `pub.publishUrl`.
+      const ok = await pub.publishById("b", "B title");
+      expect(ok).toBe(true);
+      expect(writeText).toHaveBeenCalledWith("https://monogr.ph/b");
+    } finally {
+      delete (navigator as Navigator & { clipboard?: unknown }).clipboard;
+    }
+  });
+
+  it("publishById still succeeds when the post-publish clipboard copy throws (non-blocking)", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard locked"));
+    (navigator as Navigator & { clipboard?: unknown }).clipboard = { writeText };
+    const pub = usePublishStore();
+    try {
+      const ok = await pub.publishById("a", "A");
+      // A clipboard failure is swallowed (logged) — the publish result is
+      // unaffected; the user still gets the URL via the "Copy URL" action.
+      expect(ok).toBe(true);
+      expect(pub.publishUrl).toBe("https://monogr.ph/a");
+      expect(pub.lastError).toBeNull();
+    } finally {
+      delete (navigator as Navigator & { clipboard?: unknown }).clipboard;
+    }
+  });
+
+  it("refresh reads selfDestruct for a published note (seeds the Update dialog)", async () => {
+    await openNote(fakeNote({ id: "a", title: "A" }));
+    db._published.add("a");
+    db._monographs.set("a", { id: "a", type: "monograph", title: "A", datePublished: 200, dateCreated: 200, dateModified: 200, selfDestruct: true, publishUrl: "https://monogr.ph/a" } as Monograph);
+    const pub = usePublishStore();
+    await pub.refresh();
+    expect(pub.published).toBe(true);
+    expect(pub.selfDestruct).toBe(true);
+  });
+
   it("unpublishById unpublishes an explicit id + reseeds only when it is the active note", async () => {
     await openNote(fakeNote({ id: "a", title: "A" }));
     db._published.add("a");
