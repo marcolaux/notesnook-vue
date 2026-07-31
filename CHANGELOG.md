@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Drag a list item into any other list in the document
+List items could only be reordered within their own list tree — drag one across a divider (or any non-list block) into a separate list and the drop was silently swallowed. The same-tree confinement is gone: a list item can now be dropped into **any** list anywhere in the note, across the blocks between lists. When the target list is a different type, the dragged item is **converted** to the target's item type so it joins seamlessly — a bullet/outline item dropped into a task/checklist becomes a flat `indent`-ed row (and a flat indented group dropped into a bullet/outline list rebuilds as a real-nested tree); `checked` is preserved within the flat family and dropped when crossing into a real-nesting type. Bullet ↔ ordered share `listItem`, so no conversion happens there. Same-type drags keep the existing behaviour (indented sub-items still move as a group, sibling drops re-level to any depth). Conversion is lossy by design for exotic content. Wired in `list-drag-reorder/`; 4 new cross-tree/cross-type contract tests, 22 pass.
+
+### ✨ Republish a published note + copy its public URL on publish
+An already-published note can now be **updated** in place: a new "Update published note" command (palette, shown only when the active note is published) and an Update item at the top of the editor-toolbar Published submenu reopen the publish dialog seeded for an edit (title prefilled, self-destruct from the persisted Monograph row, password empty with a leave-blank-to-keep hint). On confirm it re-runs `db.monographs.publish`, which core treats as a PATCH because the note is already published — pushing the latest content to the existing public page. After any successful publish the note's public URL is copied to the clipboard (best-effort, never throws) so it can be shared immediately. `stores/publish.ts` exposes the monograph's `selfDestruct` to seed the toggle; `refresh-cw` icon added to the static set. 28 publish contract tests pass.
+
+### ✨ Paste as plain text — context menu + Cmd/Ctrl+Shift+V
+A "Paste as plain text" entry in the editor right-click menu and the `Cmd/Ctrl+Shift+V` shortcut (focused pane only) paste the clipboard's `text/plain` representation as literal text nodes — never parsed as HTML — with newlines converted to hardBreak nodes so multi-line paste keeps line breaks without carrying source formatting, links, or structure. Clipboard-read failures are swallowed. Building text nodes rather than passing a bare string is load-bearing (`insertContent("<b>x</b>")` would otherwise parse the string as HTML). Wired in `use-editor-context-menu.ts` + `Editor.vue`; `editor-context-menu.spec.ts` updated.
+
+### ✨ Strikethrough promoted to the top-level toolbar
+Strikethrough moved out of the "more formatting" submenu to the top-level toolbar row (next to bold/italic/underline), so the common strike-through toggle is one click instead of two. `DEFAULT_TOOLBAR` updated.
+
 ### ✨ Omnibar field now hints at the search shortcut too
 The omnibar pill in the title bar already showed a `⌘K` / `Ctrl+K` hint for the command palette, but the other global opener — `⌘⌥F` (macOS) / `Ctrl+Alt+F` (elsewhere), which drops you into notes-search mode (the field's default) — was undiscoverable. The field now shows **both** shortcut badges on the right while empty: the search binding first, then the command binding (matching the adjacent `⋯` palette button). Both hide as soon as you type so they never overlap the query. Wired in `GlobalSearchInput.vue`; the hotkeys themselves are unchanged (registered in `TitleBar.vue`).
 
