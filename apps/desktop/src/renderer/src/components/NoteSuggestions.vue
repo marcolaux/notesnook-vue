@@ -17,12 +17,12 @@
   stays hidden for that note until ~40 more words are added.
 -->
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { nextTick, ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useHorizontalWheelScroll } from "@/composables/use-horizontal-wheel-scroll";
 import type { NoteSuggestions } from "@/utils/note-similarity";
 
-defineProps<{ suggestions: NoteSuggestions }>();
+const props = defineProps<{ suggestions: NoteSuggestions; keyboardActive?: boolean }>();
 const emit = defineEmits<{
   assignNotebook: [id: string];
   assignTag: [id: string];
@@ -36,13 +36,77 @@ const emit = defineEmits<{
 // editor toolbar + tab strip), so a wheel scroll over the suggestions moves the
 // chips sideways instead of being stuck.
 const scrollRef = ref<HTMLElement | null>(null);
+const rootRef = ref<HTMLElement | null>(null);
 useHorizontalWheelScroll(scrollRef);
 
-function onKey(e: KeyboardEvent): void {
+/** Flat list of navigable buttons inside the pill (notebook / tag / color
+ *  chips, each related-note's open + link buttons, and the dismiss button) in
+ *  DOM order. Recollected per keypress — cheap (~12 buttons) and resilient to
+ *  the chip set changing under a re-run. */
+function navItems(): HTMLButtonElement[] {
+  if (!rootRef.value) return [];
+  return Array.from(rootRef.value.querySelectorAll<HTMLButtonElement>("button"));
+}
+let activeIndex = -1;
+
+function focusItem(i: number): void {
+  const list = navItems();
+  if (!list.length) return;
+  const idx = ((i % list.length) + list.length) % list.length;
+  activeIndex = idx;
+  const el = list[idx];
+  if (!el) return;
+  el.focus();
+  // Keep the focused chip within the (horizontally scrollable) strip.
+  el.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+/** Pill-scoped keydown — fires while a chip has focus (so it never fights
+ *  editor typing, which keeps focus in the editor). Arrow keys cycle through
+ *  the chips; Enter/Space activate the focused chip natively. Home/End jump to
+ *  the first/last. Escape dismisses (the window listener is the global
+ *  backstop for when focus is elsewhere). */
+function onNavKey(e: KeyboardEvent): void {
+  const list = navItems();
+  if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+    e.preventDefault();
+    focusItem(activeIndex < 0 ? 0 : activeIndex + 1);
+  } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+    e.preventDefault();
+    focusItem(activeIndex < 0 ? list.length - 1 : activeIndex - 1);
+  } else if (e.key === "Home") {
+    e.preventDefault();
+    focusItem(0);
+  } else if (e.key === "End") {
+    e.preventDefault();
+    focusItem(list.length - 1);
+  } else if (e.key === "Escape") {
+    emit("dismiss");
+  }
+}
+
+function onWindowKey(e: KeyboardEvent): void {
   if (e.key === "Escape") emit("dismiss");
 }
-onMounted(() => window.addEventListener("keydown", onKey));
-onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
+
+/** When summoned manually (`keyboardActive`), auto-focus the first chip so the
+ *  user can navigate immediately without a Tab. Re-runs when the suggestion
+ *  set is replaced (the re-run swaps chips) so a stale position is reset to the
+ *  first chip rather than landing on a vanished element. */
+watch(
+  () => [props.keyboardActive, props.suggestions] as const,
+  ([kb]) => {
+    if (!kb) {
+      activeIndex = -1;
+      return;
+    }
+    void nextTick(() => focusItem(0));
+  },
+  { immediate: true }
+);
+
+onMounted(() => window.addEventListener("keydown", onWindowKey));
+onBeforeUnmount(() => window.removeEventListener("keydown", onWindowKey));
 </script>
 
 <template>
@@ -51,9 +115,11 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
          area around the pill pass through; only the pill itself is interactive. -->
     <div class="pointer-events-none absolute inset-x-0 top-9 z-20">
       <div
+        ref="rootRef"
         class="note-suggestions pointer-events-auto mx-3 mt-1.5 inline-flex max-w-[calc(100%-1.5rem)] items-center rounded-xl border border-glass-border bg-glass-surface py-1.5 pl-3 pr-1.5 shadow-xl backdrop-blur-xl"
         role="region"
         aria-label="Suggested notebooks, tags, and colors"
+        @keydown="onNavKey"
       >
         <!-- Scrollable chip strip. The dismiss button is a SIBLING outside this
              scroll area (below) so it stays pinned at the right edge even when the
@@ -167,6 +233,14 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 <style scoped>
 /* Chips + dismiss use the codebase's glass interaction tints (paragraph-derived
    via the @theme bridge) so they read on the pill's translucent surface. */
+/* Visible keyboard-focus ring for arrow-key navigation (the pill auto-focuses
+   the first chip when summoned manually; focus is otherwise invisible against
+   the glass chips without an explicit ring). */
+.note-suggestions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 9999px;
+}
 .ns-chip {
   display: inline-flex;
   align-items: center;

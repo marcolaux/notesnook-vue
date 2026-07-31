@@ -51,6 +51,14 @@ export interface UseNoteSuggestions {
   onContentChange: (text: string, title: string) => void;
   /** Hide the overlay for this note until ~`REAPPEAR_DELTA_WORDS` more words. */
   dismiss: () => void;
+  /** Force-open the overlay on demand (the palette "Show note suggestions"
+   *  command). Manual calling is NOT restricted to the automatic criteria — it
+   *  runs the engine for the current note regardless of existing
+   *  notebook/tag/color or length; only an empty result shows nothing. */
+  show: (text: string, title: string) => void;
+  /** True while the overlay was manually forced open (overrides the auto gate).
+   *  Drives the keyboard-navigation mode in `NoteSuggestions.vue`. */
+  forcedOpen: Ref<boolean>;
   /** One-click assignment actions (id-aware via the footer). */
   assignNotebook: (id: string) => Promise<void>;
   assignTag: (id: string) => Promise<void>;
@@ -73,6 +81,12 @@ export function useNoteSuggestions(
 
   const suggestions = ref<NoteSuggestions | null>(null);
   const loading = ref(false);
+  // Set by the manual `show()` (palette "Show note suggestions" command) to
+  // force the overlay open REGARDLESS of the automatic gate — so on-demand
+  // summoning is NOT restricted to the auto criteria (a note may already have a
+  // notebook/tag/color, or be short). Cleared on dismiss / assignment / note
+  // switch so the forced overlay doesn't outlive the user's intent.
+  const forcedOpen = ref(false);
 
   // Per-note bookkeeping (reset on note switch via the watch below).
   let lastRunWordCount = -1;
@@ -102,7 +116,7 @@ export function useNoteSuggestions(
   // fresh result lands. The overlay only disappears on explicit dismiss, on an
   // assignment (the gate flips), or on a note switch.
   const open = computed(() =>
-    gatePassed.value &&
+    (gatePassed.value || forcedOpen.value) &&
     suggestions.value !== null &&
     (suggestions.value.notebooks.length > 0 ||
       suggestions.value.tags.length > 0 ||
@@ -198,8 +212,11 @@ export function useNoteSuggestions(
       // Re-run only when the gate holds AND content changed meaningfully since
       // the last run (or it's the first run for this note).
       const words = footer.wordCount.value;
-      if (!gatePassed.value) {
-        // Gate closed (e.g. user just assigned something): drop suggestions.
+      if (!gatePassed.value && !forcedOpen.value) {
+        // Gate closed (e.g. user just assigned something) and not manually
+        // forced: drop suggestions. A forced-open overlay survives typing on
+        // an organized note (the whole point of the manual command) and keeps
+        // refreshing via the re-run delta gate below.
         suggestions.value = null;
         return;
       }
@@ -220,19 +237,42 @@ export function useNoteSuggestions(
   function dismiss(): void {
     const id = noteId.value;
     if (id) dismissedAt.set(id, footer.wordCount.value);
+    forcedOpen.value = false;
     suggestions.value = null;
+  }
+
+  /** Force-open on demand (palette "Show note suggestions" command). MANUAL
+   *  CALLING IS NOT RESTRICTED TO THE AUTOMATIC CRITERIA: it runs the engine
+   *  for the current note regardless of whether it already has a notebook/tag/
+   *  color or how short it is — the only reason it would show nothing is the
+   *  run genuinely finding nothing to suggest (the overlay never renders an
+   *  empty pill). Clears any dismissal, sets `forcedOpen` so `open` ignores the
+   *  gate, and runs immediately (bypassing the typing debounce + the re-run
+   *  delta gate). The forced overlay survives subsequent typing on an
+   *  organized note and keeps refreshing; it's cleared on dismiss, on assigning
+   *  one of its chips, or on note switch. */
+  function show(text: string, title: string): void {
+    const id = noteId.value;
+    if (!id) return; // draft mode — no note to suggest for yet
+    dismissedAt.delete(id);
+    forcedOpen.value = true;
+    lastRunWordCount = -1; // force the re-run delta gate to pass
+    void run(text, title, footer.wordCount.value);
   }
 
   async function assignNotebook(notebookId: string): Promise<void> {
     await footer.addNotebook(notebookId);
+    forcedOpen.value = false;
     suggestions.value = null; // gate closes on the footer reload; clear regardless
   }
   async function assignTag(tagId: string): Promise<void> {
     await footer.addTag(tagId);
+    forcedOpen.value = false;
     suggestions.value = null;
   }
   async function assignColor(colorId: string): Promise<void> {
     await footer.addColor(colorId);
+    forcedOpen.value = false;
     suggestions.value = null;
   }
 
@@ -247,6 +287,7 @@ export function useNoteSuggestions(
       runId++;
       suggestions.value = null;
       loading.value = false;
+      forcedOpen.value = false;
       lastRunWordCount = -1;
     },
     { immediate: true }
@@ -263,6 +304,8 @@ export function useNoteSuggestions(
     loading,
     onContentChange,
     dismiss,
+    show,
+    forcedOpen,
     assignNotebook,
     assignTag,
     assignColor

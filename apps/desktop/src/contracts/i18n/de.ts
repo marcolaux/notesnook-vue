@@ -39,7 +39,8 @@ export default {
     never: "Nie",
     noAdditionalText: "Kein zusätzlicher Text",
     previous: "Zurück",
-    next: "Weiter"
+    next: "Weiter",
+    today: "Heute"
   },
   notebookPicker: {
     title: "Notizbuch wählen",
@@ -919,6 +920,7 @@ export default {
     reloadWindow: "Fenster neu laden",
     searchNotes: "Notizen suchen",
     findInNote: "In Notiz suchen",
+    showNoteSuggestions: "Notizvorschläge anzeigen",
     openTodayDailyNote: "Tägliche Notiz von heute öffnen",
     toggleSidebar: "Seitenleiste umschalten",
     toggleNotesList: "Notizliste umschalten",

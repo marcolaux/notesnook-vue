@@ -337,6 +337,23 @@ const appCommands: Command[] = [
       ctx.editorStore.requestFind();
     }
   },
+  // Show the proactive notebook/tag/color suggestions overlay for the focused
+  // note. The overlay itself (`NoteSuggestions.vue` + `use-note-suggestions`)
+  // normally auto-appears after a typing pause when an unorganized note has
+  // enough content; this is the on-demand entry point — it clears any dismissal
+  // and re-runs the engine immediately. Mirrors `app:find-in-note` →
+  // `editorStore.requestFind()` (a per-pane signal the focused `Editor.vue`
+  // watches).
+  {
+    id: "app:show-note-suggestions",
+    title: "command.showNoteSuggestions",
+    keywords: ["suggest", "suggestions", "notebook", "tag", "color", "related", "organize"],
+    group: "app",
+    when: (ctx) => !!ctx.editor && ctx.auth.showShell,
+    run: (ctx) => {
+      ctx.editorStore.requestSuggestions();
+    }
+  },
   // Open today's daily note — navigates to the `/daily` view (so the date
   // timeline is visible) and opens today's note via `openDailyNote`, which
   // reveals a prefilled draft when no daily note exists yet (lazy creation on

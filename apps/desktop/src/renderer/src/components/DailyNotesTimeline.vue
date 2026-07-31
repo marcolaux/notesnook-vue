@@ -7,10 +7,13 @@
  * (`daily.dailyDates`). Clicking a day sets the selected date (the
  * `DailyNotesView` watcher opens/creates that day's daily note).
  *
- * A wide static window (±60 days from today) is rendered up front and the
- * selected day is scrolled to the centre via `scrollIntoView`; native vertical
- * scroll + the ↑/↓ buttons (shift the window by a fortnight) reach further out.
- * All date math goes through `utils/daily-notes.ts`.
+ * An initial window (±60 days from today) is rendered up front and the selected
+ * day is scrolled to the centre instantly on mount (no smooth animation, so
+ * there is no visible "jump from the top"). The window grows ENDLESSLY in both
+ * directions as the user scrolls near the top or bottom edge: prepending past
+ * days preserves the scroll offset (no jump), appending future days just adds
+ * height. A "Today" button in the header jumps back to today after scrolling
+ * far away. All date math goes through `utils/daily-notes.ts`.
  */
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -29,11 +32,15 @@ const { locale, t } = useI18n();
 
 const todayIsoStr = todayIso();
 
-/** Offset (in days from today) of the FIRST rendered day. Starts at -HALF so
- *  today sits near the centre; the ↑/↓ buttons shift it. Past days render above
- *  (smaller offsets), future days below. */
+/** Rendered window of day offsets from today. Starts ±HALF so today sits near
+ *  the centre; both bounds only ever EXTEND (windowStart decreases, windowEnd
+ *  increases) as the user scrolls — they never shrink, so today (offset 0) is
+ *  always present in the list and `centerSelected` can always find it. */
 const HALF = 60;
+const EXTEND_CHUNK = 30; // days added per edge extension
+const EDGE_THRESHOLD = 300; // px from the top/bottom edge that triggers extension
 const windowStart = ref<number>(-HALF);
+const windowEnd = ref<number>(HALF);
 
 const scroller = ref<HTMLDivElement | null>(null);
 
@@ -48,7 +55,7 @@ interface DayCell {
 const days = computed<DayCell[]>(() => {
   const base = parseIsoDate(todayIsoStr) ?? new Date();
   const out: DayCell[] = [];
-  for (let i = windowStart.value; i <= HALF; i++) {
+  for (let i = windowStart.value; i <= windowEnd.value; i++) {
     const d = addDays(base, i);
     const iso = isoDate(d);
     out.push({
@@ -126,32 +133,67 @@ function onDayContext(d: { iso: string }, e: MouseEvent): void {
   );
 }
 
-/** Centre the selected day in the scroller. Runs on mount and whenever the
- *  selection changes (so following a click or a palette "go to today" keeps the
- *  selected day in view). */
-function centerSelected(): void {
+/** Centre the selected day in the scroller. On mount `smooth=false` so the
+ *  scroller jumps to today instantly (no visible "scroll from the top" animation);
+ *  on later selection changes (clicks, "Today" button) `smooth=true` for a
+ *  gentle glide. */
+function centerSelected(smooth: boolean): void {
   const iso = daily.selectedDate;
   const el = scroller.value?.querySelector(`[data-iso="${iso}"]`) as HTMLElement | null;
-  el?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+  el?.scrollIntoView({ block: "center", inline: "nearest", behavior: smooth ? "smooth" : "auto" });
 }
 
-function shiftWindow(deltaDays: number): void {
-  windowStart.value += deltaDays;
-  void nextTick(centerSelected);
+/** Grow the rendered window as the user scrolls near an edge. Extending DOWNWARD
+ *  (future days) just appends rows. Extending UPWARD (past days) prepends rows,
+ *  which would shift the existing content down and cause a visible jump — so the
+ *  scroll offset is adjusted by exactly the height added, keeping the user's view
+ *  stable while older days become available above. `extendingUp` guards against
+ *  re-entering before the `nextTick` adjustment lands (the scroll event can fire
+ *  many times while `scrollTop` is still near 0). */
+let extendingUp = false;
+function onScroll(): void {
+  const el = scroller.value;
+  if (!el) return;
+  if (el.scrollTop < EDGE_THRESHOLD && !extendingUp) {
+    extendingUp = true;
+    const prevHeight = el.scrollHeight;
+    windowStart.value -= EXTEND_CHUNK;
+    void nextTick(() => {
+      const added = el.scrollHeight - prevHeight;
+      if (added > 0) el.scrollTop += added;
+      extendingUp = false;
+    });
+  }
+  if (el.scrollTop + el.clientHeight > el.scrollHeight - EDGE_THRESHOLD) {
+    windowEnd.value += EXTEND_CHUNK;
+  }
+}
+
+/** Jump back to today after scrolling far away. Sets `selectedDate` (the view's
+ *  watcher opens today's note + the `selectedDate` watch re-centers); if today
+ *  is already selected (so the watcher wouldn't fire) open + center directly. */
+function goToToday(): void {
+  if (daily.selectedDate === todayIsoStr) {
+    void daily.openDailyNote(todayIsoStr);
+    void nextTick(() => centerSelected(true));
+  } else {
+    daily.setSelectedDate(todayIsoStr);
+  }
 }
 
 onMounted(() => {
-  // Refresh the daily-note set so dots are correct on entry, then centre today.
-  // Also kick off the task-reference aggregation scan so the task counters
-  // + the references panel's tasks list populate (the store otherwise only
-  // re-scans on `notes.items` length change).
-  void daily.refreshDailyNotes().finally(() => void nextTick(centerSelected));
+  // Centre today INSTANTLY (no smooth animation → no jump from the top). The
+  // day cells are computed from today's ISO, so they are already in the DOM on
+  // mount; refreshDailyNotes/refreshTaskRefs only update dots/counters and can
+  // run in parallel without delaying centering.
+  void nextTick(() => centerSelected(false));
+  void daily.refreshDailyNotes();
   daily.refreshTaskRefs();
 });
 
 watch(
   () => daily.selectedDate,
-  () => void nextTick(centerSelected)
+  () => void nextTick(() => centerSelected(true))
 );
 </script>
 
@@ -160,23 +202,17 @@ watch(
     <div class="flex items-center gap-1 px-2 py-2 text-sm font-medium text-text">
       <span class="shrink-0">{{ daily.selectedDate }}</span>
       <button
-        class="titlebar-no-drag ml-auto rounded-md p-1 text-text-muted hover:bg-glass-hover hover:text-text"
-        :title="$t('common.previous')"
-        @click="shiftWindow(-14)"
+        class="titlebar-no-drag ml-auto rounded-md px-2 py-0.5 text-xs font-medium text-text-muted hover:bg-glass-hover hover:text-text"
+        :title="$t('common.today')"
+        @click="goToToday"
       >
-        <Icon name="chevron-up" :size="16" />
-      </button>
-      <button
-        class="titlebar-no-drag rounded-md p-1 text-text-muted hover:bg-glass-hover hover:text-text"
-        :title="$t('common.next')"
-        @click="shiftWindow(14)"
-      >
-        <Icon name="chevron-down" :size="16" />
+        {{ $t('common.today') }}
       </button>
     </div>
     <div
       ref="scroller"
       class="titlebar-no-drag flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2"
+      @scroll.passive="onScroll"
     >
       <button
         v-for="d in days"

@@ -200,6 +200,15 @@ export const useEditorStore = defineStore("editor", () => {
     findToggleSignal.value++;
   }
 
+  /** Bumped by the "Show note suggestions" palette command; each `Editor.vue`
+   *  watches it and force-opens its proactive-suggestion overlay when it is the
+   *  focused pane (mirrors `findSignal` — a palette entry point that needs no
+   *  global keybinding to reach the per-tab `useNoteSuggestions` controller). */
+  const suggestionsSignal = ref(0);
+  function requestSuggestions(): void {
+    suggestionsSignal.value++;
+  }
+
   // --- global-search scroll-to-match ----------------------------------------
   // When a global-search result is opened (`layout.openTab` — reuse-or-create),
   // the search store stages a "pending scroll target" here keyed by the tab's id
@@ -250,6 +259,7 @@ export const useEditorStore = defineStore("editor", () => {
     findSignal,
     findToggleSignal,
     replaceSignal,
+    suggestionsSignal,
     pendingScrollTargets,
     editor,
     isEditable,
@@ -259,6 +269,7 @@ export const useEditorStore = defineStore("editor", () => {
     requestFind,
     requestReplace,
     requestFindToggle,
+    requestSuggestions,
     setPendingScrollTarget,
     pendingScrollTargetFor,
     clearPendingScrollTarget,

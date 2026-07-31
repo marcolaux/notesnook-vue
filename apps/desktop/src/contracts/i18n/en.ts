@@ -35,7 +35,8 @@ export default {
     never: "Never",
     noAdditionalText: "No additional text",
     previous: "Previous",
-    next: "Next"
+    next: "Next",
+    today: "Today"
   },
   notebookPicker: {
     title: "Choose a notebook",
@@ -938,6 +939,7 @@ export default {
     reloadWindow: "Reload window",
     searchNotes: "Search notes",
     findInNote: "Find in note",
+    showNoteSuggestions: "Show note suggestions",
     openTodayDailyNote: "Open today's daily note",
     toggleSidebar: "Toggle sidebar",
     toggleNotesList: "Toggle notes list",

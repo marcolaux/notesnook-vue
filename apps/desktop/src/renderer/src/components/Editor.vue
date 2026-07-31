@@ -203,7 +203,9 @@ const {
   open: sugOpen,
   suggestions: sugSuggestions,
   onContentChange: onSuggestionContentChange,
+  show: showSuggestions,
   dismiss: dismissSuggestions,
+  forcedOpen: sugForcedOpen,
   assignNotebook: assignSuggestedNotebook,
   assignTag: assignSuggestedTag,
   assignColor: assignSuggestedColor
@@ -305,6 +307,23 @@ watch(
   () => editorStore.findToggleSignal,
   () => {
     if (editorStore.editor === editor.value) findOpen.value = !findOpen.value;
+  }
+);
+
+// Palette "Show note suggestions" command bumps `editorStore.suggestionsSignal`;
+// force this pane's proactive-suggestion overlay open on a bump when focused
+// (mirrors `findSignal`). The composable's `show` clears any dismissal + re-runs
+// the engine immediately with the current content; it's a no-op when the note
+// already has a notebook/tag/color or is too short to suggest for.
+watch(
+  () => editorStore.suggestionsSignal,
+  () => {
+    if (editorStore.editor === editor.value) {
+      showSuggestions(
+        editor.value?.getText({ blockSeparator: "\n" }) ?? "",
+        myNote.value?.title ?? ""
+      );
+    }
   }
 );
 
@@ -1649,6 +1668,7 @@ function onEditorAreaClick(e: MouseEvent): void {
     <NoteSuggestions
       v-if="sugOpen && sugSuggestions"
       :suggestions="sugSuggestions"
+      :keyboard-active="sugForcedOpen"
       @assign-notebook="assignSuggestedNotebook"
       @assign-tag="assignSuggestedTag"
       @assign-color="assignSuggestedColor"
