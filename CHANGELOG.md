@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Omnibar dropdown dropped the first result of every search tier
+Typing a query that matched exactly **one** note (e.g. `bug` → the *NNVue Bugs* note) showed nothing in the omnibar dropdown, even though the full Search Results tab found it. The dropdown's tier-grouping loop captured the "current group" reference *before* creating a new group, so the first item of each tier (Exact / Semantic / Cluster) was never added to its group — and with a single result the only item was dropped, leaving a lone section header with zero rows. With semantic search on the symptom was stranger: a semantic hit landed under the **Exact** header (it was pushed into the previous tier's group) while the real exact match vanished. Fixed in `OmnibarDropdown.vue` by reassigning the group reference to the newly-created group before pushing the item. The Search Results page used a separate, correct grouping path, which is why it always showed the note.
+
+### 🐛 Semantic-search toggle now persists in the Settings window
+Disabling **Semantic Vector Search** in Settings → Search for an account appeared not to stick: the toggle showed ON again on reopen. The Settings window bootstraps its own renderer, and the settings store's `semanticSearchEnabled` ref was seeded at construction (before `bootstrap()` resolved the account context from `?ctx=`), so it read `LOCAL_CONTEXT`'s value for the whole session while the toggle *wrote* to the account's key. The main window already re-seeds these per-account client prefs via `loadClientPrefs()` after bootstrap; the Settings window boot branch now does the same. (The search path itself read the account key fresh on every query, so a disable did take effect at search time — only the Settings *UI* displayed the wrong value.)
+
 ### 🔧 Removed the bilingual keyword glossary
 Dropped the small hardcoded German↔English term map (KI↔AI, Speicher↔storage, …) from the keyword-suggestion path. It was redundant with the multilingual `granite-embedding` model, which handles cross-language matching generally (any language, any term) via the semantic path — the curated single-token list was an incomplete, surprising special case. The keyword path is now literal-only (typing "AI" still suggests `AI/Hermes` + `AI/Claude`; typing German "KI" is matched semantically, not via a hand-maintained mapping).
 

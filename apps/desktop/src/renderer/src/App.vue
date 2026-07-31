@@ -472,6 +472,19 @@ onMounted(async () => {
       // choice so the settings window matches the app theme (not stuck dark).
       applyTheme(settings.themeMode);
       await settings.load();
+      // Re-read the per-account client-only prefs for the NOW-current context.
+      // The settings/config store refs were populated at construction (during
+      // `<script setup>`, before `bootstrap`), when `getCurrentContext()` was
+      // still `LOCAL_CONTEXT`. `bootstrap` switched it to the account ctx (from
+      // `?ctx=`), so without this reload the refs hold LOCAL's values for the
+      // whole settings-window session — the semantic-search toggle displayed
+      // LOCAL's value while writing to the account ctx, so a disable appeared
+      // not to persist (it showed ON again on reopen). Mirrors the main-window
+      // boot's `loadClientPrefs()` call.
+      settings.loadClientPrefs();
+      config.loadClientPrefs();
+      applyTheme(settings.themeMode);
+      applyTransparency(settings.transparencyEnabled);
       void spellChecker.refresh();
       bootState.value = "ready";
       void router.replace("/settings");

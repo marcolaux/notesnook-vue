@@ -84,11 +84,16 @@ const groups = computed<TierGroup[] | null>(() => {
   const out: TierGroup[] = [];
   for (let i = 0; i < props.items.length; i++) {
     const tier = props.items[i]?.tier ?? "exact";
-    const last = out[out.length - 1];
+    let last = out[out.length - 1];
     if (!last || last.tier !== tier) {
-      out.push({ tier, label: tierLabel(tier), items: [], start: i });
+      // Start a new tier group; reassign `last` so the item below lands in the
+      // NEW group, not the previous one (the old code captured `last` before this
+      // push, dropping the first item of every tier — and with a single result,
+      // dropping the only item, leaving an empty dropdown under a lone header).
+      last = { tier, label: tierLabel(tier), items: [], start: i };
+      out.push(last);
     }
-    last && last.items.push(props.items[i]!);
+    last.items.push(props.items[i]!);
   }
   return out;
 });
