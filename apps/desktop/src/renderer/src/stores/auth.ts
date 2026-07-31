@@ -215,17 +215,25 @@ export const useAuthStore = defineStore("auth", () => {
     // (`userData/app-state.json`). In local mode `skippedLogin` is the SOLE
     // login gate, and it previously lived only in renderer localStorage —
     // which a hard quit / dev-origin drift could lose, re-showing the login
-    // screen on restart. Main is AUTHORITATIVE when it has a value: a lost
-    // localStorage (reads false at store construction) is restored to the
-    // persisted choice. When main has no value (fresh install, or a pre-
-    // migration install from the localStorage-only era) the localStorage
-    // value read at construction stands. Runs before the boot route settle,
-    // so the shell/login decision uses the reconciled value. Never throws —
-    // `getAppState` already swallows IPC failures.
+    // screen on restart. localStorage is authoritative-fast (written
+    // synchronously by `writeSkipped`); main is the durable mirror, written
+    // fire-and-forget (`void setAppState(...)`). The two can transiently
+    // disagree: a just-opened local window reads the correct `true` from
+    // shared localStorage while main still holds a stale `false` because the
+    // `setAppState(true)` IPC hasn't landed yet (or was lost). Letting main
+    // clobber the value in that case re-shows the login screen — the
+    // intermittent "open local in new window → login screen" bug. So main only
+    // wins when it RESTORES a lost localStorage (main=true, local=false); when
+    // they disagree the other way, the fast/local value stands. Union of the
+    // two covers both failure modes and the no-value (pre-migration) case.
+    // Runs before the boot route settle, so the shell/login decision uses the
+    // reconciled value. Never throws — `getAppState` already swallows IPC
+    // failures.
+    const localSkipped = readSkipped();
     const saved = await getAppState();
     if (typeof saved.skippedLogin === "boolean") {
-      skippedLogin.value = saved.skippedLogin;
-      writeSkippedLocal(saved.skippedLogin);
+      skippedLogin.value = localSkipped || saved.skippedLogin;
+      writeSkippedLocal(skippedLogin.value);
     }
   }
 
