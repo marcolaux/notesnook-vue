@@ -28,6 +28,7 @@ import {
 } from "@/utils/context-menu-entries";
 import { buildActiveNoteAssignmentDeps } from "@/utils/assignment-menu";
 import { rebuildSearchIndexWithConfirm } from "@/utils/rebuild-search-index";
+import { useNavHistoryStore } from "@/stores/nav-history";
 import { nextTick, watch } from "vue";
 import { logger } from "@/utils/logger";
 import i18n from "@/i18n";
@@ -245,29 +246,21 @@ const appCommands: Command[] = [
   {
     id: "app:go-back",
     title: "command.goBack",
-    keywords: ["history", "back", "previous", "navigate", "tab"],
+    keywords: ["history", "back", "previous", "navigate"],
     group: "app",
-    when: (ctx) => {
-      const id = ctx.notes.activeTabId;
-      return !!id && ctx.layout.canGoBack(id);
-    },
-    run: (ctx) => {
-      const id = ctx.notes.activeTabId;
-      if (id) ctx.layout.goBack(id);
+    when: () => useNavHistoryStore().canBack,
+    run: () => {
+      useNavHistoryStore().back();
     }
   },
   {
     id: "app:go-forward",
     title: "command.goForward",
-    keywords: ["history", "forward", "next", "navigate", "tab"],
+    keywords: ["history", "forward", "next", "navigate"],
     group: "app",
-    when: (ctx) => {
-      const id = ctx.notes.activeTabId;
-      return !!id && ctx.layout.canGoForward(id);
-    },
-    run: (ctx) => {
-      const id = ctx.notes.activeTabId;
-      if (id) ctx.layout.goForward(id);
+    when: () => useNavHistoryStore().canForward,
+    run: () => {
+      useNavHistoryStore().forward();
     }
   },
   {

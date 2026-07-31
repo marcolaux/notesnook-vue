@@ -20,12 +20,14 @@ import { Icon } from "@notesnook-vue/ui-vue";
 import { useOmnibarStore } from "@/stores/omnibar";
 import { useTitleBarStore } from "@/stores/titlebar";
 import { useEditorStore } from "@/stores/editor";
+import { useNavHistoryStore } from "@/stores/nav-history";
 import OmnibarDropdown from "./OmnibarDropdown.vue";
 
 const omnibar = useOmnibarStore();
 const titlebar = useTitleBarStore();
 const { t } = useI18n();
 const editorStore = useEditorStore();
+const nav = useNavHistoryStore();
 
 const input = ref<HTMLInputElement | null>(null);
 const field = ref<HTMLElement | null>(null);
@@ -139,6 +141,27 @@ watch(
 
 <template>
   <div class="global-search flex-1">
+    <!-- Global back/forward navigation (the per-window nav-history stack).
+         Sits INSIDE the omnibar's centered row so the pair hugs the pill's left
+         side (the whole [back][fwd][pill] group is centered together). -->
+    <button
+      type="button"
+      class="global-search__nav titlebar-no-drag"
+      :title="t('titlebar.navBack')"
+      :disabled="!nav.canBack"
+      @click="nav.back()"
+    >
+      <Icon name="arrow-left" :size="16" />
+    </button>
+    <button
+      type="button"
+      class="global-search__nav titlebar-no-drag"
+      :title="t('titlebar.navForward')"
+      :disabled="!nav.canForward"
+      @click="nav.forward()"
+    >
+      <Icon name="arrow-right" :size="16" />
+    </button>
     <div ref="field" class="global-search__field titlebar-no-drag">
       <Icon name="search" :size="14" class="global-search__icon" />
       <input
@@ -187,8 +210,32 @@ watch(
   position: relative;
   display: flex;
   align-items: center;
-  /* Center the (max-560px) field within the title-bar's flex-1 center slot. */
+  /* Center the [back][fwd][field] group within the title-bar's flex-1 slot so
+     the nav buttons hug the pill's left side. */
   justify-content: center;
+  gap: 4px;
+}
+/* Global back/forward nav buttons — sit immediately left of the pill. Styled
+ * to match the titlebar toggle buttons (muted, hover surface, disabled dim). */
+.global-search__nav {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.45));
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.12s ease, opacity 0.12s ease;
+}
+.global-search__nav:hover:not(:disabled) {
+  background: var(--color-surface-field-hover, rgba(255, 255, 255, 0.08));
+}
+.global-search__nav:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 /* The visible search pill — a recessed field with a leading search icon, the
  * shortcut hint, and the command-palette ⋯ button on the right INSIDE it.

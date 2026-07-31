@@ -877,6 +877,8 @@ export default {
     enterFocusMode: "Enter focus mode",
     exitFocusMode: "Exit focus mode",
     visualizer: "Vector & Semantic Cluster Visualizer",
+    navBack: "Go back",
+    navForward: "Go forward",
     upstreamNewer: "Upstream {latest} is newer than the {baseline} you built against — click to view",
     upstreamLabel: "upstream",
     upstreamDismiss: "Dismiss until a newer release",

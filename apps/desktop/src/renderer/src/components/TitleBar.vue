@@ -151,7 +151,9 @@ onUnmounted(() => {
 
     <!-- The editor tab strips live per-pane (Phase 4.2/4.3); the title-bar
          center slot hosts the global search (replacing the old app label).
-         Platform-aware padding still keeps this clear of the OS window controls. -->
+         Platform-aware padding still keeps this clear of the OS window controls.
+         The global back/forward nav buttons live INSIDE the omnibar's centered
+         row (see GlobalSearchInput.vue) so they hug the pill's left side. -->
     <GlobalSearchInput class="flex-1" />
     <div class="flex items-center gap-1">
       <span

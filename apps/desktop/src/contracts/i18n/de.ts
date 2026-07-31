@@ -863,6 +863,8 @@ export default {
     enterFocusMode: "Fokusmodus aktivieren",
     exitFocusMode: "Fokusmodus verlassen",
     visualizer: "Vektor- & Semantik-Cluster-Visualizer",
+    navBack: "Zurück",
+    navForward: "Vorwärts",
     upstreamNewer: "Upstream {latest} ist neuer als das {baseline}, gegen das du gebaut hast — klicken zum Anzeigen",
     upstreamLabel: "Upstream",
     upstreamDismiss: "Ausblenden bis zu einem neueren Release",

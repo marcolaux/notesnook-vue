@@ -47,6 +47,7 @@ import { isDatabaseLockedMessage } from "@contracts/db-locked";
 import { setTheme, ThemeDark, ThemeLight, type VueTheme } from "@notesnook-vue/theme-vue";
 import { useReminderNotifications } from "@/composables/use-reminder-notifications";
 import { useTabShortcuts } from "@/composables/use-tab-shortcuts";
+import { useNavHistoryCapture } from "@/composables/use-nav-history";
 import ContextMenu from "@/components/ContextMenu.vue";
 import DatePickerPopup from "@/components/DatePickerPopup.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -340,6 +341,10 @@ if (!isSettingsWindow && !isChangelogWindow && !isTornOffWindow) {
 // `onUnmounted` cleanup registers against this component instance.
 if (!isSettingsWindow && !isChangelogWindow && !isNoteWindow) {
   useTabShortcuts();
+  // Navigation-history capture watcher (global back/forward). Same window
+  // scope as tab shortcuts — every editor-bearing window keeps its own
+  // per-window nav history; settings/changelog/note windows don't need it.
+  useNavHistoryCapture();
 }
 
 

@@ -9,12 +9,14 @@
  *  - New Tab / Note: `Cmd/Ctrl + T`
  *  - Open today's daily note: `Cmd/Ctrl + D`
  *  - Detach focused pane to new window: `Cmd/Ctrl + Shift + K` (Phase 4.6)
+ *  - Global back / forward (nav history): `Cmd/Ctrl + [` / `Cmd/Ctrl + ]`
  */
 import { onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useNotesStore } from "@/stores/notes";
 import { useAuthStore } from "@/stores/auth";
+import { useNavHistoryStore } from "@/stores/nav-history";
 import { useDailyNotesStore } from "@/stores/daily-notes";
 import { todayIso } from "@/utils/daily-notes";
 import { desktop } from "@/platform/desktop-bridge";
@@ -27,6 +29,7 @@ export function useTabShortcuts(): void {
   const auth = useAuthStore();
   const router = useRouter();
   const daily = useDailyNotesStore();
+  const nav = useNavHistoryStore();
 
   function onKeydown(e: KeyboardEvent): void {
     if (!auth.showShell) return;
@@ -39,6 +42,26 @@ export function useTabShortcuts(): void {
       e.preventDefault();
       e.stopPropagation();
       void desktop.window.openSettings.mutate({ contextId: getCurrentContext() }).catch(() => undefined);
+      return;
+    }
+
+    // --- Cmd/Ctrl + [ / ] -> global back / forward (nav history) ---
+    // `Cmd+Shift+[` / `]` are taken by prev/next-tab cycling; the no-shift
+    // chords here are free. Browser-standard back/forward on macOS.
+    if (metaOrCtrl && !e.shiftKey && !e.altKey && (e.key === "[" || e.key === "{")) {
+      if (nav.canBack) {
+        e.preventDefault();
+        e.stopPropagation();
+        nav.back();
+      }
+      return;
+    }
+    if (metaOrCtrl && !e.shiftKey && !e.altKey && (e.key === "]" || e.key === "}")) {
+      if (nav.canForward) {
+        e.preventDefault();
+        e.stopPropagation();
+        nav.forward();
+      }
       return;
     }
 

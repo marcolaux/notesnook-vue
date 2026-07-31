@@ -24,6 +24,7 @@ import type { CollectionType } from "@/stores/collections";
 import { useCollectionsStore } from "@/stores/collections";
 import { usePropertiesStore } from "@/stores/properties";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
+import { useNavHistoryStore } from "@/stores/nav-history";
 import { useShellStore } from "@/stores/shell";
 import { useSettingsStore } from "@/stores/settings";
 import { useConfigStore } from "@/stores/config";
@@ -444,6 +445,12 @@ export const useNotesStore = defineStore("notes", () => {
     contentCache.value = {};
     saveState.value = "idle";
     lastSavedAt.value = null;
+    // The nav-history stack references note ids from the previous context's DB
+    // — clear it so back/forward across an account switch never reopens a
+    // foreign note. (`nav-history` imports `notes`, so this is a module cycle,
+    // but both stores only call each other inside functions, never at setup, so
+    // Pinia's lazy instantiation keeps it safe.)
+    void useNavHistoryStore().clear();
   }
 
   /** Collapse the selection to a single note AND open it in the active group.

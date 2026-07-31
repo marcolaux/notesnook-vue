@@ -12,6 +12,7 @@
 import { router } from "@/router";
 import { useCollectionsStore, type CollectionType } from "@/stores/collections";
 import { useNotesStore } from "@/stores/notes";
+import { useNavHistoryStore } from "@/stores/nav-history";
 
 export async function goToCollection(
   type: CollectionType,
@@ -19,7 +20,18 @@ export async function goToCollection(
 ): Promise<void> {
   const collections = useCollectionsStore();
   const notes = useNotesStore();
-  collections.select(type, id);
-  await notes.filterByCollection(type, id);
-  void router.push("/all");
+  // One user action (clicking a notebook/tag/color) mutates three signals across
+  // an `await` — `collections.select` (sync), `filterByCollection` (async DB
+  // query), then `router.push("/all")`. The rAF-deferred capture coalesces the
+  // fast case, but a slow DB fetch can span more than one frame and split the
+  // click into two history entries. The batch defers all three into one entry.
+  const nav = useNavHistoryStore();
+  nav.beginBatch();
+  try {
+    collections.select(type, id);
+    await notes.filterByCollection(type, id);
+    void router.push("/all");
+  } finally {
+    nav.endBatch();
+  }
 }
