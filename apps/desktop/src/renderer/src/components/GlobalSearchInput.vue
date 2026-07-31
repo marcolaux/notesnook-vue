@@ -7,8 +7,9 @@
 
   Keyboard nav: ↑/↓ move, Enter dispatches the active row (or, in notes mode with
   no selection, opens a Search Results tab), Esc closes. A platform-aware shortcut
-  hint (⌘K on macOS, Ctrl+K elsewhere) sits INSIDE the field on the right while it
-  is empty; the global hotkeys are registered in `TitleBar.vue`
+  hint (⌘⌥F search / ⌘K commands on macOS, Ctrl+Alt+F / Ctrl+K elsewhere) sits
+  INSIDE the field on the right while it is empty; the global hotkeys are
+  registered in `TitleBar.vue`
   (⌘⌥F notes / ⌘K commands / ⌘⇧P commands) — they call the store openers, which
   bump `focusSignal`, watched below.
 -->
@@ -38,9 +39,14 @@ const left = ref(0);
 const top = ref(0);
 const width = ref(0);
 
-const shortcut = titlebar.isMacos ? "⌘K" : "Ctrl+K";
-// Show the shortcut hint whenever the field is empty (focused or not) — once you
-// start typing it disappears so it never overlaps the query text.
+// Two global hotkeys open this field (registered in `TitleBar.vue`): the search
+// binding (⌘⌥F / Ctrl+Alt+F → notes mode, the field's default) and the command
+// binding (⌘K / Ctrl+K → command mode, same as the ⋯ button). Both are hinted
+// inside the field on the right so the bindings are discoverable.
+const searchShortcut = titlebar.isMacos ? "⌘⌥F" : "Ctrl+Alt+F";
+const commandShortcut = titlebar.isMacos ? "⌘K" : "Ctrl+K";
+// Show the shortcut hints whenever the field is empty (focused or not) — once
+// you start typing they disappear so they never overlap the query text.
 const showHint = () => !omnibar.query;
 
 function measure(): void {
@@ -177,9 +183,12 @@ watch(
         @focus="onFocus"
         @blur="onBlur"
       />
-      <kbd v-if="showHint()" class="global-search__hint">{{ shortcut }}</kbd>
+      <div v-if="showHint()" class="global-search__hints">
+        <kbd class="global-search__hint">{{ searchShortcut }}</kbd>
+        <kbd class="global-search__hint">{{ commandShortcut }}</kbd>
+      </div>
       <!-- Command-palette opener (moved from the editor toolbar). Sits INSIDE
-           the pill, beside the ⌘K hint. -->
+           the pill, beside the shortcut hints. -->
       <button
         type="button"
         class="global-search__cmd"
@@ -281,7 +290,15 @@ watch(
 .global-search__input::placeholder {
   color: var(--color-text-muted, rgba(255, 255, 255, 0.4));
 }
-/* Shortcut hint — lives inside the field on the right. */
+/* Shortcut hints — live inside the field on the right. The search binding
+ * (⌘⌥F) and command binding (⌘K) sit together so both global openers are
+ * discoverable. */
+.global-search__hints {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
 .global-search__hint {
   flex: 0 0 auto;
   padding: 1px 5px;

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Omnibar field now hints at the search shortcut too
+The omnibar pill in the title bar already showed a `⌘K` / `Ctrl+K` hint for the command palette, but the other global opener — `⌘⌥F` (macOS) / `Ctrl+Alt+F` (elsewhere), which drops you into notes-search mode (the field's default) — was undiscoverable. The field now shows **both** shortcut badges on the right while empty: the search binding first, then the command binding (matching the adjacent `⋯` palette button). Both hide as soon as you type so they never overlap the query. Wired in `GlobalSearchInput.vue`; the hotkeys themselves are unchanged (registered in `TitleBar.vue`).
+
 ### 🐛 Omnibar dropdown dropped the first result of every search tier
 Typing a query that matched exactly **one** note (e.g. `bug` → the *NNVue Bugs* note) showed nothing in the omnibar dropdown, even though the full Search Results tab found it. The dropdown's tier-grouping loop captured the "current group" reference *before* creating a new group, so the first item of each tier (Exact / Semantic / Cluster) was never added to its group — and with a single result the only item was dropped, leaving a lone section header with zero rows. With semantic search on the symptom was stranger: a semantic hit landed under the **Exact** header (it was pushed into the previous tier's group) while the real exact match vanished. Fixed in `OmnibarDropdown.vue` by reassigning the group reference to the newly-created group before pushing the item. The Search Results page used a separate, correct grouping path, which is why it always showed the note.
 
