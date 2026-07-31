@@ -281,41 +281,6 @@ function containsSubsequence(haystack: string[], phrase: string[]): boolean {
  *  set — a literal name hit is a stronger signal than a noisy aggregation. */
 const KEYWORD_SCORE = 1.2;
 
-/** Small bidirectional German↔English term glossary for the keyword path. When
- *  a tag segment doesn't literally appear in the text, also check its aliases —
- *  so "KI" in German text matches a tag named "AI" (and vice-versa). Curated +
- *  conservative (only specific tech terms where the cross-language equivalent
- *  is unambiguous, to avoid false positives). Phrase/compound cross-language
- *  cases (e.g. "selbst hosten" ↔ "selfhost") are handled by the multilingual
- *  semantic path, not this single-token glossary. */
-const BILINGUAL_PAIRS: ReadonlyArray<readonly [string, string]> = [
-  ["ai", "ki"],
-  ["storage", "speicher"],
-  ["database", "datenbank"],
-  ["network", "netzwerk"],
-  ["security", "sicherheit"],
-  ["password", "passwort"],
-  ["encryption", "verschlüsselung"],
-  ["backup", "sicherung"],
-  ["archive", "archiv"],
-  ["calendar", "kalender"],
-  ["task", "aufgabe"]
-];
-const BILINGUAL_ALIASES: ReadonlyMap<string, readonly string[]> = (() => {
-  const m = new Map<string, string[]>();
-  for (const [a, b] of BILINGUAL_PAIRS) {
-    (m.get(a) ?? m.set(a, []).get(a)!).push(b);
-    (m.get(b) ?? m.set(b, []).get(b)!).push(a);
-  }
-  return m;
-})();
-
-/** Tokens in `text` that are cross-language aliases of `token` (lowercased). */
-function aliasHits(token: string, present: Set<string>): string[] {
-  const aliases = BILINGUAL_ALIASES.get(token);
-  return aliases ? aliases.filter((a) => present.has(a)) : [];
-}
-
 /**
  * Direct keyword signal: scan `text` for existing tag/notebook names. NOT
  * subject to the similarity confidence gate — a literal name match is a strong
@@ -325,8 +290,6 @@ function aliasHits(token: string, present: Set<string>): string[] {
  *    "Hermes" matches AI/Hermes; "NAS" matches NAS. A segment is matched as a
  *    consecutive token subsequence (multi-word segments work; single-word
  *    segments match the token).
- *  • Cross-language aliases: a single-token segment also matches if an alias
- *    is in the text — "KI" (German) matches a tag named "AI" (English).
  *  • Notebooks match on the FULL title as a consecutive token subsequence, so
  *    "My Notebook" only matches "my notebook" (not "my" alone).
  *
@@ -334,6 +297,10 @@ function aliasHits(token: string, present: Set<string>): string[] {
  * mishandles umlauts/accents). Score is `KEYWORD_SCORE` + a tiny frequency
  * bonus so ties break toward the more-mentioned name. Colors have no name to
  * match, so they are similarity-only.
+ *
+ * Cross-language matching (e.g. German "KI" → an English "AI" tag) is handled
+ * by the multilingual semantic path (`granite-embedding`), not here — a
+ * curated single-token glossary was removed as redundant with that model.
  */
 export function keywordSuggestions(
   text: string,
@@ -344,7 +311,6 @@ export function keywordSuggestions(
   if (haystack.length === 0) return { tags: [], notebooks: [] };
   const freq = new Map<string, number>();
   for (const t of haystack) freq.set(t, (freq.get(t) ?? 0) + 1);
-  const present = new Set(haystack);
 
   const scoreFor = (phrase: string[]): number => KEYWORD_SCORE + (freq.get(phrase[0] ?? "") ?? 0) * 0.01;
 
@@ -356,12 +322,6 @@ export function keywordSuggestions(
       if (phrase.length > 0 && containsSubsequence(haystack, phrase)) {
         outTags.push({ id: tag.id, title: tag.title, score: scoreFor(phrase) });
         break; // one segment match is enough; don't add the same tag twice
-      }
-      // Cross-language alias (single-token segment only): "KI" in text → "AI" tag
-      const segTok = phrase[0];
-      if (phrase.length === 1 && segTok !== undefined && aliasHits(segTok, present).length > 0) {
-        outTags.push({ id: tag.id, title: tag.title, score: KEYWORD_SCORE });
-        break;
       }
     }
   }

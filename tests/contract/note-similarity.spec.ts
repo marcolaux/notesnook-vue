@@ -171,31 +171,21 @@ describe("note-similarity · keywordSuggestions", () => {
     expect(mergeCapped(a, b, 2).length).toBe(2);
   });
 
-  it("cross-language alias: German KI in text matches a tag named AI", async () => {
-    const { keywordSuggestions } = await loadEngine();
-    // Text has "KI" (German) but the tag is "AI/Hermes" (English) — the bilingual
-    // glossary (ai↔ki) bridges them so the tag is suggested.
-    const out = keywordSuggestions("KI ist eine interessante Sache", [
-      { id: "t1", title: "AI/Hermes" },
-      { id: "t2", title: "AI/Claude" }
-    ], []);
-    expect(out.tags.map((t) => t.id).sort()).toEqual(["t1", "t2"]);
-  });
-
-  it("cross-language alias works in reverse (English text → German tag)", async () => {
-    const { keywordSuggestions } = await loadEngine();
-    const out = keywordSuggestions("some notes about storage and a database", [
-      { id: "s", title: "Speicher" },
-      { id: "d", title: "Datenbank" }
-    ], []);
-    expect(out.tags.map((t) => t.id).sort()).toEqual(["d", "s"]);
-  });
-
   it("alias does not fire for unrelated text (no false positives)", async () => {
     const { keywordSuggestions } = await loadEngine();
     const out = keywordSuggestions("nichts relevantes hier", [
       { id: "t1", title: "AI/Hermes" },
       { id: "s", title: "Speicher" }
+    ], []);
+    expect(out.tags).toEqual([]);
+  });
+
+  it("cross-language: German KI does NOT match an English AI tag (no glossary)", async () => {
+    const { keywordSuggestions } = await loadEngine();
+    // The bilingual glossary was removed; the keyword path is literal-only.
+    // Cross-language matching is the semantic path's job.
+    const out = keywordSuggestions("KI ist eine interessante Sache", [
+      { id: "t1", title: "AI/Hermes" }
     ], []);
     expect(out.tags).toEqual([]);
   });

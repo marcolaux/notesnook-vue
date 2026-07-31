@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No published changes yet._
+### 🔧 Removed the bilingual keyword glossary
+Dropped the small hardcoded German↔English term map (KI↔AI, Speicher↔storage, …) from the keyword-suggestion path. It was redundant with the multilingual `granite-embedding` model, which handles cross-language matching generally (any language, any term) via the semantic path — the curated single-token list was an incomplete, surprising special case. The keyword path is now literal-only (typing "AI" still suggests `AI/Hermes` + `AI/Claude`; typing German "KI" is matched semantically, not via a hand-maintained mapping).
 
 ## [0.17.0] - 2026-07-31
 
