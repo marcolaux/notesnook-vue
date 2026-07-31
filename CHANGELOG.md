@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⌨️ Escape from the omnibar restores editor focus
+Pressing Escape after focusing the omnibar via search (⌘/Ctrl+⌥F) or the command palette (⌘/Ctrl+K, ⌘/Ctrl+⇧P) now returns the caret to the editor that had focus before the omnibar opened, instead of leaving focus on the omnibar field (blurred to `<body>`). The focused pane's editor is captured at open time — only when the editor's ProseMirror surface held DOM focus right before the omnibar stole it — so opening the omnibar from a non-editor surface (the notes list, an attachment tab, the `⋯` button clicked while the list had focus) does nothing on Escape, preserving the previous behavior. The capture is cleared whenever the omnibar closes so a stale editor reference never survives into the next session. This mirrors the existing capture-and-refocus pattern used by the editor context menu's assignment submenus.
+
 ### 🔎 Rebuild lexical search index — fixes title search for older notes
 Lexical search (FTS5) could miss words that appear only in the **title** of notes created before the search index was populated, while body search still worked. The `notes_fts` table (titles) was never backfilled for those existing notes — the `a-2025-06-04` migration's `rebuildSearchIndex` didn't run cleanly for an already-existing database — and the FTS triggers only index *new* title writes, so older notes' titles stayed absent from `notes_fts` while `content_fts` (bodies) was populated. New notes were unaffected (triggers index them live); this repaired the pre-existing ones.
 

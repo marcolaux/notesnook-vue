@@ -13,16 +13,19 @@
   bump `focusSignal`, watched below.
 -->
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
+import type { Editor } from "@tiptap/vue-3";
 import { Icon } from "@notesnook-vue/ui-vue";
 import { useOmnibarStore } from "@/stores/omnibar";
 import { useTitleBarStore } from "@/stores/titlebar";
+import { useEditorStore } from "@/stores/editor";
 import OmnibarDropdown from "./OmnibarDropdown.vue";
 
 const omnibar = useOmnibarStore();
 const titlebar = useTitleBarStore();
 const { t } = useI18n();
+const editorStore = useEditorStore();
 
 const input = ref<HTMLInputElement | null>(null);
 const field = ref<HTMLElement | null>(null);
@@ -50,6 +53,14 @@ function onInput(e: Event): void {
   omnibar.setQuery((e.target as HTMLInputElement).value);
 }
 
+// The editor (if any) that held DOM focus right before the omnibar stole it —
+// captured at open time so Escape can put the caret back where it was. `undefined`
+// when the omnibar was opened from a non-editor surface (notes list, ⋯ button
+// clicked while the list had focus, an attachment tab, …), in which case Escape
+// leaves focus where it lands (today's behavior). Cleared again whenever the
+// omnibar closes so a stale capture never survives into the next session.
+let lastEditor: Editor | undefined;
+
 function onKeydown(e: KeyboardEvent): void {
   switch (e.key) {
     case "ArrowDown":
@@ -64,11 +75,17 @@ function onKeydown(e: KeyboardEvent): void {
       e.preventDefault();
       omnibar.commitEnter();
       break;
-    case "Escape":
+    case "Escape": {
       e.preventDefault();
+      // Capture before close/blur — closing schedules the open watcher (below)
+      // which clears `lastEditor`, and blur fires `onBlur` which calls close/clear
+      // again, but neither clears the local synchronously.
+      const ed = lastEditor;
       omnibar.close();
       input.value?.blur();
+      if (ed) void nextTick(() => ed.commands.focus());
       break;
+    }
   }
 }
 
@@ -89,6 +106,21 @@ function onBlur(): void {
 watch(
   () => omnibar.focusSignal,
   () => {
+    // A fresh open (input not yet focused) is the moment to record whether the
+    // editor held DOM focus — `openIn` set `open=true` then bumped this signal,
+    // but the input hasn't received focus yet, so `document.activeElement` is
+    // still the editor's ProseMirror. A re-focus bump while the omnibar already
+    // has focus leaves the original capture untouched. `useEditorStore().editor`
+    // resolves the focused pane's live editor (the omnibar never changes the
+    // focused pane key) — guard it with the ProseMirror check so opening from a
+    // non-editor surface (notes list, attachment tab) does NOT capture.
+    const alreadyFocused = document.activeElement === input.value;
+    if (!alreadyFocused) {
+      const active = document.activeElement;
+      const ed = editorStore.editor;
+      lastEditor =
+        ed && active && active.closest(".ProseMirror") ? ed : undefined;
+    }
     input.value?.focus();
     if (omnibar.query.trim()) omnibar.open = true;
   }
@@ -100,6 +132,7 @@ watch(
   () => omnibar.open,
   (isOpen) => {
     if (isOpen) measure();
+    else lastEditor = undefined;
   }
 );
 </script>
