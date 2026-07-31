@@ -105,7 +105,7 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="titlebar-drag flex h-10 shrink-0 items-center gap-2 border-b border-glass-border bg-glass-surface backdrop-blur-2xl"
+    class="titlebar-drag relative flex h-10 shrink-0 items-center gap-2 border-b border-glass-border bg-glass-surface backdrop-blur-2xl"
     :style="{ paddingLeft: titlebar.padding.left + 'px', paddingRight: titlebar.padding.right + 'px' }"
   >
     <button
@@ -155,7 +155,16 @@ onUnmounted(() => {
          The global back/forward nav buttons live INSIDE the omnibar's centered
          row (see GlobalSearchInput.vue) so they hug the pill's left side. -->
     <GlobalSearchInput class="flex-1" />
-    <div class="flex items-center gap-1">
+    <!-- The badge cluster is taken out of the flex flow (absolute, pinned to the
+         right edge of the titlebar) so it cannot shrink the omnibar's flex-1
+         slot when a badge appears/disappears. This keeps the [back][fwd][pill]
+         group centered at a fixed position regardless of which badges show. The
+         right offset mirrors the titlebar's right padding so the badges clear the
+         OS window controls (WCO) on Windows/Linux. -->
+    <div
+      class="absolute top-1/2 flex -translate-y-1/2 items-center gap-1"
+      :style="{ right: titlebar.padding.right + 'px' }"
+    >
       <span
         v-if="upstream.hasNewer"
         class="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-px text-[10px] text-accent"

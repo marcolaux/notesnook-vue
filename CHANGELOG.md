@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧭 Omnibar / nav buttons no longer shift when a badge appears
+The omnibar pill and the back/forward nav buttons now stay centered at a fixed position in the title bar regardless of whether the indexing, update, or upstream-release badge is showing on the right. Previously the title bar was a plain flex row — `[left toggles] [omnibar flex-1] [badge cluster]` — and the omnibar was centered only *within the space left over* after the badge cluster took its share, so any badge appearing/disappearing widened/narrowed the cluster, shrank the omnibar's `flex-1` slot, and shifted the centered `[back][fwd][pill]` group left or right.
+
+- **Fixed in `TitleBar.vue`**: the right-side badge cluster is taken out of the flex flow — absolutely positioned, pinned to the right edge of the title bar (with `right` mirroring the title bar's right padding so it still clears the Windows/Linux window-control overlay buttons). The row gains `relative` to become the positioning context. The omnibar's `flex-1` slot now always spans the full content width, so its centered group never moves. Trade-off: on very narrow windows the centered pill's empty right flank could sit under a badge, but it never overlaps the nav buttons (which hug the pill's left side) — acceptable since the whole point is that the omnibar must not move.
+
 ### ◀️ Global back / forward navigation next to the omnibar
 The title bar now has **back / forward** arrows hugging the left side of the omnibar pill — a browser-style workspace history that walks a single per-window stack across *every* navigation surface, not just within one tab. Switching tabs, opening a note in a new tab, jumping from All Notes to Daily Notes, following an inline note link, picking an omnibar result, and closing a note are all steps on one timeline; back/forward walks it regardless of which surface the navigation crossed. So: switch tabs → back returns to the previous tab; open a note in a new tab → back returns to the tab you had open; All Notes → Daily Notes → back returns to All Notes; close a note → back reopens it. Reaches the palette (`app:go-back` / `app:go-forward`) and the keyboard (`⌘/Ctrl+[` / `⌘/Ctrl+]`).
 
