@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🗑️ Move to trash from the tab context menu
+Right-clicking an editor tab now offers **Move to trash** (note tabs only), alongside the existing Close / Close others / Close right / Close all entries. The action confirms first (same dialog as the notes-list row menu) then trashes the note — and since `notes.moveToTrash` closes every open tab for that note as part of trashing, no separate close is needed (the same single-call behavior the `app:close-tab-and-trash` palette command relies on).
+
+- **Wired in `NoteTabs.vue`'s `onTabContextMenu`** inside the note-tab branch: a `danger` item reusing the existing `archive.moveToTrash` / `contextMenu.moveToTrashSingle` i18n keys and the `trash-2` icon, gated on `tab.kind === "note" && tab.noteId`. The `useDialogStore` confirm is added to the component; the entry sits after the copy-link / open-in-new-window note actions, before the pane-level detach entry. Attachment and search-only tabs are unaffected.
+
 ### ⌨️ ArrowDown in the title moves focus into the editor
 Pressing ArrowDown while the caret is in the note title field now moves focus into the editor body (at the start of the first paragraph), instead of doing nothing. The title is a single-line input where ArrowDown has no native target, so it now mirrors the existing Enter behavior (which already focused the editor). Only ArrowDown is added — all other keys in the title behave as before.
 

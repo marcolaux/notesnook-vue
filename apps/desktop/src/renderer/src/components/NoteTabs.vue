@@ -50,6 +50,7 @@ import { useI18n } from "vue-i18n";
 import { useNotesStore } from "@/stores/notes";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { useContextMenuStore } from "@/stores/context-menu";
+import { useDialogStore } from "@/stores/dialog";
 import { useHorizontalWheelScroll } from "@/composables/use-horizontal-wheel-scroll";
 import { separator, type MenuItem } from "@/utils/context-menu";
 import { desktop } from "@/platform/desktop-bridge";
@@ -109,6 +110,7 @@ const activeTabId = computed<string | null>(
  *  blends into its (de-emphasised) editor. */
 const isPaneFocused = computed(() => layout.activeGroupId === props.groupId);
 const contextMenu = useContextMenuStore();
+const dialog = useDialogStore();
 
 // --- Pane detach (Phase 4.6) ------------------------------------------------
 /** Whether this pane has any portable tabs (note/attachment) — the grip +
@@ -259,6 +261,24 @@ function onTabContextMenu(e: MouseEvent, tab: { id: string; kind: string; noteId
       label: $t("tabs.openInNewWindow"),
       icon: "external-link",
       onSelect: () => openTabInNewWindow(tab)
+    });
+    // Move to trash (note tabs only). Confirms first — `moveToTrash` trashes
+    // the note AND closes every open tab for it, so no separate close needed.
+    items.push(separator("sep-trash"));
+    items.push({
+      id: "move-to-trash",
+      label: $t("archive.moveToTrash"),
+      icon: "trash-2",
+      danger: true,
+      onSelect: async () => {
+        const ok = await dialog.confirm({
+          title: $t("archive.moveToTrash"),
+          message: $t("contextMenu.moveToTrashSingle"),
+          confirmLabel: $t("archive.moveToTrash"),
+          danger: true
+        });
+        if (ok) void notes.moveToTrash(tab.noteId);
+      }
     });
   }
   if (canDetachPane.value) {
