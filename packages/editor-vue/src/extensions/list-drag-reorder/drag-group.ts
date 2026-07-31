@@ -44,13 +44,17 @@ The difference between the two kinds is only in HOW a sibling drop changes depth
     resolves the insert position at the target depth; nest moves the grabbed
     item into the target's child list (or creates one).
 
-Drops are constrained to the SAME top-level list TREE as the source (the source
-and target must share one outermost list node). This permits moving between the
-nested levels of one list — the whole point — while forbidding leaping between
-two unrelated lists. A cross-level move can take the only item out of a nested
-list; `deleteSourceGroup` (used by the plugin's `handleDrop`) then deletes that
-whole list node instead of just the item, so no empty list or empty-item shell
-is left behind (a `listItem` always keeps its required paragraph).
+Drops are NOT confined to the source's tree — a drop may land in ANY list in the
+document, across the non-list blocks (dividers, paragraphs) between lists. When
+the target list's item type differs from the source's, the dragged group is
+CONVERTED to the target's item type (see `convertGroupFragment`): a real-nesting
+item dropped into a checklist becomes flat `indent`-ed rows; a flat group dropped
+into a bullet/outline list becomes a real-nested tree; `checked` is kept within
+the flat family and dropped when crossing into a real-nesting type (lossy). A
+cross-level move can take the only item out of a nested list;
+`deleteSourceGroup` (used by the plugin's `handleDrop`) then deletes that whole
+list node instead of just the item, so no empty list or empty-item shell is left
+behind (a `listItem` always keeps its required paragraph).
 
 Nest math differs by indent model and lives in `nestInsert` (used by the plugin's
 `handleDrop`): checklists re-`indent` the group rows to `target.indent + 1`
@@ -83,6 +87,17 @@ export const LIST_NODE_TYPES = new Set([
 /** Checklist item node names — the ones using the flat `data-indent` model. */
 export const CHECKLIST_ITEM_TYPES = new Set(["taskItem", "checkListItem"]);
 
+/** The item node name a list node takes as direct children. `bulletList` and
+ *  `orderedList` share `listItem`. Used to convert a dragged item to the
+ *  TARGET list's item type when a cross-type drop converts the group. */
+export const LIST_ITEM_OF: Record<string, string> = {
+  bulletList: "listItem",
+  orderedList: "listItem",
+  outlineList: "outlineListItem",
+  taskList: "taskItem",
+  checkList: "checkListItem"
+};
+
 export interface DragGroup {
   /** Doc pos of the first node in the group (before it). */
   from: number;
@@ -99,10 +114,15 @@ export interface DragGroup {
  *    re-leveled to `baseIndent` (flat checklists) or to whatever depth the
  *    target list sits at (real-nesting, `baseIndent === null`).
  *  - `nest` = drop onto `targetPos`'s item to make the group its sub-item;
- *    `before` = insert as the first child (else the last). */
+ *    `before` = insert as the first child (else the last).
+ *  `targetItemType` / `targetListType` name the list the drop lands in; when
+ *  they differ from the source item type, the dropped fragment is CONVERTED to
+ *  the target's item type (see `convertGroupFragment`). Undefined for callers
+ *  that don't care (e.g. the pure `realNestingDropTarget` helper) — the fast
+ *  path then keeps the source verbatim. */
 export type DropTarget =
-  | { kind: "reorder"; insertPos: number; baseIndent: number | null }
-  | { kind: "nest"; targetPos: number; before: boolean };
+  | { kind: "reorder"; insertPos: number; baseIndent: number | null; targetItemType?: string; targetListType?: string }
+  | { kind: "nest"; targetPos: number; before: boolean; targetItemType?: string; targetListType?: string };
 
 /** A resolved drop + the DOM rect to draw the marker at (the anchor `<li>` for a
  *  reorder, the row `<li>` for a nest). `markerBefore` places the reorder line
@@ -116,26 +136,188 @@ export interface DropResolution {
 }
 
 /**
- * Doc pos of the OUTERMOST list ancestor containing the list at `listPos` (walk
- * up to the highest `LIST_NODE_TYPES` node). Used to confine a drag to one list
- * tree: a nested item lives in a different list INSTANCE than its parent, so a
- * same-instance check would wrongly forbid cross-level moves — we compare the
- * shared top-level list instead.
+ * A generic list-item tree, the pivot between the editor's two indent models.
+ * `content` = the item's own non-list block children (paragraphs, images, …);
+ * `children` = its nested sub-items (regardless of how the source represents
+ * nesting — real child lists OR flat higher-`indent` siblings); `checked` is
+ * carried from a flat source's `checked` attr (real-nesting items have none).
+ * Used to convert a dragged group to the TARGET list's item type when a drop
+ * crosses list types — the source is read into this tree, then emitted in the
+ * target's model (real-nesting builds nested child lists; flat flattens to a
+ * sequence of `indent`-ed rows).
  */
-export function topLevelListPos(doc: ProsemirrorNode, listPos: number): number {
-  // Resolve just inside the list (listPos + 1 = before its first child).
-  const $pos = doc.resolve(listPos + 1);
-  // `$pos.node(i)` climbs ancestors OUTER (i=1, just inside the doc) → INNER
-  // (i=depth, the list itself). The OUTERMOST list ancestor is the FIRST match
-  // (smallest i), so return it immediately — do NOT keep overwriting `top` with
-  // later (inner) matches, which would wrongly return the INNERMOST list and
-  // reject every cross-level move (a nested item's innermost list ≠ its parent's).
-  for (let i = 1; i <= $pos.depth; i += 1) {
-    if (LIST_NODE_TYPES.has($pos.node(i).type.name)) {
-      return $pos.before(i);
+interface ItemTree {
+  content: ProsemirrorNode[];
+  children: ItemTree[];
+  checked?: boolean;
+}
+
+/** Recurse a real-nesting item node (or a flat item's legacy nested child list
+ *  item) into an `ItemTree`: list-typed children become `children` (recurse
+ *  each `LIST_ITEM_TYPES` child), other blocks become `content`. */
+function itemNodeToTree(node: ProsemirrorNode): ItemTree {
+  const content: ProsemirrorNode[] = [];
+  const children: ItemTree[] = [];
+  node.forEach((child) => {
+    if (LIST_NODE_TYPES.has(child.type.name)) {
+      child.forEach((item) => {
+        if (LIST_ITEM_TYPES.has(item.type.name)) {
+          children.push(itemNodeToTree(item));
+        }
+      });
+    } else {
+      content.push(child);
     }
+  });
+  return { content, children };
+}
+
+/** Read the dragged group at `source` into a single root `ItemTree` (the group
+ *  is always one logical subtree — the grabbed row + its nested descendants).
+ *  Real-nesting source: the group is one item node; recurse it. Flat source: the
+ *  group is a sequence of sibling rows `[from, to)` whose `indent` attrs encode
+ *  the tree — stack-build it with the grabbed row as the root and following
+ *  higher-`indent` rows as nested children (legacy nested child lists inside a
+ *  flat item are recursed too). Returns `null` if the source isn't a list item. */
+function sourceToTree(doc: ProsemirrorNode, source: DragGroup): ItemTree | null {
+  const node = doc.nodeAt(source.from);
+  if (!node || !LIST_ITEM_TYPES.has(node.type.name)) return null;
+
+  // Real-nesting: the group is the single grabbed item (its subtree rides
+  // inside the node).
+  if (!CHECKLIST_ITEM_TYPES.has(node.type.name)) {
+    return itemNodeToTree(node);
   }
-  return listPos;
+
+  // Flat: walk the sibling sequence, build a tree from `indent` with the grabbed
+  // row as the root. Each row's own legacy nested child list (if any) is
+  // recursed via `itemNodeToTree` and appended to that row's children.
+  const grabbedIndent = Number(node.attrs.indent ?? 0);
+  const rows: ProsemirrorNode[] = [];
+  let pos = source.from;
+  while (pos < source.to) {
+    const row = doc.nodeAt(pos);
+    if (!row) break;
+    rows.push(row);
+    pos += row.nodeSize;
+  }
+  if (rows.length === 0) return null;
+
+  const root: ItemTree = itemNodeToTree(node);
+  root.checked = !!node.attrs.checked;
+
+  // Stack of { tree, indent } for the ancestor chain; the root is at grabbedIndent.
+  const stack: { tree: ItemTree; indent: number }[] = [{ tree: root, indent: grabbedIndent }];
+  for (let i = 1; i < rows.length; i += 1) {
+    const row = rows[i]!;
+    const indent = Number(row.attrs.indent ?? 0);
+    const rowTree = itemNodeToTree(row);
+    rowTree.checked = !!row.attrs.checked;
+    // Pop until the stack top is the parent (a shallower indent).
+    while (stack.length > 1 && stack[stack.length - 1]!.indent >= indent) {
+      stack.pop();
+    }
+    stack[stack.length - 1]!.tree.children.push(rowTree);
+    stack.push({ tree: rowTree, indent });
+  }
+  return root;
+}
+
+/** Build attrs for a converted item of `itemType`: only `indent` / `checked` when
+ *  the type's spec actually declares them (so we don't feed attrs a type that
+ *  doesn't have them — e.g. real-nesting `listItem` has neither). */
+function convertItemAttrs(
+  itemType: ProsemirrorNode["type"],
+  indent: number,
+  checked: boolean | undefined
+): Record<string, unknown> {
+  const attrs: Record<string, unknown> = {};
+  const spec = itemType.spec.attrs ?? {};
+  if ("indent" in spec) attrs.indent = indent;
+  if ("checked" in spec) attrs.checked = checked ?? false;
+  return attrs;
+}
+
+/** Flatten `tree` to a list of flat item nodes (`taskItem`/`checkListItem`),
+ *  DFS, with `indent = clamp(baseIndent + depth, 0, MAX_LIST_INDENT)`. Content
+ *  is filtered to paragraphs (flat rows are text rows; a real-nesting source
+ *  may hold non-paragraph blocks the flat model can't represent). `checked` is
+ *  carried only when the target type has the attr. Uses `createAndFill` so the
+ *  item is always schema-valid (it fills a required leading paragraph); bails
+ *  to `null` if the content can't fit. */
+function flattenToChecklist(
+  tree: ItemTree,
+  itemType: ProsemirrorNode["type"],
+  baseIndent: number,
+  depth: number,
+  out: ProsemirrorNode[]
+): boolean {
+  const indent = Math.max(0, Math.min(MAX_LIST_INDENT, baseIndent + depth));
+  const paragraphs = tree.content.filter((n) => n.type.name === "paragraph");
+  const attrs = convertItemAttrs(itemType, indent, tree.checked);
+  const node = itemType.createAndFill(attrs, Fragment.from(paragraphs));
+  if (!node) return false;
+  out.push(node);
+  for (const child of tree.children) {
+    if (!flattenToChecklist(child, itemType, baseIndent, depth + 1, out)) return false;
+  }
+  return true;
+}
+
+/** Build a real-nesting item node (`listItem`/`outlineListItem`) for `tree`:
+ *  content = the tree's own blocks + a single child list of `listType` holding
+ *  the recursively-built child items (only when there are children). Uses
+ *  `createAndFill` for schema validity; bails to `null` on failure. */
+function buildRealItem(
+  tree: ItemTree,
+  itemType: ProsemirrorNode["type"],
+  listType: ProsemirrorNode["type"]
+): ProsemirrorNode | null {
+  const children: ProsemirrorNode[] = [];
+  for (const child of tree.children) {
+    const childItem = buildRealItem(child, itemType, listType);
+    if (!childItem) return null;
+    children.push(childItem);
+  }
+  const content: ProsemirrorNode[] = [...tree.content];
+  if (children.length > 0) {
+    const childList = listType.create(null, Fragment.from(children));
+    if (!childList) return null;
+    content.push(childList);
+  }
+  return itemType.createAndFill(null, Fragment.from(content));
+}
+
+/** Build the fragment to insert when the source item type differs from the
+ *  target's — convert the dragged group into the TARGET list's item type.
+ *  `baseIndent` shifts the flattened tree for a flat target (sibling drop =
+ *  target's indent, nest = target's indent + 1); ignored for a real-nesting
+ *  target (its depth is set by insertion). `doc` is the PRE-deletion document.
+ *  Returns `null` if the schema can't fit the converted content (caller then
+ *  rejects the drop, a clean no-op). */
+function convertGroupFragment(
+  doc: ProsemirrorNode,
+  source: DragGroup,
+  targetItemType: string,
+  targetListType: string,
+  baseIndent: number | null
+): Fragment | null {
+  const tree = sourceToTree(doc, source);
+  if (!tree) return null;
+  const schema = doc.type.schema;
+  const itemType = schema.nodes[targetItemType];
+  const listType = schema.nodes[targetListType];
+  if (!itemType || !listType) return null;
+
+  if (CHECKLIST_ITEM_TYPES.has(targetItemType)) {
+    const out: ProsemirrorNode[] = [];
+    const base = baseIndent ?? 0;
+    if (!flattenToChecklist(tree, itemType, base, 0, out)) return null;
+    return Fragment.from(out);
+  }
+  const item = buildRealItem(tree, itemType, listType);
+  if (!item) return null;
+  return Fragment.from([item]);
 }
 
 /** Index within `list` of the child whose doc pos is `childPos`, or -1. `list`
@@ -291,9 +473,12 @@ export function realNestingDropTarget(
  * paragraph), so rect + position always describe one row. A `coordsAtPos`
  * fallback is kept only for the rare no-`<li>` case (list padding).
  *
- * Confined to the SAME top-level list tree. Returns `null` for cross-tree
- * targets, drops onto the dragged group itself (or its descendants), and no-op
- * self-drops.
+ * NOT confined to the source's tree — a drop may land in ANY list in the
+ * document, across other blocks (dividers, paragraphs) between the lists. When
+ * the target list's item type differs from the source's, the dropped fragment
+ * is CONVERTED to the target's item type (see `convertGroupFragment`). Returns
+ * `null` for non-list targets, drops onto the dragged group itself (or its
+ * descendants), and no-op self-drops.
  */
 export function computeDropTarget(
   view: EditorView,
@@ -334,13 +519,14 @@ export function computeDropTarget(
     LIST_NODE_TYPES.has(n.type.name)
   );
   if (!list) return null;
-  // Confine to the SAME top-level list tree. Comparing the shared outermost
-  // list (not the immediate list instance) is what allows a nested item to be
-  // dragged to its parent's level — those are different list instances but one
-  // tree. Different trees ⇒ unrelated lists ⇒ reject.
-  if (topLevelListPos(doc, list.pos) !== topLevelListPos(doc, source.listPos)) {
-    return null;
-  }
+  // The target list the drop lands in. When its item type differs from the
+  // source's, `handleDrop` converts the dragged group to this type — so a drop
+  // may cross into an unrelated list anywhere in the document (across the
+  // blocks between lists), not just within the source's own tree.
+  const targetListType = list.node.type.name;
+  const targetItemType = LIST_ITEM_OF[targetListType];
+  // Unknown list type (not in LIST_ITEM_OF) — can't convert, nothing to drop into.
+  if (!targetItemType) return null;
 
   const { from, to } = source;
 
@@ -372,7 +558,7 @@ export function computeDropTarget(
       const isAncestor = itemPos < from && itemEnd > to;
       if (!isAncestor && y >= topY + h * 0.35 && y <= topY + h * 0.65) {
         return {
-          target: { kind: "nest", targetPos: itemPos, before },
+          target: { kind: "nest", targetPos: itemPos, before, targetItemType, targetListType },
           markerRect: rowRect,
           markerBefore: before
         };
@@ -382,7 +568,7 @@ export function computeDropTarget(
         : endOfChecklistSubtree(doc, itemPos, itemIndent);
       if (isReorderSelfDrop(insertPos, source)) return null;
       return {
-        target: { kind: "reorder", insertPos, baseIndent: itemIndent },
+        target: { kind: "reorder", insertPos, baseIndent: itemIndent, targetItemType, targetListType },
         markerRect: null,
         markerBefore: before
       };
@@ -412,7 +598,7 @@ export function computeDropTarget(
       const insertPos = before ? itemPos : itemEnd;
       if (isReorderSelfDrop(insertPos, source)) return null;
       return {
-        target: { kind: "reorder", insertPos, baseIndent: null },
+        target: { kind: "reorder", insertPos, baseIndent: null, targetItemType, targetListType },
         markerRect: null,
         markerBefore: before
       };
@@ -435,12 +621,16 @@ export function computeDropTarget(
     if (!isAncestor && y >= lineTop + lineH * 0.35 && y <= lineTop + lineH * 0.65) {
       const target = realNestingDropTarget(doc, itemPos, rowDepth + 1, lineBefore, source);
       if (!target) return null;
+      target.targetItemType = targetItemType;
+      target.targetListType = targetListType;
       // Nest marker = the row's text line (highlights just this row, not its
       // subtree — clearer than the full <li> rect which would span the children).
       return { target, markerRect: lineRect, markerBefore: lineBefore };
     }
     const target = realNestingDropTarget(doc, itemPos, rowDepth, lineBefore, source);
     if (!target) return null;
+    target.targetItemType = targetItemType;
+    target.targetListType = targetListType;
     // Sibling marker = the row <li> rect: its top = before the row, its bottom =
     // after the row's whole subtree (the nested list is a DOM child of the <li>,
     // so the <li> rect encompasses the subtree). A reliable DOM-rect line.
@@ -460,7 +650,7 @@ export function computeDropTarget(
       ? Number(firstChild.attrs.indent ?? 0)
       : null;
   return {
-    target: { kind: "reorder", insertPos, baseIndent },
+    target: { kind: "reorder", insertPos, baseIndent, targetItemType, targetListType },
     markerRect: null,
     markerBefore: false
   };
@@ -518,12 +708,26 @@ function rebuildChecklistGroup(
  *  a real-nesting list: insert the source item node verbatim — its depth is set
  *  by whichever list it's inserted into, so no re-indent. A number means a flat
  *  checklist: re-`indent` the group rows to `baseIndent` (preserving relative
- *  structure). `doc` is the PRE-deletion document. */
+ *  structure). When `targetItemType` is given and differs from the source item
+ *  type, the group is instead CONVERTED to the target list's item type (a
+ *  cross-type drop); `null` is returned if the schema can't fit the converted
+ *  content, so the caller rejects the drop. `doc` is the PRE-deletion document. */
 export function reorderFragment(
   doc: ProsemirrorNode,
   source: DragGroup,
-  baseIndent: number | null
-): Fragment {
+  baseIndent: number | null,
+  targetItemType?: string,
+  targetListType?: string
+): Fragment | null {
+  const sourceItemType = doc.nodeAt(source.from)?.type.name;
+  if (
+    targetItemType &&
+    targetListType &&
+    sourceItemType &&
+    targetItemType !== sourceItemType
+  ) {
+    return convertGroupFragment(doc, source, targetItemType, targetListType, baseIndent);
+  }
   if (baseIndent == null) return doc.slice(source.from, source.to).content;
   return rebuildChecklistGroup(doc, source.from, source.to, baseIndent);
 }
@@ -547,49 +751,74 @@ function childListOf(tNode: ProsemirrorNode, listTypeName: string, tPos: number)
  * where `selOffset` is how far past `insertPos` the first moved item lands (1
  * when a new child list had to be created around it, else 0) — the caller maps
  * `insertPos` through its deletion and adds `selOffset` to place the
- * `NodeSelection`. `doc` is the PRE-deletion document.
+ * `NodeSelection`.
+ *
+ * When `targetItemType` / `targetListType` are given and the source item type
+ * differs, the group is CONVERTED to the target list's item type (a cross-type
+ * nest); the child list a real-nesting target nests into is then of the
+ * TARGET's list type (not the source's). Returns `null` if conversion can't
+ * fit the schema, or when nesting onto the source's own current parent.
+ * `doc` is the PRE-deletion document.
  */
 export function nestInsert(
   doc: ProsemirrorNode,
   source: DragGroup,
   targetPos: number,
-  before: boolean
+  before: boolean,
+  targetItemType?: string,
+  targetListType?: string
 ): { insertPos: number; fragment: Fragment; selOffset: number } | null {
   const tNode = doc.nodeAt(targetPos);
   if (!tNode) return null;
 
+  const sourceItemType = doc.nodeAt(source.from)?.type.name;
+  const needConvert =
+    !!targetItemType &&
+    !!targetListType &&
+    !!sourceItemType &&
+    targetItemType !== sourceItemType;
+
   // Checklists (flat `data-indent`): shift the group's indents to target+1.
   // `before` = right after the target's own row (its first child slot); else
-  // the end of the target's visual subtree (after existing children).
+  // the end of the target's visual subtree (after existing children). A
+  // cross-type source is converted to the target's item type at tIndent+1.
   if (CHECKLIST_ITEM_TYPES.has(tNode.type.name)) {
     const tIndent = Number(tNode.attrs.indent ?? 0);
     const insertPos = before
       ? targetPos + tNode.nodeSize
       : endOfChecklistSubtree(doc, targetPos, tIndent);
-    const fragment = rebuildChecklistGroup(doc, source.from, source.to, tIndent + 1);
+    const fragment = needConvert
+      ? convertGroupFragment(doc, source, targetItemType!, targetListType!, tIndent + 1)
+      : rebuildChecklistGroup(doc, source.from, source.to, tIndent + 1);
+    if (!fragment) return null;
     return { insertPos, fragment, selOffset: 0 };
   }
 
-  // Real-nesting (`listItem` / `outlineListItem`): move the single grabbed item
-  // into the target's existing child list of the same type, or create one.
-  const item = doc.slice(source.from, source.to).content.firstChild;
+  // Real-nesting (`listItem` / `outlineListItem`): move the (possibly
+  // converted) item into the target's existing child list, or create one.
+  const resolvedListType = targetListType ?? source.listType;
+  const item = needConvert
+    ? convertGroupFragment(doc, source, targetItemType!, targetListType!, null)?.firstChild
+    : doc.slice(source.from, source.to).content.firstChild;
   if (!item) return null;
-  const existing = childListOf(tNode, source.listType, targetPos);
+  const existing = childListOf(tNode, resolvedListType, targetPos);
   if (existing) {
     // The target's child list IS the source's own list ⇒ the grabbed item is
     // already a direct child of the target. Nesting would be a no-op, and worse,
     // if the grabbed item was the only child, `deleteSourceGroup` would delete
     // that list right after we picked it, then the bare item would be inserted
     // straight into the target (listItem can't nest in a listItem). Reject so
-    // the drop is a clean no-op.
+    // the drop is a clean no-op. (Only meaningful for a same-type nest — a
+    // cross-type source lives in a different-typed list, so this never matches.)
     if (existing.pos === source.listPos) return null;
     const insertPos = before
       ? existing.pos + 1 // before the first existing child
       : existing.pos + existing.node.nodeSize - 1; // after the last child
     return { insertPos, fragment: Fragment.from(item), selOffset: 0 };
   }
-  // No matching child list — create one as the target's last block child.
-  const listType = tNode.type.schema.nodes[source.listType];
+  // No matching child list — create one (of the resolved type) as the target's
+  // last block child.
+  const listType = tNode.type.schema.nodes[resolvedListType];
   if (!listType) return null;
   const insertPos = targetPos + tNode.nodeSize - 1;
   const fragment = Fragment.from(listType.create(null, Fragment.from(item)));

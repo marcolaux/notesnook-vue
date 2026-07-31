@@ -262,14 +262,27 @@ function createListDragReorderPlugin(): Plugin {
         // its entire content, so no empty list / empty-item shell is left),
         // THEN map the insert position through that deletion and insert.
         let insertPosPre: number;
-        let fragment: Fragment;
+        let fragment: Fragment | null;
         let selOffset: number;
         if (target.kind === "reorder") {
           insertPosPre = target.insertPos;
-          fragment = reorderFragment(doc, source, target.baseIndent);
+          fragment = reorderFragment(
+            doc,
+            source,
+            target.baseIndent,
+            target.targetItemType,
+            target.targetListType
+          );
           selOffset = 0;
         } else {
-          const nested = nestInsert(doc, source, target.targetPos, target.before);
+          const nested = nestInsert(
+            doc,
+            source,
+            target.targetPos,
+            target.before,
+            target.targetItemType,
+            target.targetListType
+          );
           if (!nested) return true;
           insertPosPre = nested.insertPos;
           fragment = nested.fragment;
@@ -279,6 +292,10 @@ function createListDragReorderPlugin(): Plugin {
         const tr = view.state.tr;
         deleteSourceGroup(tr, doc, source);
         const at = tr.mapping.map(insertPosPre);
+        // `fragment` is `Fragment | null` (conversion can bail when the schema
+        // can't fit the converted content). A null fragment means a cross-type
+        // drop that can't be represented in the target list — clean no-op.
+        if (!fragment) return true;
         tr.insert(at, fragment);
         tr.setSelection(NodeSelection.create(tr.doc, at + selOffset));
         view.dispatch(tr);

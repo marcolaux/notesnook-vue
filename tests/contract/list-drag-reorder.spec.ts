@@ -18,10 +18,11 @@ import {
   deleteSourceGroup,
   itemAncestorChain,
   LIST_ITEM_TYPES,
+  LIST_ITEM_OF,
+  LIST_NODE_TYPES,
   nestInsert,
   realNestingDropTarget,
-  reorderFragment,
-  topLevelListPos
+  reorderFragment
 } from "../../packages/editor-vue/src/extensions/list-drag-reorder/drag-group";
 import { findParentNodeClosestToPos } from "../../packages/editor-vue/src/utils/prosemirror";
 
@@ -75,6 +76,25 @@ function itemPos(d: ReturnType<typeof doc>, text: string): number {
   return item.pos;
 }
 
+/** The list node containing `pos` (the list a drop at `pos` lands in). */
+function listAround(d: ReturnType<typeof doc>, pos: number) {
+  const list = findParentNodeClosestToPos(d.resolve(pos), (n) =>
+    LIST_NODE_TYPES.has(n.type.name)
+  );
+  if (!list) throw new Error(`no list around pos ${pos}`);
+  return list;
+}
+
+/** The target item/list type names a drop at `pos` converts to (what
+ *  `computeDropTarget` attaches to a `DropTarget`). */
+function targetTypesAt(d: ReturnType<typeof doc>, pos: number) {
+  const list = listAround(d, pos);
+  return {
+    targetItemType: LIST_ITEM_OF[list.node.type.name],
+    targetListType: list.node.type.name
+  };
+}
+
 /** Apply a `reorder` drop (delete source, clean up, insert re-leveled fragment). */
 function applyReorder(
   d: ReturnType<typeof doc>,
@@ -83,9 +103,12 @@ function applyReorder(
   baseIndent: number | null
 ): ReturnType<typeof doc> {
   const source = computeDragGroup(d, itemPos(d, grabbedText))!;
+  const t = targetTypesAt(d, insertPos);
   const tr = EditorState.create({ doc: d }).tr;
   deleteSourceGroup(tr, d, source);
-  tr.insert(tr.mapping.map(insertPos), reorderFragment(d, source, baseIndent));
+  const frag = reorderFragment(d, source, baseIndent, t.targetItemType, t.targetListType);
+  if (!frag) throw new Error("reorderFragment returned null");
+  tr.insert(tr.mapping.map(insertPos), frag);
   return tr.doc as ReturnType<typeof doc>;
 }
 
@@ -97,7 +120,9 @@ function applyNest(
   before = false
 ): ReturnType<typeof doc> {
   const source = computeDragGroup(d, itemPos(d, grabbedText))!;
-  const nested = nestInsert(d, source, itemPos(d, targetText), before);
+  const tPos = itemPos(d, targetText);
+  const t = targetTypesAt(d, tPos);
+  const nested = nestInsert(d, source, tPos, before, t.targetItemType, t.targetListType);
   if (!nested) throw new Error("nestInsert returned null");
   const tr = EditorState.create({ doc: d }).tr;
   deleteSourceGroup(tr, d, source);
@@ -120,10 +145,14 @@ function applyRealNestingDrop(
   if (!t) throw new Error("realNestingDropTarget returned null");
   const tr = EditorState.create({ doc: d }).tr;
   if (t.kind === "reorder") {
+    const tt = targetTypesAt(d, t.insertPos);
     deleteSourceGroup(tr, d, source);
-    tr.insert(tr.mapping.map(t.insertPos), reorderFragment(d, source, t.baseIndent));
+    const frag = reorderFragment(d, source, t.baseIndent, tt.targetItemType, tt.targetListType);
+    if (!frag) throw new Error("reorderFragment returned null");
+    tr.insert(tr.mapping.map(t.insertPos), frag);
   } else {
-    const nested = nestInsert(d, source, t.targetPos, t.before);
+    const tt = targetTypesAt(d, t.targetPos);
+    const nested = nestInsert(d, source, t.targetPos, t.before, tt.targetItemType, tt.targetListType);
     if (!nested) throw new Error("nestInsert returned null");
     deleteSourceGroup(tr, d, source);
     tr.insert(tr.mapping.map(nested.insertPos), nested.fragment);
@@ -307,75 +336,41 @@ describe("list drag-reorder: depth-target model (realNestingDropTarget)", () => 
   });
 });
 
-describe("list drag-reorder: topLevelListPos (tree confinement)", () => {
-  // bulletList[ A( + nested[ B( + nested[S] ) ] ) ] — one top-level tree.
-  const tree = () =>
-    doc(ul(li(p("A"), ul(li(p("B"), ul(li(p("S"))))))));
-
-  /** Pos of the `bulletList` whose first item's paragraph text is `text`. */
-  function listPosAround(d: ReturnType<typeof doc>, text: string): number {
-    let found = -1;
-    d.descendants((node, pos) => {
-      if (found === -1 && node.isText && node.text === text) found = pos;
-      return true;
-    });
-    const $p = d.resolve(found);
-    const list = findParentNodeClosestToPos($p, (n) => n.type.name === "bulletList");
-    if (!list) throw new Error(`no list around ${text}`);
-    return list.pos;
-  }
-
-  it("returns the list itself for a top-level list", () => {
-    const d = tree();
-    const top = listPosAround(d, "A");
-    expect(topLevelListPos(d, top)).toBe(top);
+describe("list drag-reorder: cross-tree + cross-type conversion", () => {
+  it("moves an item across a non-list block into another list (the divider case)", () => {
+    // bulletList[A], p("between"), bulletList[Z] → drag A before Z. Same item
+    // type, so the fast path runs; the first list is deleted as emptied and the
+    // target position shifts through the deletion mapping.
+    const d = doc(ul(li(p("A"))), p("between"), ul(li(p("Z"))));
+    const out = applyReorder(d, "A", itemPos(d, "Z"), null);
+    expect(dump(out)).toBe("doc(between,bulletList(listItem(A),listItem(Z)))");
   });
 
-  it("returns the OUTERMOST list for a nested list (not the innermost)", () => {
-    // The list around S is nested two levels deep; its top-level tree root is
-    // the list around A. A buggy innermost-returning impl would give S's own
-    // list here, breaking cross-level drag confinement.
-    const d = tree();
-    expect(topLevelListPos(d, listPosAround(d, "S"))).toBe(listPosAround(d, "A"));
-    expect(topLevelListPos(d, listPosAround(d, "B"))).toBe(listPosAround(d, "A"));
+  it("converts a real-nesting item to a flat checklist row (real → flat)", () => {
+    // bulletList[A], taskList[X(0)] → drag A before X. A becomes a taskItem at
+    // X's indent (0); the emptied bulletList is removed.
+    const d = doc(ul(li(p("A"))), tl(ti(0, "X")));
+    const out = applyReorder(d, "A", itemPos(d, "X"), 0);
+    expect(dump(out)).toBe("doc(taskList(taskItem[0](A),taskItem[0](X)))");
   });
 
-  it("confines a drag to one tree: nested source shares the top-level root", () => {
-    // A child (S) and its parent (B) live in different list INSTANCES but the
-    // same top-level TREE — so their topLevelListPos must match (this is what
-    // permits cross-level moves; a same-instance check would forbid them).
-    const d = tree();
-    expect(topLevelListPos(d, listPosAround(d, "S"))).toBe(
-      topLevelListPos(d, listPosAround(d, "B"))
-    );
-  });
-
-  it("distinguishes two unrelated top-level lists", () => {
-    // Two separate top-level bulletLists are different trees.
-    const d = doc(ul(li(p("A"))), ul(li(p("Z"))));
-    expect(topLevelListPos(d, listPosAround(d, "A"))).not.toBe(
-      topLevelListPos(d, listPosAround(d, "Z"))
-    );
-  });
-
-  it("REGRESSION: a deep child outdents to the top level (the cross-level move the buggy confinement rejected)", () => {
-    // The bug: topLevelListPos returned the INNERMOST list, so the source list
-    // (around S) and the target list (around A) compared unequal → computeDropTarget
-    // returned null → every cross-level drop was swallowed. This ties the
-    // confinement decision to the actual outdent transform: confinement must ALLOW
-    // it (same top-level tree) AND the move must succeed (S becomes a top-level
-    // sibling before A; the emptied nested lists are cleaned up).
-    const d = tree();
-    // Confinement: S's list and A's (top-level) list share one top-level tree.
-    expect(topLevelListPos(d, listPosAround(d, "S"))).toBe(
-      topLevelListPos(d, listPosAround(d, "A"))
-    );
-    // The outdent (drop S before A at depth 0) — pure helper path handleDrop runs.
-    const out = applyRealNestingDrop(d, "S", "A", 0, true);
+  it("converts a flat indented group to a real-nested tree (flat → real)", () => {
+    // taskList[X(0), A(1), B(2)], bulletList[Y] → grab A (group A,B), drop before
+    // Y. A,B become a real-nested listItem tree (A with child B); X stays.
+    const d = doc(tl(ti(0, "X"), ti(1, "A"), ti(2, "B")), ul(li(p("Y"))));
+    const out = applyReorder(d, "A", itemPos(d, "Y"), null);
     expect(dump(out)).toBe(
-      "doc(bulletList(listItem(S),listItem(A,bulletList(listItem(B)))))"
+      "doc(taskList(taskItem[0](X)),bulletList(listItem(A,bulletList(listItem(B))),listItem(Y)))"
     );
-    // The grabbed child moved; it is no longer nested under B.
-    expect(dump(out).includes("listItem(B,bulletList(listItem(S))")).toBe(false);
+  });
+
+  it("nests a real-nesting item under a flat target, converting to the target type", () => {
+    // bulletList[A, B], taskList[X(0)] → nest B under X. B becomes a taskItem at
+    // X.indent + 1 (1); A remains in the (now single-item) bulletList.
+    const d = doc(ul(li(p("A")), li(p("B"))), tl(ti(0, "X")));
+    const out = applyNest(d, "B", "X");
+    expect(dump(out)).toBe(
+      "doc(bulletList(listItem(A)),taskList(taskItem[0](X),taskItem[1](B)))"
+    );
   });
 });
