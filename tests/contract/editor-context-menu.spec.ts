@@ -29,6 +29,7 @@ function deps(): EditorMenuDeps {
     cut: vi.fn(),
     copy: vi.fn(),
     paste: vi.fn(),
+    pasteAsPlainText: vi.fn(),
     toggleBold: vi.fn(),
     toggleItalic: vi.fn(),
     toggleUnderline: vi.fn(),
@@ -75,6 +76,7 @@ describe("buildEditorMenu — clipboard + disabled state", () => {
     expect(item(entries, "link").disabled).toBe(true);
     // Paste only needs editability.
     expect(item(entries, "paste").disabled).toBe(false);
+    expect(item(entries, "paste-plain").disabled).toBe(false);
   });
 
   it("enables Cut/Copy/Clear-formatting/Link when there is a selection", () => {
@@ -92,6 +94,7 @@ describe("buildEditorMenu — clipboard + disabled state", () => {
     );
     expect(item(entries, "cut").disabled).toBe(true);
     expect(item(entries, "paste").disabled).toBe(true);
+    expect(item(entries, "paste-plain").disabled).toBe(true);
     // Copy still works on a read-only selection.
     expect(item(entries, "copy").disabled).toBe(false);
   });
@@ -203,6 +206,14 @@ describe("buildEditorMenu — onSelect wiring", () => {
     expect(d.findInNote).toHaveBeenCalledTimes(1);
     expect(d.replaceInNote).toHaveBeenCalledTimes(1);
     expect(d.openCommandPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires pasteAsPlainText for the paste-plain entry", async () => {
+    const d = deps();
+    const entries = buildEditorMenu(target({ hasSelection: true }), d);
+    const e = item(entries, "paste-plain");
+    if (e.onSelect) await e.onSelect();
+    expect(d.pasteAsPlainText).toHaveBeenCalledTimes(1);
   });
 
   it("fires edit-link + remove-link callbacks when a link is active", async () => {

@@ -56,6 +56,8 @@ export interface EditorMenuDeps {
   cut: () => void;
   copy: () => void;
   paste: () => void;
+  /** Paste the clipboard's plain-text representation, discarding formatting. */
+  pasteAsPlainText: () => void;
   // --- formatting toggles ---
   toggleBold: () => void;
   toggleItalic: () => void;
@@ -145,6 +147,12 @@ export function buildEditorMenu(target: EditorMenuTarget, deps: EditorMenuDeps):
     { id: "cut", label: t("contextMenu.cut"), disabled: !target.hasSelection || !target.editable, onSelect: deps.cut },
     { id: "copy", label: t("contextMenu.copy"), icon: "copy", disabled: !target.hasSelection, onSelect: deps.copy },
     { id: "paste", label: t("contextMenu.paste"), disabled: !target.editable, onSelect: deps.paste },
+    {
+      id: "paste-plain",
+      label: t("contextMenu.pasteAsPlainText"),
+      disabled: !target.editable,
+      onSelect: deps.pasteAsPlainText
+    },
     separator("sep-1"),
     // --- formatting (checked mirrors the active mark on the selection) ---
     { id: "bold", label: t("contextMenu.bold"), icon: "bold", checked: target.bold, onSelect: deps.toggleBold },

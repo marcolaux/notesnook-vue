@@ -256,6 +256,24 @@ function onFindHotkey(e: KeyboardEvent): void {
   }
 }
 
+// `Cmd/Ctrl+Shift+V` pastes the clipboard as plain text (no formatting) into
+// the FOCUSED pane only — same focused-guard as `onFindHotkey` so split panes
+// cooperate. `preventDefault` stops the browser's native paste (which would
+// carry rich formatting); the composable's `pasteAsPlainText` reads the
+// clipboard's `text/plain` representation + inserts it as literal text nodes.
+function onPastePlainHotkey(e: KeyboardEvent): void {
+  if (
+    (e.ctrlKey || e.metaKey) &&
+    e.shiftKey &&
+    !e.altKey &&
+    (e.key === "v" || e.key === "V")
+  ) {
+    if (editorStore.editor !== editor.value) return;
+    e.preventDefault();
+    void pasteAsPlainText();
+  }
+}
+
 // Palette "Find in note" command bumps `editorStore.findSignal`; open this
 // pane's bar on a bump when focused (mirrors `notes.focusSearchSignal`).
 watch(
@@ -817,7 +835,7 @@ const editor = useEditor({
 // Right-click context menu for the editor body (clipboard / formatting / link
 // / insert / list / find / palette). Bound on `<EditorContent>` above; the
 // composable captures the PM selection snapshot + builds the dep bag per click.
-const { onEditorContext } = useEditorContextMenu(editor, myNoteId);
+const { onEditorContext, pasteAsPlainText } = useEditorContextMenu(editor, myNoteId);
 
 // --- Autosave (debounced), instance-local (flushed on switch/deactivate) -----
 // INSTANCE-LOCAL (setup scope, not module scope): a split layout mounts several
@@ -1473,6 +1491,7 @@ watch(
 // responds, so split panes don't fight over it.
 onMounted(() => {
   window.addEventListener("keydown", onFindHotkey);
+  window.addEventListener("keydown", onPastePlainHotkey);
   if (editorStore.pendingScrollTargetFor(myKey.value) === undefined) {
     restoreScrollPosition();
   }
@@ -1480,6 +1499,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onFindHotkey);
+  window.removeEventListener("keydown", onPastePlainHotkey);
   if (scrollSaveTimer) {
     clearTimeout(scrollSaveTimer);
     scrollSaveTimer = null;

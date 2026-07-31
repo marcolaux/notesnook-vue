@@ -28,7 +28,7 @@
  * permissions; the app already uses `navigator.clipboard.writeText`).
  */
 import type { ShallowRef, Ref } from "vue";
-import type { Editor } from "@tiptap/vue-3";
+import type { Editor, JSONContent } from "@tiptap/vue-3";
 import { DOMSerializer } from "@tiptap/pm/model";
 import { EDITOR_ACTION_BY_ID, linkMarkAttrs, createInternalLink } from "@notesnook-vue/editor-vue";
 import { useContextMenuStore } from "@/stores/context-menu";
@@ -135,6 +135,44 @@ export function useEditorContextMenu(
     }
   }
 
+  /** Insert `text` as LITERAL plain text — never parsed as HTML — converting
+   *  newlines to hard breaks so multi-line paste preserves line breaks without
+   *  carrying any source formatting (marks, links, structure). Each line
+   *  becomes a text node; `\n` becomes a `hardBreak` node (StarterKit's
+   *  HardBreak). Replaces the current selection, mirroring `insertContent`.
+   *  Building text nodes (rather than passing a bare string) is load-bearing:
+   *  `insertContent("<b>x</b>")` would parse the string as HTML, defeating the
+   *  "without formatting" intent (see the same footgun in `link/insert.ts`). */
+  function insertPlainText(e: Editor, text: string): void {
+    const lines = text.split("\n");
+    const content: JSONContent[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (i > 0) content.push({ type: "hardBreak" });
+      if (line) content.push({ type: "text", text: line });
+    }
+    e.chain().focus().insertContent(content).run();
+  }
+
+  /** Paste the clipboard's plain-text representation, discarding any HTML/
+   *  formatting. `navigator.clipboard.readText()` returns the `text/plain`
+   *  representation the source wrote (or a text rendition of rich content), so
+   *  this is exactly "paste without formatting". Never throws — a clipboard
+   *  read failure (denied/unavailable) is swallowed. No-op when the editor is
+   *  not editable. */
+  async function pasteAsPlainText(): Promise<void> {
+    const e = editor.value;
+    if (!e || !e.isEditable) return;
+    let text = "";
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      /* clipboard read denied/unavailable — ignore */
+      return;
+    }
+    if (text) insertPlainText(e, text);
+  }
+
   // --- links -----------------------------------------------------------------
 
   async function openLinkDialog(): Promise<void> {
@@ -208,6 +246,7 @@ export function useEditorContextMenu(
       cut,
       copy,
       paste,
+      pasteAsPlainText,
       toggleBold: () => runAction("bold"),
       toggleItalic: () => runAction("italic"),
       toggleUnderline: () => runAction("underline"),
@@ -260,5 +299,5 @@ export function useEditorContextMenu(
     contextMenu.show(buildEditorMenu(target, buildDeps()), e.clientX, e.clientY);
   }
 
-  return { onEditorContext };
+  return { onEditorContext, pasteAsPlainText };
 }
