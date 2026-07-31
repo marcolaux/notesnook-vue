@@ -1,6 +1,6 @@
 {
   "name": "notesnook-vue-desktop",
-  "version": "0.17.3",
+  "version": "0.17.4",
   "private": true,
   "license": "GPL-3.0-or-later",
   "description": "A from-scratch Vue 3 + Tailwind + Glassmorphism rewrite of the Notesnook desktop frontend.",
