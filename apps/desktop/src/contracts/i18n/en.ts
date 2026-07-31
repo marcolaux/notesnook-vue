@@ -704,7 +704,8 @@ export default {
     shortcut: "Shortcut",
     published: "Published",
     noMatch: "No notes match “{query}”",
-    empty: "No notes yet"
+    empty: "No notes yet",
+    allTasksCompleted: "All {total} tasks completed"
   },
   // Phase 7.1 Batch 4 — editor tool titles (toolbar tooltips + slash menu).
   // One key per `EditorAction.id` in `packages/editor-vue/src/tool-definitions.ts`.
@@ -965,7 +966,9 @@ export default {
     rebuildSearchIndex: "Rebuild search index",
     goTo: "Go to {label}",
     newNoteFrom: "New note from {title}",
-    newTaskFrom: "New task from {title}"
+    newTaskFrom: "New task from {title}",
+    toggleTheme: "Toggle light/dark theme",
+    toggleOsTheme: "Toggle OS theme"
   },
   // "Rebuild search index" command (app:rebuild-search-index) — re-indexes
   // every note's title + body into the FTS5 tables. Fixes a stale/empty

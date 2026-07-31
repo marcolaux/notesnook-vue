@@ -97,6 +97,13 @@ function progressWidth(preview: NotePreview): number {
   return (c.checked / c.total) * 100;
 }
 
+/** True when the note has a checklist and every item is checked — used to
+ *  swap the progress bar for a completed checkmark. */
+function allTasksDone(preview: NotePreview): boolean {
+  const c = preview.checklist;
+  return !!c && c.total > 0 && c.checked === c.total;
+}
+
 /** Search-match segments for a note field (empty query → one plain run, so
  * the `<mark>` only renders while a search is active). */
 function segmentsOf(text: string): { text: string; match: boolean }[] {
@@ -430,15 +437,27 @@ function formatDate(ts: number): string {
           <div class="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] text-text-muted">
             <span class="shrink-0">{{ formatDate(note.dateEdited) }}</span>
             <template v-if="previewOf(note.id)?.checklist && previewOf(note.id)!.checklist!.total > 0">
-              <div class="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-glass-hover">
-                <div
-                  class="h-full rounded-full bg-[var(--accent-success)]"
-                  :style="{ width: `${progressWidth(previewOf(note.id)!)}%` }"
-                />
-              </div>
-              <span class="shrink-0 text-[8px] text-text-muted">
-                {{ previewOf(note.id)!.checklist!.checked }}/{{ previewOf(note.id)!.checklist!.total }}
-              </span>
+              <!-- All tasks done: drop the bar + ratio, show a single green
+                   checkmark so completed notes read at a glance. -->
+              <Icon
+                v-if="allTasksDone(previewOf(note.id)!)"
+                name="check"
+                :size="11"
+                :stroke-width="3"
+                class="shrink-0 text-[var(--accent-success)]"
+                :title="t('notesList.allTasksCompleted', { total: previewOf(note.id)!.checklist!.total })"
+              />
+              <template v-else>
+                <div class="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-glass-hover">
+                  <div
+                    class="h-full rounded-full bg-[var(--accent-success)]"
+                    :style="{ width: `${progressWidth(previewOf(note.id)!)}%` }"
+                  />
+                </div>
+                <span class="shrink-0 text-[8px] text-text-muted">
+                  {{ previewOf(note.id)!.checklist!.checked }}/{{ previewOf(note.id)!.checklist!.total }}
+                </span>
+              </template>
             </template>
             <span
               v-if="note.tags.length"

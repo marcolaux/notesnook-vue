@@ -834,14 +834,9 @@ export const DEFAULT_TOOLBAR: ToolbarDefinition = [
     "italic",
     "underline",
     "strikethrough",
-    [
-      "code",
-      "subscript",
-      "superscript",
-      "highlight",
-      "textColor",
-      "clearFormatting"
-    ]
+    "textColor",
+    "highlight",
+    ["code", "subscript", "superscript", "clearFormatting"]
   ],
   ["headings", "fontFamily"],
   ["lists"],

@@ -16,6 +16,7 @@ import { useTemplatesStore } from "@/stores/templates";
 import { useContextMenuStore } from "@/stores/context-menu";
 import { usePropertiesStore } from "@/stores/properties";
 import { useEditorStore } from "@/stores/editor";
+import { useSettingsStore } from "@/stores/settings";
 import { useDailyNotesStore } from "@/stores/daily-notes";
 import { todayIso } from "@/utils/daily-notes";
 import { blockIdAtSelection } from "@/utils/editor-block-link";
@@ -696,3 +697,41 @@ const rebuildSearchIndexCommand: Command = {
   }
 };
 registerCommands([rebuildSearchIndexCommand]);
+
+// Theme commands. `toggle-theme` flips between explicit light and dark; when
+// the current mode is `system` it resolves the OS colour scheme first so the
+// flip is always to the *other* visible theme. `toggle-os-theme` enables
+// "follow OS theme" and is hidden once active (a one-way command — to leave
+// OS mode you toggle light/dark, which pins an explicit theme). Both read
+// `settings.themeMode` inside `when`, so the omnibar's `visibleCommands`
+// computed re-evaluates live as the mode changes.
+registerCommands([
+  {
+    id: "app:toggle-theme",
+    title: "command.toggleTheme",
+    keywords: ["theme", "light", "dark", "appearance", "mode", "toggle", "color", "colour"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: () => {
+      const s = useSettingsStore();
+      const current = s.themeMode;
+      const effectiveDark =
+        current === "dark" ||
+        (current === "system" &&
+          typeof window !== "undefined" &&
+          window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+      s.setThemeMode(effectiveDark ? "light" : "dark");
+    }
+  },
+  {
+    id: "app:toggle-os-theme",
+    title: "command.toggleOsTheme",
+    keywords: ["theme", "system", "os", "auto", "follow", "appearance", "mode", "operating"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell && useSettingsStore().themeMode !== "system",
+    run: () => {
+      useSettingsStore().setThemeMode("system");
+    }
+  }
+]);

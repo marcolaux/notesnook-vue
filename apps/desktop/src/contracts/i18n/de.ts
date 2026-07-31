@@ -700,7 +700,8 @@ export default {
     shortcut: "Verknüpfung",
     published: "Veröffentlicht",
     noMatch: "Keine Notizen passen zu „{query}“",
-    empty: "Noch keine Notizen"
+    empty: "Noch keine Notizen",
+    allTasksCompleted: "Alle {total} Aufgaben erledigt"
   },
   tools: {
     bold: "Fett",
@@ -946,7 +947,9 @@ export default {
     rebuildSearchIndex: "Suchindex neu aufbauen",
     goTo: "Zu {label}",
     newNoteFrom: "Neue Notiz von {title}",
-    newTaskFrom: "Neue Aufgabe von {title}"
+    newTaskFrom: "Neue Aufgabe von {title}",
+    toggleTheme: "Helles/Dunkles Design umschalten",
+    toggleOsTheme: "Betriebssystem-Design umschalten"
   },
   // „Suchindex neu aufbauen"-Befehl (app:rebuild-search-index) — indiziert
   // Titel + Text jeder Notiz neu in die FTS5-Tabellen. Behebt eine veraltete

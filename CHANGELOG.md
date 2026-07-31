@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Completed checklists show a green checkmark in the notes list
+When a note's checklist is fully completed, the notes list no longer shows the progress bar and `x/x` ratio for it — instead a single small green checkmark appears next to the date, so fully-done notes read at a glance. Partially-complete notes keep the progress bar + ratio as before, and notes with no checklist are unchanged. Wired in `NotesList.vue` (new `allTasksDone` helper branching the existing checklist template); the preview extractor and store are untouched since the completion state was already available. `notesList.allTasksCompleted` added (en/de).
+
+### ✨ Text color & highlight promoted to the top-level editor toolbar
+Text color and highlight were already fully wired as editor actions (Tiptap `Color` + `Highlight` marks, the color-swatch submenu, the native "Custom…" color picker, i18n labels, and command-palette entries) but were buried inside the "more formatting" popup of the bold/italic/underline group. They now sit as top-level toolbar buttons so the common color/highlight toggle is one click instead of two; the less-common code / subscript / superscript / clear-formatting actions remain in the "more" popup. `DEFAULT_TOOLBAR` updated; users who customized their toolbar keep their layout (reset to pick up the new default).
+
+### ✨ Toggle the theme from the command palette
+Two new command-palette entries: **Toggle light/dark theme** flips between explicit light and dark (resolving the OS color scheme first when the current mode is "follow OS", so the flip always lands on the other visible theme), and **Toggle OS theme** enables "follow OS theme" and is hidden once active — to leave OS mode you run the light/dark toggle, which pins an explicit theme. Both call `settings.setThemeMode`, so per-account persistence and `App.vue` theme application are reused as-is. The OS-theme command's `when` reads `settings.themeMode`, so the omnibar's `visibleCommands` computed re-evaluates live and the command appears/disappears in the same palette session. `command.toggleTheme` / `command.toggleOsTheme` added (en/de).
+
 ## [0.18.0] - 2026-07-31
 
 ### ✨ Show the suggestions bar on demand + navigate it by keyboard
