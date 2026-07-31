@@ -1,6 +1,7 @@
 import {
   mergeAttributes,
   Node,
+  textblockTypeInputRule,
   VueNodeViewRenderer
 } from "@tiptap/vue-3";
 import type { Level } from "@tiptap/extension-heading";
@@ -14,6 +15,12 @@ export interface HeadingOptions {
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
+    heading: {
+      /** Set the current textblock to a heading of the given level. */
+      setHeading: (attributes: { level: Level }) => ReturnType;
+      /** Toggle the current textblock between a heading and a paragraph. */
+      toggleHeading: (attributes: { level: Level }) => ReturnType;
+    };
     headingCollapse: {
       toggleHeadingCollapse: (pos?: number) => ReturnType;
       collapseHeading: (pos?: number) => ReturnType;
@@ -80,6 +87,22 @@ export const Heading = Node.create<HeadingOptions>({
 
   addCommands() {
     return {
+      setHeading:
+        (attributes) =>
+        ({ commands }) => {
+          if (!this.options.levels.includes(attributes.level)) {
+            return false;
+          }
+          return commands.setNode(this.name, attributes);
+        },
+      toggleHeading:
+        (attributes) =>
+        ({ commands }) => {
+          if (!this.options.levels.includes(attributes.level)) {
+            return false;
+          }
+          return commands.toggleNode(this.name, "paragraph", attributes);
+        },
       toggleHeadingCollapse:
         (targetPos) =>
         ({ tr, state, dispatch }) => {
@@ -198,8 +221,26 @@ export const Heading = Node.create<HeadingOptions>({
 
   addKeyboardShortcuts() {
     return {
+      ...this.options.levels.reduce(
+        (items, level) => ({
+          ...items,
+          [`Mod-Alt-${level}`]: () =>
+            this.editor.commands.toggleHeading({ level })
+        }),
+        {} as Record<string, () => boolean>
+      ),
       "Mod-Alt-f": () => this.editor.commands.toggleHeadingCollapse()
     };
+  },
+
+  addInputRules() {
+    return this.options.levels.map((level) =>
+      textblockTypeInputRule({
+        find: new RegExp(`^(#{1,${level}})\\s$`),
+        type: this.type,
+        getAttributes: { level }
+      })
+    );
   },
 
   addNodeView() {
