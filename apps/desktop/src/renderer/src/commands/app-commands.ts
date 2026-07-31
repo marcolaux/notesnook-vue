@@ -27,7 +27,9 @@ import {
   type NoteMenuTarget
 } from "@/utils/context-menu-entries";
 import { buildActiveNoteAssignmentDeps } from "@/utils/assignment-menu";
+import { rebuildSearchIndexWithConfirm } from "@/utils/rebuild-search-index";
 import { nextTick, watch } from "vue";
+import { logger } from "@/utils/logger";
 import i18n from "@/i18n";
 
 const t = i18n.global.t.bind(i18n.global);
@@ -638,3 +640,23 @@ const settingsCommand: Command = {
 };
 
 registerCommands([...appCommands, ...gotoCommands, settingsCommand]);
+
+// Rebuild the FTS5 lexical search index. Repopulates `notes_fts` + `content_fts`
+// from existing notes/content. Fixes the reported bug where lexical search
+// misses words in the TITLES of older notes: those notes' titles were never
+// backfilled into `notes_fts` (the `a-2025-06-04` migration's backfill didn't
+// run for an existing DB), while `content_fts` was populated — so body search
+// worked but title search didn't. New notes are fine (triggers index them);
+// this repairs the pre-existing ones. Idempotent + safe. The confirm + feedback
+// flow lives in the shared util (also used by the Search settings section).
+const rebuildSearchIndexCommand: Command = {
+  id: "app:rebuild-search-index",
+  title: "command.rebuildSearchIndex",
+  keywords: ["search", "index", "rebuild", "reindex", "fts", "fix", "title"],
+  group: "app",
+  when: (ctx) => ctx.auth.showShell,
+  run: () => {
+    void rebuildSearchIndexWithConfirm();
+  }
+};
+registerCommands([rebuildSearchIndexCommand]);

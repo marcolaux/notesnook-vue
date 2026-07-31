@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔎 Rebuild lexical search index — fixes title search for older notes
+Lexical search (FTS5) could miss words that appear only in the **title** of notes created before the search index was populated, while body search still worked. The `notes_fts` table (titles) was never backfilled for those existing notes — the `a-2025-06-04` migration's `rebuildSearchIndex` didn't run cleanly for an already-existing database — and the FTS triggers only index *new* title writes, so older notes' titles stayed absent from `notes_fts` while `content_fts` (bodies) was populated. New notes were unaffected (triggers index them live); this repaired the pre-existing ones.
+
+- **One action, two entry points.** `db.lookup.rebuild()` (core's `rebuildSearchIndex` — delete-all + reinsert both FTS tables in one transaction; idempotent) is wired through a shared `rebuildSearchIndexWithConfirm()` util that both the new `app:rebuild-search-index` palette command and the Search settings section call — confirm dialog → rebuild → done/error dialog. Run it once to repair the DB.
+- **Search settings: Index Maintenance.** The Search & Retrieval settings section now has an "Index Maintenance" area with two clearly-labeled, color-badged cards so the two independent indices are unambiguous: **Lexical Index (FTS5)** — `Titles • Body • Exact matches` → Rebuild (this fix; does not touch the vector index); **Vector Index (Semantic)** — `Embeddings • Meaning • On-device` → Purge vector storage (the pre-existing `purgeVectorIndex`, now clearly scoped). A help line explains when to use each.
+- **The FTS path itself was correct.** Verified end-to-end against a real `better-sqlite3-multiple-ciphers` DB with the `better_trigram`/`html` tokenizer extensions via 8 new contract tests (`tests/contract/search-title-fts.spec.ts`) — title-only matches, case-insensitivity (`"quarterly"` → title `"Quarterly Review"`), titleless-then-titled (trigger reindex), title-update reindex, both `lookup.notes` + `notesWithHighlighting` (the omnibar's Exact tier). There were previously **zero** E2E title-search tests (the omnibar contract test mocks `db.lookup`). One test reproduces the stale state (empties `notes_fts`, confirms title search fails + body search still works) then confirms `db.lookup.rebuild()` restores it.
+- i18n `command.rebuildSearchIndex` + `searchIndex.*` + `settings.search.{maintLexicalTitle,maintLexicalBadges,rebuildLexical,rebuildLexicalDesc,maintVectorTitle,maintVectorBadges,maintHelp,purgeTitle}` added (en + de).
+
 ## [0.16.0] - 2026-07-30
 
 ### 🗂️ References as cards in the editor footer

@@ -234,11 +234,21 @@ export default {
       privacyE2ee: "Privacy & E2EE",
       privacyValue: "100% On-Device & Offline",
       privacySpec: "Zero cloud dependencies",
-      purgeTitle: "Storage Maintenance",
+      purgeTitle: "Index Maintenance",
+      maintHelp: "Notesnook keeps two independent search indices. Rebuild the lexical (FTS5) index if title/body search misses older notes; purge the vector index to reclaim space used by semantic embeddings.",
       purgeVectorStorage: "Purge Vector Storage",
       purgeDesc: "Clear all stored vector embeddings from `vec_notes` table to reclaim disk space.",
       purging: "Purging vector index...",
-      purged: "Vector storage purged successfully."
+      purged: "Vector storage purged successfully.",
+      maintLexicalTitle: "Lexical Index (FTS5)",
+      maintLexicalBadges: "Titles • Body • Exact matches",
+      rebuildLexical: "Rebuild Lexical Index",
+      rebuildLexicalDesc: "Re-indexes every note's title and body into the FTS5 tables (`notes_fts` + `content_fts`). Fixes title search for notes created before the index was populated. Does not affect the vector index.",
+      rebuildLexicalRunning: "Rebuilding lexical index…",
+      rebuildLexicalDone: "Lexical index rebuilt. Titles should be findable again.",
+      rebuildLexicalFailed: "Rebuilding the lexical index failed. See the logs for details.",
+      maintVectorTitle: "Vector Index (Semantic)",
+      maintVectorBadges: "Embeddings • Meaning • On-device"
     },
     vault: {
       title: "Vault",
@@ -946,9 +956,22 @@ export default {
     openMonographInBrowser: "Open monograph in browser",
     copyBlockLink: "Copy deep link to block",
     openSettings: "Open Settings",
+    rebuildSearchIndex: "Rebuild search index",
     goTo: "Go to {label}",
     newNoteFrom: "New note from {title}",
     newTaskFrom: "New task from {title}"
+  },
+  // "Rebuild search index" command (app:rebuild-search-index) — re-indexes
+  // every note's title + body into the FTS5 tables. Fixes a stale/empty
+  // `notes_fts` (older notes' titles not findable) left by a migration whose
+  // backfill never ran for an existing DB.
+  searchIndex: {
+    confirmTitle: "Rebuild search index?",
+    confirmMessage: "Re-indexes every note's title and body for search. This fixes title search for notes that were created before the index was populated. It may take a moment on large libraries.",
+    confirmLabel: "Rebuild",
+    doneTitle: "Search index rebuilt",
+    doneMessage: "All notes have been re-indexed. Search should now find titles again.",
+    failedMessage: "Rebuilding the search index failed. See the logs for details."
   },
   // Context-menu entry labels (built fresh on each right-click → reactive
   // enough). Reuses `archive.*` / `monographs.*` / `editorToolbar.*` where the

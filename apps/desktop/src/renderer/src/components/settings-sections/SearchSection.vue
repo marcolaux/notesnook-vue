@@ -9,10 +9,12 @@ import { Surface, Flex, Text } from "@notesnook-vue/ui-vue";
 import { useI18n } from "vue-i18n";
 import { useSettingsStore } from "@/stores/settings";
 import { purgeVectorIndex } from "@/utils/vector-search";
+import { rebuildSearchIndexWithConfirm } from "@/utils/rebuild-search-index";
 
 const settings = useSettingsStore();
 const { t } = useI18n();
 const purgeStatus = ref<string | null>(null);
+const rebuildStatus = ref<string | null>(null);
 
 async function handlePurgeIndex(): Promise<void> {
   purgeStatus.value = t("settings.search.purging");
@@ -21,6 +23,18 @@ async function handlePurgeIndex(): Promise<void> {
   setTimeout(() => {
     purgeStatus.value = null;
   }, 3000);
+}
+
+async function handleRebuildLexical(): Promise<void> {
+  // The shared util shows a confirm dialog, runs `db.lookup.rebuild()`, then a
+  // done/error dialog. We surface a transient inline status while it's running
+  // so the button reflects state (the dialog handles the heavy UX).
+  rebuildStatus.value = t("settings.search.rebuildLexicalRunning");
+  try {
+    await rebuildSearchIndexWithConfirm();
+  } finally {
+    rebuildStatus.value = null;
+  }
 }
 </script>
 
@@ -92,27 +106,64 @@ async function handlePurgeIndex(): Promise<void> {
         </div>
       </Flex>
 
-      <!-- Storage Maintenance & Reclaim -->
-      <Flex direction="column" :gap="2" class="pt-2 border-t border-border">
-        <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.search.purgeTitle") }}</Text>
-        <Flex align="center" justify="between" class="rounded-lg border border-border p-3 bg-surface">
-          <Flex direction="column" :gap="1">
-            <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.search.purgeVectorStorage") }}</Text>
-            <Text variant="body" size="xs" class="text-text-muted">
-              {{ t("settings.search.purgeDesc") }}
-            </Text>
-          </Flex>
-          <button
-            type="button"
-            class="px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-surface hover:bg-surface-hover text-text transition-colors"
-            @click="handlePurgeIndex"
-          >
-            {{ t("settings.search.purgeVectorStorage") }}
-          </button>
+      <!-- Index Maintenance — Lexical (FTS5) vs Vector (Semantic) -->
+      <Flex direction="column" :gap="3" class="pt-2 border-t border-border">
+        <Flex direction="column" :gap="1">
+          <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.search.purgeTitle") }}</Text>
+          <Text variant="body" size="xs" class="text-text-muted">
+            {{ t("settings.search.maintHelp") }}
+          </Text>
         </Flex>
-        <div v-if="purgeStatus" class="text-xs text-accent font-medium pt-1">
-          {{ purgeStatus }}
-        </div>
+
+        <!-- Lexical (FTS5) index — titles + body, exact matches -->
+        <Flex direction="column" :gap="2" class="rounded-lg border border-border p-4 bg-surface">
+          <Flex align="center" :gap="2">
+            <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.search.maintLexicalTitle") }}</Text>
+            <span class="px-2 py-0.5 rounded-full font-mono text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+              {{ t("settings.search.maintLexicalBadges") }}
+            </span>
+          </Flex>
+          <Text variant="body" size="xs" class="text-text-muted">
+            {{ t("settings.search.rebuildLexicalDesc") }}
+          </Text>
+          <Flex align="center" justify="between">
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-surface hover:bg-surface-hover text-text transition-colors"
+              @click="handleRebuildLexical"
+            >
+              {{ t("settings.search.rebuildLexical") }}
+            </button>
+            <div v-if="rebuildStatus" class="text-xs text-accent font-medium">
+              {{ rebuildStatus }}
+            </div>
+          </Flex>
+        </Flex>
+
+        <!-- Vector (semantic) index — embeddings, meaning -->
+        <Flex direction="column" :gap="2" class="rounded-lg border border-border p-4 bg-surface">
+          <Flex align="center" :gap="2">
+            <Text variant="body" size="sm" class="font-medium text-text">{{ t("settings.search.maintVectorTitle") }}</Text>
+            <span class="px-2 py-0.5 rounded-full font-mono text-[10px] bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
+              {{ t("settings.search.maintVectorBadges") }}
+            </span>
+          </Flex>
+          <Text variant="body" size="xs" class="text-text-muted">
+            {{ t("settings.search.purgeDesc") }}
+          </Text>
+          <Flex align="center" justify="between">
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-surface hover:bg-surface-hover text-text transition-colors"
+              @click="handlePurgeIndex"
+            >
+              {{ t("settings.search.purgeVectorStorage") }}
+            </button>
+            <div v-if="purgeStatus" class="text-xs text-accent font-medium">
+              {{ purgeStatus }}
+            </div>
+          </Flex>
+        </Flex>
       </Flex>
     </Flex>
   </Surface>

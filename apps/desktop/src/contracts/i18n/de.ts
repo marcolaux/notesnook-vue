@@ -237,11 +237,21 @@ export default {
       privacyE2ee: "Datenschutz & E2EE",
       privacyValue: "100 % geräteintern & offline",
       privacySpec: "Keine Cloud-Abhängigkeiten",
-      purgeTitle: "Speicherwartung",
+      purgeTitle: "Index-Wartung",
+      maintHelp: "Notesnook hält zwei unabhängige Suchindices vor. Baue den lexikalischen (FTS5) Index neu auf, wenn die Titel-/Textsuche ältere Notizen nicht findet; bereinige den Vektorindex, um den Platz der semantischen Embeddings freizugeben.",
       purgeVectorStorage: "Vektorspeicher bereinigen",
       purgeDesc: "Alle gespeicherten Vektor-Embeddings aus der Tabelle `vec_notes` löschen, um Speicherplatz freizugeben.",
       purging: "Vektorindex wird bereinigt …",
-      purged: "Vektorspeicher erfolgreich bereinigt."
+      purged: "Vektorspeicher erfolgreich bereinigt.",
+      maintLexicalTitle: "Lexikalischer Index (FTS5)",
+      maintLexicalBadges: "Titel • Text • Exakte Treffer",
+      rebuildLexical: "Lexikalischen Index neu aufbauen",
+      rebuildLexicalDesc: "Indiziert Titel und Text jeder Notiz neu in die FTS5-Tabellen (`notes_fts` + `content_fts`). Behebt die Titelsuche für Notizen, die vor dem Aufbau des Index erstellt wurden. Berührt den Vektorindex nicht.",
+      rebuildLexicalRunning: "Lexikalischer Index wird neu aufgebaut …",
+      rebuildLexicalDone: "Lexikalischer Index neu aufgebaut. Titel sollten wieder findbar sein.",
+      rebuildLexicalFailed: "Aufbau des lexikalischen Index fehlgeschlagen. Siehe Protokoll für Details.",
+      maintVectorTitle: "Vektorindex (Semantisch)",
+      maintVectorBadges: "Embeddings • Bedeutung • Auf dem Gerät"
     },
     vault: {
       title: "Tresor",
@@ -927,9 +937,22 @@ export default {
     openMonographInBrowser: "Monograph im Browser öffnen",
     copyBlockLink: "Tiefenlink zum Block kopieren",
     openSettings: "Einstellungen öffnen",
+    rebuildSearchIndex: "Suchindex neu aufbauen",
     goTo: "Zu {label}",
     newNoteFrom: "Neue Notiz von {title}",
     newTaskFrom: "Neue Aufgabe von {title}"
+  },
+  // „Suchindex neu aufbauen"-Befehl (app:rebuild-search-index) — indiziert
+  // Titel + Text jeder Notiz neu in die FTS5-Tabellen. Behebt eine veraltete
+  // `notes_fts` (Titel älterer Notizen nicht auffindbar), falls eine Migration
+  // deren Backfill für eine bestehende DB nie durchlief.
+  searchIndex: {
+    confirmTitle: "Suchindex neu aufbauen?",
+    confirmMessage: "Indiziert Titel und Text jeder Notiz neu für die Suche. Behebt die Titelsuche für Notizen, die vor dem Aufbau des Index erstellt wurden. Bei großen Bibliotheken kann das einen Moment dauern.",
+    confirmLabel: "Neu aufbauen",
+    doneTitle: "Suchindex neu aufgebaut",
+    doneMessage: "Alle Notizen wurden neu indiziert. Die Suche sollte Titel jetzt wieder finden.",
+    failedMessage: "Der Aufbau des Suchindex ist fehlgeschlagen. Siehe Protokoll für Details."
   },
   contextMenu: {
     noColor: "Keine Farbe",
