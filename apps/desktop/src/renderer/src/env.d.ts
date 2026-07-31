@@ -29,6 +29,8 @@ interface Window {
       }) => void
     ): () => void;
     onCloseTab(listener: (tabId: string) => void): () => void;
+    onShellToggle(listener: (target: "sidebar" | "focus") => void): () => void;
+    onReopenClosedTab(listener: () => void): () => void;
     onExternalDrop(listener: (paths: string[]) => void): () => void;
     onTrayAction(listener: (actionId: import("@contracts/tray").TrayActionId) => void): () => void;
     onDataChanged(listener: () => void): () => void;
