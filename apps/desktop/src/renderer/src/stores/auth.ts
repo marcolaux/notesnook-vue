@@ -108,6 +108,39 @@ function errorMessage(e: unknown): string {
   }
 }
 
+/**
+ * Await `promise` but give up after `ms` so a hanging call (e.g. a server
+ * revoke against an unreachable auth host) can't block the caller indefinitely.
+ * Resolves (void) on either outcome; a rejection from `promise` propagates so
+ * the caller's `try/catch` logs it. The underlying promise is swallowed
+ * (`p.catch(() => {})`) so a late rejection after a timeout isn't unhandled.
+ * Used by `logout()` to bound each destructive step independently — the local
+ * cleanup (registry/keychain/file deletion) must always run even if the
+ * server-side revoke or the live-swap hangs.
+ */
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  promise.catch(() => {
+    /* swallow late rejection so it isn't reported as unhandled */
+  });
+  await Promise.race([
+    promise.then(
+      () => undefined,
+      (e) => {
+        throw e;
+      }
+    ),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        logger.warn(`[auth] ${label} timed out after ${ms}ms`);
+        resolve();
+      }, ms);
+    })
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 export const useAuthStore = defineStore("auth", () => {
   const t = i18n.global.t.bind(i18n.global);
   const user = ref<User | undefined>(undefined);
@@ -546,25 +579,84 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   /**
-   * Log out of an account and return to the login screen. Does NOT call core's
-   * `db.user.logout()` (that wipes the DB via `db.reset()`) — instead it
-   * live-swaps the database back to the local context so the account DB + its
-   * token stay intact for a future account switcher / re-login, and signals the
-   * change so `App.vue` reloads the local notes behind the login screen.
-   * `skippedLogin` is cleared so `showShell` is false and the login screen
-   * shows (NOT local mode) — the user explicitly signed out, so they must
-   * choose again: sign back in or "Continue without account" (`skipLogin`).
+   * Sign out of the current account and forget it on this device: revoke the
+   * refresh token server-side, live-swap back to the local context, drop the
+   * account's `accounts.json` registry entry + keychain secrets + encrypted
+   * SQLite file + per-context IndexedDB, then show the login screen.
+   *
+   * After this the account no longer appears in the switcher / login-screen
+   * chips, and reusing it requires a fresh "Add account" + password login
+   * (notes re-sync from the server). This is the active-account counterpart of
+   * `removeAccount()` (which handles non-active accounts without server-side
+   * revoke). `skippedLogin` is cleared so `showShell` is false and the login
+   * screen shows (NOT local mode).
+   *
+   * Server revoke: `tokenManager.revokeToken()` (not `db.user.logout()`) — it
+   * deletes the local token KV + POSTs to the auth server's logout endpoint,
+   * without core's in-place `db.reset()` (which left the account connection
+   * mid-reset and caused the subsequent file deletion to hang, leaving the
+   * renderer stranded on the account DB until a manual refresh). The whole DB
+   * is disposed by `deleteContextDb` below, so an in-place reset is redundant.
+   * The revoke MUST run before `switchContext(LOCAL)` — core's `AUTH_HOST` is a
+   * per-process singleton that the swap re-points at the local (server-less)
+   * hosts. Each step is bounded by `withTimeout` so a slow/unreachable auth
+   * server or a stuck IPC call can't block the local cleanup; the registry entry
+   * is dropped first so the account disappears from the UI even if file/keychain
+   * deletion is slow.
    */
   async function logout(): Promise<void> {
-    // If already on local, nothing to switch (e.g. session-expired reset).
-    if (getCurrentContext() !== LOCAL_CONTEXT) {
+    const ctx = getCurrentContext();
+    if (ctx !== LOCAL_CONTEXT) {
+      const accountDb = getDatabase();
+      // 1. Revoke the refresh token server-side (best-effort, timeout-bounded).
+      //    Must run before switchContext — the account's AUTH_HOST is active
+      //    only while the account DB is current.
       try {
-        await switchContext(LOCAL_CONTEXT);
+        await withTimeout(accountDb.tokenManager.revokeToken(), 15_000, "revokeToken");
       } catch (e) {
-        // eslint-disable-next-line no-console
+        logger.error("[auth] logout revokeToken failed:", e);
+      }
+      // 2. Live-swap to the local DB so the renderer is off the account DB
+      //    before its file + keychain secrets are deleted. The account SQLite
+      //    handle stays open in Main's `databases` map (bootstrap closes
+      //    nothing) — deleteContextDb (step 5) closes + deletes it.
+      try {
+        await withTimeout(switchContext(LOCAL_CONTEXT), 10_000, "logout switchContext");
+      } catch (e) {
         logger.error("[auth] logout switch to local failed:", e);
       }
+      // 3. Drop the accounts.json registry entry first so the account
+      //    disappears from the switcher + login-screen chips even if the
+      //    file/keychain deletion below is slow.
+      try {
+        await withTimeout(removeAccountEntry(ctx), 5_000, "removeAccountEntry");
+      } catch (e) {
+        logger.error("[auth] removeAccountEntry failed:", e);
+      }
+      // 4. Drop the account's keychain secrets (databaseKey + userEncryptionKey).
+      try {
+        await withTimeout(clearContextKeys(ctx), 5_000, "clearContextKeys");
+      } catch (e) {
+        logger.error("[auth] clearContextKeys failed:", e);
+      }
+      // 5. Close + delete the account's encrypted SQLite file (+ journal sidecars).
+      try {
+        await withTimeout(
+          desktop.sqlite.deleteContextDb.mutate({ filePath: dbFileName(ctx) }),
+          10_000,
+          "deleteContextDb"
+        );
+      } catch (e) {
+        logger.error("[auth] deleteContextDb failed:", e);
+      }
+      // 6. Best-effort: drop the per-context IndexedDB (attachments cache).
+      try {
+        indexedDB?.deleteDatabase?.(`Notesnook-${ctx}`);
+      } catch {
+        /* best-effort */
+      }
     }
+    // 7. Local state: back to the login screen (NOT local mode).
     writeCurrentContext(LOCAL_CONTEXT);
     skippedLogin.value = false;
     writeSkipped(false);

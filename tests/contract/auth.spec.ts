@@ -82,6 +82,35 @@ vi.mock("@/platform/app-state", () => ({
   })
 }));
 
+// `logout()` is destructive + server-revoking: it calls `clearContextKeys`,
+// `desktop.sqlite.deleteContextDb.mutate`, and `removeAccountEntry`, which
+// would otherwise hit the real electron-trpc bridge (absent under vitest).
+// Hoist the spies so tests can assert they were called with the account ctx.
+const logoutSpies = vi.hoisted(() => ({
+  clearContextKeys: vi.fn(async () => undefined),
+  removeAccountEntry: vi.fn(async () => undefined),
+  upsertAccount: vi.fn(async () => undefined),
+  getAccount: vi.fn(async () => undefined),
+  listAccounts: vi.fn(async () => []),
+  deleteContextDb: vi.fn(async () => undefined),
+  safeStorageRemove: vi.fn(async () => undefined)
+}));
+vi.mock("@/platform/key-store", () => ({
+  clearContextKeys: logoutSpies.clearContextKeys
+}));
+vi.mock("@/platform/account-registry", () => ({
+  getAccount: logoutSpies.getAccount,
+  upsertAccount: logoutSpies.upsertAccount,
+  removeAccountEntry: logoutSpies.removeAccountEntry,
+  listAccounts: logoutSpies.listAccounts
+}));
+vi.mock("@/platform/desktop-bridge", () => ({
+  desktop: {
+    sqlite: { deleteContextDb: { mutate: logoutSpies.deleteContextDb } },
+    safeStorage: { remove: { mutate: logoutSpies.safeStorageRemove } }
+  }
+}));
+
 import { useAuthStore } from "@/stores/auth";
 
 /** Build a fresh stub `Database` with a `user` whose methods are spies. */
@@ -92,6 +121,9 @@ function makeMockDb(opts: { user?: any; mfaAdditional?: any } = {}) {
   return {
     mfa: {
       sendCode: sendCodeSpy
+    },
+    tokenManager: {
+      revokeToken: vi.fn(async () => undefined)
     },
     user: {
       getUser: vi.fn(async () => storedUser),
@@ -335,20 +367,34 @@ describe("auth store", () => {
     expect(auth.contextChangeSignal).toBe(before + 1);
   });
 
-  it("logout → live-swaps to local context + signals (does NOT wipe via db.user.logout)", async () => {
+  it("logout → revokes token server-side, wipes the account DB + keychain + registry, returns to login screen", async () => {
     mockDbRef.db = makeMockDb({ user: sampleUser });
     // Simulate being logged into an account (current context = an account).
-    writeCurrentContext("abcd1234abcd1234");
+    const ctx = "abcd1234abcd1234";
+    writeCurrentContext(ctx);
     const auth = useAuthStore();
     await auth.init();
     expect(auth.isLoggedIn).toBe(true);
     const before = auth.contextChangeSignal;
+    logoutSpies.clearContextKeys.mockClear();
+    logoutSpies.deleteContextDb.mockClear();
+    logoutSpies.removeAccountEntry.mockClear();
     await auth.logout();
-    // Logout is non-destructive: it live-swaps to the local DB + signals so
-    // App.vue reloads local notes. Core's db.user.logout (which wipes the DB)
-    // is deliberately NOT called; the account DB + token stay intact.
-    expect(switchContext).toHaveBeenCalledWith(LOCAL_CONTEXT);
+    // Server-side revoke: tokenManager.revokeToken() IS called (deletes the
+    // local token KV + POSTs to the auth server's logout endpoint). We call it
+    // directly rather than db.user.logout() (which also runs an in-place
+    // db.reset() that left the account connection mid-reset and caused the
+    // subsequent file deletion to hang).
+    expect(mockDbRef.db.tokenManager.revokeToken).toHaveBeenCalled();
     expect(mockDbRef.db.user.logout).not.toHaveBeenCalled();
+    // Live-swap to the local DB so the renderer is off the account DB before
+    // its file + keychain secrets are deleted.
+    expect(switchContext).toHaveBeenCalledWith(LOCAL_CONTEXT);
+    // The account is forgotten on this device: registry entry, keychain
+    // secrets, and DB file are all dropped for the account context being left.
+    expect(logoutSpies.removeAccountEntry).toHaveBeenCalledWith(ctx);
+    expect(logoutSpies.clearContextKeys).toHaveBeenCalledWith(ctx);
+    expect(logoutSpies.deleteContextDb).toHaveBeenCalledWith({ filePath: `notesnook-${ctx}` });
     expect(auth.status).toBe("logged-out");
     expect(auth.user).toBeUndefined();
     expect(readCurrentContext()).toBe(LOCAL_CONTEXT);
