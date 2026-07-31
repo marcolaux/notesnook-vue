@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⌨️ ArrowDown in the title moves focus into the editor
+Pressing ArrowDown while the caret is in the note title field now moves focus into the editor body (at the start of the first paragraph), instead of doing nothing. The title is a single-line input where ArrowDown has no native target, so it now mirrors the existing Enter behavior (which already focused the editor). Only ArrowDown is added — all other keys in the title behave as before.
+
+- **Wired in `Editor.vue`** alongside `onTitleEnter`: a new `onTitleArrowDown` calls the same `editor.chain().focus().setTextSelection(1).run()` and is bound via `@keydown.arrow-down.prevent` on the title `<input>`.
+
 ### 🏠 Opening Local in a new window no longer flashes the login screen
 Switching to local mode via the account switcher's "Open in new window ▸ Local" sometimes showed the login screen instead of the editor shell — intermittently, not every time. Local mode's single login gate is the `skippedLogin` flag, mirrored to two stores: renderer `localStorage` (written synchronously, shared across same-origin windows) and the main-process `userData/app-state.json` (the durable mirror, written fire-and-forget via an async IPC). On boot `auth.init()` reconciled the two by letting the main-side value **unconditionally override** the localStorage value. But the localStorage write lands instantly while the main mirror's `setAppState(true)` IPC only lands in main's event loop whenever it can — and creating a `BrowserWindow` keeps main busy — so the freshly-opened local window could read the correct `true` from localStorage at construction, then have `getAppState()` return a stale `false` from main (the pending `setAppState(true)` still in flight, or silently lost since `setAppState` swallows IPC errors). That override flipped `effectiveShowShell` from `true → false`, the `App.vue` watch navigated to `/login`, and the login screen rendered after the boot overlay lifted.
 

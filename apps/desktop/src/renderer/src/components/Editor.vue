@@ -333,6 +333,15 @@ function onTitleEnter(): void {
   inst.chain().focus().setTextSelection(1).run();
 }
 
+/** ArrowDown in the title → move focus into the editor body, mirroring Enter.
+ *  The native ArrowDown has nowhere to go on a single-line title input, so we
+ *  forward it to the editor explicitly. */
+function onTitleArrowDown(): void {
+  const inst = editor.value;
+  if (!inst) return;
+  inst.chain().focus().setTextSelection(1).run();
+}
+
 // --- Notebooks (assigned to this pane's note via the footer composable) ------
 const notebookQuery = ref("");
 const notebookMenuOpen = ref(false);
@@ -1618,6 +1627,7 @@ function onEditorAreaClick(e: MouseEvent): void {
           class="editor-title titlebar-no-drag mb-2 w-full bg-transparent text-2xl font-semibold text-text placeholder:text-text-muted focus:outline-none"
           :placeholder="isDraft ? t('editor.titlePlaceholderDraft') : t('editor.titlePlaceholder')"
           @keydown.enter.prevent="onTitleEnter"
+          @keydown.arrow-down.prevent="onTitleArrowDown"
         />
         <EditorContent
           :editor="editor"
