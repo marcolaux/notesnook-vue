@@ -64,6 +64,17 @@ export interface AttachmentTabAttrs {
   size: number;
 }
 
+/**
+ * Minimal snapshot of a closed tab, enough to recreate it (browser-style
+ * `Cmd/Ctrl+Shift+T` reopen). Note tabs keep their in-tab back/forward history
+ * (`history` + `historyIndex`) so reopening restores the full navigation;
+ * attachment + search tabs keep only their identity.
+ */
+export type ClosedTabSnapshot =
+  | { kind: "note"; noteId: string; history: string[]; historyIndex: number }
+  | { kind: "attachment"; attachment: AttachmentTabAttrs }
+  | { kind: "search"; searchQuery: string };
+
 export interface EditorSession {
   id: string;
   tabId: string;
@@ -97,10 +108,11 @@ export interface EditorTab {
   historyVisible?: boolean;
   /** Per-tab ToC/Minimap right-sidebar visibility (note tabs only). */
   tocVisible?: boolean;
-  /** Per-tab ToC/Minimap mode: `"toc"` (heading outline) or `"minimap"`
-   *  (VS-Code-style scaled content). Defaults to `"toc"` when first toggled
-   *  on. Note tabs only. */
-  tocMode?: "toc" | "minimap";
+  /** Per-tab right-sidebar mode: `"toc"` (heading outline), `"minimap"`
+   *  (VS-Code-style scaled content), or `"visualizer"` (per-note semantic
+   *  neighbourhood map). Defaults to `"toc"` when first toggled on. Note tabs
+   *  only. */
+  tocMode?: TocMode;
   /** Per-tab scroll position (scrollTop in pixels). */
   scrollTop?: number;
 }
@@ -116,6 +128,32 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
   const sessions = ref<Record<string, EditorSession>>({});
   const activeGroupId = ref<string>("");
   const noteScrollPositions = ref<Record<string, number>>({});
+
+  // Recently-closed tabs (browser-style reopen, `Cmd/Ctrl+Shift+T`). Each entry
+  // is a minimal snapshot enough to recreate the tab in the active group: a
+  // note tab keeps its in-tab back/forward history so reopening restores the
+  // full navigation; attachment + search tabs keep just their identity. The
+  // stack is capped (browsers keep ~10-25); `closeAllTabs` (context switch)
+  // clears it so a reopened tab never references a different account's notes.
+  const MAX_CLOSED_TABS = 25;
+  const closedTabs = ref<ClosedTabSnapshot[]>([]);
+  // Append a closed-tab snapshot, capping the stack (oldest dropped).
+  function pushClosedTab(snap: ClosedTabSnapshot): void {
+    const next = [...closedTabs.value, snap];
+    if (next.length > MAX_CLOSED_TABS) next.splice(0, next.length - MAX_CLOSED_TABS);
+    closedTabs.value = next;
+  }
+  // Pop the most recent snapshot that can still be reopened (skips stale
+  // entries whose note was permanently deleted, etc.). Returns it or undefined.
+  function popReopenable(): ClosedTabSnapshot | undefined {
+    const stack = [...closedTabs.value];
+    while (stack.length) {
+      const snap = stack.pop();
+      closedTabs.value = stack;
+      if (snap) return snap;
+    }
+    return undefined;
+  }
   // Client-only persisted preferences (the ToC/Minimap last-used mode).
   const config = useConfigStore();
 
@@ -639,6 +677,20 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
   function closeTab(tabId: string): void {
     const tab = tabs.value[tabId];
     if (!tab) return;
+    // Snapshot the closing tab for browser-style reopen (`Cmd/Ctrl+Shift+T`)
+    // before its record is dropped. The snapshot carries the identity +, for
+    // note tabs, the in-tab back/forward history. Bulk closes (trash/delete)
+    // also land here; reopening a trashed note still loads its content, and a
+    // permanently-deleted note reopens to an empty editor (no crash). The stack
+    // is cleared on a context switch (`closeAllTabs`) so it never crosses
+    // accounts.
+    if (tab.kind === "note" && tab.noteId) {
+      pushClosedTab({ kind: "note", noteId: tab.noteId, history: [...tab.history], historyIndex: tab.historyIndex });
+    } else if (tab.kind === "attachment" && tab.attachment) {
+      pushClosedTab({ kind: "attachment", attachment: tab.attachment });
+    } else if (tab.kind === "search" && tab.searchQuery) {
+      pushClosedTab({ kind: "search", searchQuery: tab.searchQuery });
+    }
     const group = groups.value[tab.groupId];
     // Pick a neighbour in the same group to activate if this was active.
     let nextActive = group?.activeTabId;
@@ -685,6 +737,56 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
       nextGroups[id] = { id: g.id };
     }
     groups.value = nextGroups;
+    // A context switch invalidates the closed-tab stack too: those tabs
+    // reference the previous account's notes, which either don't exist or point
+    // at different notes in the new context.
+    closedTabs.value = [];
+  }
+
+  /** Resolve a writable group id for a freshly reopened tab: the active group
+   *  if it still exists, else the first group (made active). Boots an empty
+   *  layout (`init`) so there's always a home when reopening into a fresh
+   *  window. Returns "" only when no group can be produced. */
+  function resolveActiveGroup(): string {
+    if (Object.keys(groups.value).length === 0) init();
+    if (groups.value[activeGroupId.value]) return activeGroupId.value;
+    const first = Object.keys(groups.value)[0];
+    if (first) {
+      activeGroupId.value = first;
+      return first;
+    }
+    return "";
+  }
+
+  /**
+   * Reopen the most recently closed tab (browser-style, `Cmd/Ctrl+Shift+T`):
+   * pop the last closed-tab snapshot and recreate it in the active group
+   * (reusing an existing tab for the same note/attachment/query if one has
+   * since been opened). A note tab's in-tab back/forward history is restored.
+   * No-op when the stack is empty or no group is available.
+   */
+  function reopenClosedTab(): void {
+    const snap = popReopenable();
+    if (!snap) return;
+    const groupId = resolveActiveGroup();
+    if (!groupId) return;
+    if (snap.kind === "note") {
+      const had = !!tabForNote(snap.noteId);
+      const tabId = openTab(groupId, snap.noteId);
+      if (tabId && !had) {
+        // Restore the in-tab navigation history the closed tab had (openTab
+        // seeds a fresh `[noteId]` history). Only when we created a new tab —
+        // never clobber an already-open tab's live history.
+        const t = tabs.value[tabId];
+        if (t && snap.history.length) {
+          tabs.value = { ...tabs.value, [tabId]: { ...t, history: snap.history, historyIndex: snap.historyIndex } };
+        }
+      }
+    } else if (snap.kind === "attachment") {
+      openAttachmentTab(groupId, snap.attachment);
+    } else {
+      openSearchTab(snap.searchQuery);
+    }
   }
 
   /** Activate a tab: set its group's `activeTabId` + focus the group. */
@@ -996,6 +1098,8 @@ export const useEditorLayoutStore = defineStore("editor-layout", () => {
     navigateTab,
     closeTab,
     closeAllTabs,
+    reopenClosedTab,
+    closedTabs,
     closeActiveTab,
     cycleTab,
     activateTab,

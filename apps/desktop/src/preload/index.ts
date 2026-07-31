@@ -66,6 +66,25 @@ const appEvents = {
     ipcRenderer.on("app:close-tab", handler);
     return () => ipcRenderer.removeListener("app:close-tab", handler);
   },
+  // App-menu "Toggle Sidebar" (Cmd/Ctrl+S) / "Toggle Focus Mode" (Cmd/Ctrl+.),
+  // sent from the View menu built in `menu.ts`. The shell collapse state lives
+  // in the renderer's `useShellStore`, so main only signals the intent; the
+  // receiver toggles the matching flag. `target` is "sidebar" | "focus".
+  onShellToggle(listener: (target: "sidebar" | "focus") => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, target: "sidebar" | "focus") =>
+      listener(target);
+    ipcRenderer.on("app:shell-toggle", handler);
+    return () => ipcRenderer.removeListener("app:shell-toggle", handler);
+  },
+  // App-menu "Reopen Closed Tab" (Cmd/Ctrl+Shift+T, browser-style). The
+  // closed-tab stack lives in the renderer's `useEditorLayoutStore`, so main
+  // only signals the intent (payload ignored); the receiver pops + reopens the
+  // last closed tab in the active group.
+  onReopenClosedTab(listener: () => void): () => void {
+    const handler = () => listener();
+    ipcRenderer.on("app:reopen-closed-tab", handler);
+    return () => ipcRenderer.removeListener("app:reopen-closed-tab", handler);
+  },
   onExternalDrop(listener: (paths: string[]) => void): () => void {
     const handler = (_event: Electron.IpcRendererEvent, paths: string[]) =>
       listener(paths);

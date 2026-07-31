@@ -152,3 +152,44 @@ export function formatBundledChangelog(rawText: string, targetVersion?: string |
   }
   return content;
 }
+
+/**
+ * Extract every release-note section from raw CHANGELOG.md whose version is
+ * >= `fromVersion` (inclusive), ordered newest-first (the changelog's natural
+ * order). Non-version headers such as `## [Unreleased]` are skipped. Returns the
+ * concatenated text from the topmost version header down to and including the
+ * `fromVersion` section — so an older install sees all the release notes it has
+ * missed up to the newest, not just the single newest section.
+ *
+ * If `fromVersion` is not found among the recorded releases (e.g. the installed
+ * version predates every entry in the changelog), returns all version sections.
+ * Returns "" for empty input or when no version sections are present.
+ */
+export function formatChangelogRange(rawText: string, fromVersion?: string | null): string {
+  if (!rawText) return "";
+  const trimmed = rawText.trim();
+
+  // Collect every `## [X.Y.Z]` version header (skips `## [Unreleased]` etc.).
+  const headerRe = /^##\s+\[?v?([0-9]+\.[0-9]+\.[0-9]+[^\s\]-]*)/gm;
+  const sections: { version: string; start: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = headerRe.exec(trimmed)) !== null) {
+    sections.push({ version: m[1] as string, start: m.index });
+  }
+  if (sections.length === 0) return "";
+
+  // `sections` are newest-first (changelog order). The range runs from the
+  // topmost (sections[0]) down to and including the `fromVersion` section.
+  if (fromVersion) {
+    const cleanVer = fromVersion.replace(/^v/i, "").trim();
+    const foundIdx = sections.findIndex((s) => s.version === cleanVer);
+    if (foundIdx !== -1) {
+      const next = sections[foundIdx + 1];
+      const endIdx = next ? next.start : trimmed.length;
+      return trimmed.slice(sections[0]!.start, endIdx).trim();
+    }
+    // fromVersion not recorded → return all version sections.
+  }
+
+  return trimmed.slice(sections[0]!.start).trim();
+}

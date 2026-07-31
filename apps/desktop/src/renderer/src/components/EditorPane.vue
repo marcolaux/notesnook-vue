@@ -210,9 +210,10 @@ function moveOrCreateTab(noteId: string, targetGroupId: string): void {
         />
       </Transition>
 
-      <!-- Per-tab ToC/Minimap right sidebar (note tabs only). Floating rounded
-           glass panel (the shell handles its own edges/blur), so it gets a
-           small margin + no flat border-l. Slide+fade transition on open/close. -->
+      <!-- Per-tab ToC/Minimap/Visualizer right sidebar (note tabs only). Floating
+           rounded glass panel (the shell handles its own edges/blur), so it gets a
+           small margin + no flat border-l. Slide+fade transition on open/close.
+           Minimap is narrower (w-40); ToC and the per-note visualizer use w-80. -->
       <Transition name="right-sidebar">
         <TocSidebar
           v-if="activeTab?.kind === 'note' && activeTab.tocVisible && activeTabId"

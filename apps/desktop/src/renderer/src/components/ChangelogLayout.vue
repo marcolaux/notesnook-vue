@@ -15,7 +15,7 @@ import { useI18n } from "vue-i18n";
 import { useUpdaterStore } from "@/stores/updater";
 import { useTitleBarStore } from "@/stores/titlebar";
 import { desktop } from "@/platform/desktop-bridge";
-import { parseMarkdownToHtml, formatBundledChangelog, getLatestChangelogVersion } from "@/utils/markdown";
+import { parseMarkdownToHtml, formatChangelogRange, getLatestChangelogVersion } from "@/utils/markdown";
 import { isNewerUpstreamRelease } from "@contracts/upstream-semver";
 import { Icon } from "@notesnook-vue/ui-vue";
 
@@ -59,17 +59,22 @@ const downloading = computed(() => updater.phase === "downloading");
 
 const remoteNotes = computed(() => {
   if (!remoteText.value) return "";
-  return formatBundledChangelog(remoteText.value, remoteVersion.value);
+  // Range from the installed version up to the newest (inclusive), parsed out
+  // of the fetched remote changelog — so an older install sees every release
+  // note it has missed, not just the single newest section.
+  return formatChangelogRange(remoteText.value, __APP_VERSION__);
 });
 
 const fallbackNotes = computed(() => {
-  return formatBundledChangelog(rawChangelogText, targetVersion.value);
+  // Baked text only goes up to the installed version, so the range against it
+  // collapses to the installed section — the last-resort fallback.
+  return formatChangelogRange(rawChangelogText, __APP_VERSION__);
 });
 
-// Provider release notes (electron-updater) win; then the remote newest
-// section; then the baked installed-version section as a final fallback.
+// Remote installed→newest range wins; then the provider's single-version
+// release notes; then the baked installed-version section as a final fallback.
 const changelogContent = computed(() => {
-  return updater.status.releaseNotes?.trim() || remoteNotes.value || fallbackNotes.value;
+  return remoteNotes.value || updater.status.releaseNotes?.trim() || fallbackNotes.value;
 });
 
 const renderedHtml = computed(() => {

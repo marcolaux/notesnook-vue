@@ -574,6 +574,101 @@ describe("useEditorLayoutStore — tabs", () => {
   });
 });
 
+describe("useEditorLayoutStore — reopen closed tab (browser-style)", () => {
+  beforeEach(() => setActivePinia(createPinia()));
+
+  it("reopenClosedTab is a no-op when nothing has been closed", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    expect(s.closedTabs).toHaveLength(0);
+    s.reopenClosedTab();
+    expect(Object.keys(s.tabs)).toHaveLength(0);
+  });
+
+  it("closeTab snapshots a note tab and reopenClosedTab recreates it", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const root = s.activeGroupId;
+    const id = s.openTab(root, "note-a");
+    s.closeTab(id);
+    expect(Object.keys(s.tabs)).toHaveLength(0);
+    expect(s.closedTabs).toHaveLength(1);
+    s.reopenClosedTab();
+    expect(s.closedTabs).toHaveLength(0);
+    const reopened = s.tabForNote("note-a");
+    expect(reopened).toBeDefined();
+    expect(reopened!.groupId).toBe(root);
+    expect(s.groups[root].activeTabId).toBe(reopened!.id);
+  });
+
+  it("reopenClosedTab restores the in-tab back/forward history", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const root = s.activeGroupId;
+    const id = s.openTab(root, "a");
+    s.navigateTab(id, "b"); // history: [a, b], index 1
+    s.navigateTab(id, "c"); // history: [a, b, c], index 2
+    s.closeTab(id);
+    s.reopenClosedTab();
+    const reopened = s.tabForNote("c");
+    expect(reopened).toBeDefined();
+    expect(reopened!.history).toEqual(["a", "b", "c"]);
+    expect(reopened!.historyIndex).toBe(2);
+  });
+
+  it("reopenClosedTab reopens in LIFO order (most-recent first)", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const root = s.activeGroupId;
+    s.openTab(root, "a");
+    s.closeTab(s.tabForNote("a")!.id);
+    s.openTab(root, "b");
+    s.closeTab(s.tabForNote("b")!.id);
+    expect(s.closedTabs.map((t) => (t.kind === "note" ? t.noteId : ""))).toEqual(["a", "b"]);
+    s.reopenClosedTab();
+    expect(s.tabForNote("b")).toBeDefined();
+    s.reopenClosedTab();
+    expect(s.tabForNote("a")).toBeDefined();
+  });
+
+  it("reopenClosedTab reuses an already-open tab instead of duplicating", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const root = s.activeGroupId;
+    s.openTab(root, "a");
+    s.closeTab(s.tabForNote("a")!.id);
+    // Reopen "a" manually first, then reopen-closed should find it open and
+    // just activate (no second tab).
+    s.openTab(root, "a");
+    s.reopenClosedTab();
+    expect(Object.values(s.tabs).filter((t) => t.kind === "note" && t.noteId === "a")).toHaveLength(1);
+    expect(s.closedTabs).toHaveLength(0);
+  });
+
+  it("closeAllTabs clears the closed-tab stack (context switch)", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const root = s.activeGroupId;
+    s.openTab(root, "a");
+    s.closeTab(s.tabForNote("a")!.id);
+    expect(s.closedTabs).toHaveLength(1);
+    s.closeAllTabs();
+    expect(s.closedTabs).toHaveLength(0);
+    s.reopenClosedTab(); // no-op after context switch
+    expect(Object.keys(s.tabs)).toHaveLength(0);
+  });
+
+  it("closeTab on a search tab is reopenable", () => {
+    const s = useEditorLayoutStore();
+    s.init();
+    const id = s.openSearchTab("foo");
+    s.closeTab(id);
+    expect(s.closedTabs).toHaveLength(1);
+    s.reopenClosedTab();
+    expect(s.tabForSearch("foo")).toBeDefined();
+  });
+});
+
 describe("useEditorLayoutStore — toggleToc / setTocMode", () => {
   beforeEach(() => setActivePinia(createPinia()));
 

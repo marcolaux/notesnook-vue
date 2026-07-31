@@ -416,6 +416,23 @@ html[data-transparency="off"] .editor-tab-inactive {
   color: inherit;
 }
 
+/* Contrast-aware text colour for the preset highlight swatches. The
+   `--hl-text-*` vars are emitted per-theme by `@notesnook-vue/theme-vue`'s
+   `highlightToCSS` using the same OKLCH/WCAG engine as block-colorize
+   (`adjustForContrast`), so highlighted text stays readable against its
+   highlight background in any theme and recomputes live on theme switch. The
+   highlight extension drops its inline `color: inherit` for these marks, so
+   these rules apply without `!important`. `data-color` values are the exact
+   `DefaultColors` / `StaticColors` hexes. Custom (OS-picker) colours match no
+   selector and fall back to `color: inherit` above (current behaviour). */
+.ProseMirror mark[data-color="#f44336"] { color: var(--hl-text-red); }
+.ProseMirror mark[data-color="#FF9800"] { color: var(--hl-text-orange); }
+.ProseMirror mark[data-color="#FFD600"] { color: var(--hl-text-yellow); }
+.ProseMirror mark[data-color="#4CAF50"] { color: var(--hl-text-green); }
+.ProseMirror mark[data-color="#2196F3"] { color: var(--hl-text-blue); }
+.ProseMirror mark[data-color="#673AB7"] { color: var(--hl-text-purple); }
+.ProseMirror mark[data-color="#9E9E9E"] { color: var(--hl-text-gray); }
+
 /* Inline code — theme-aware tint (was a hardcoded slab). */
 .ProseMirror code {
   background: color-mix(in oklab, var(--paragraph) 12%, transparent);

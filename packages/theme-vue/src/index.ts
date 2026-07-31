@@ -45,6 +45,7 @@ export { injectTheme, setTheme, getCurrentTheme } from "./inject";
 export { TAILWIND_TOKEN_MAP, tailwindBridgeToCSS } from "./tailwind-bridge";
 export { DEFAULT_GLASSMORPHISM, resolveGlassmorphism, glassmorphismToCSS } from "./glassmorphism";
 export { blockColorizeToCSS } from "./block-colorize";
+export { highlightToCSS } from "./highlight";
 export {
   CONTRAST_TARGET,
   parseRGB,

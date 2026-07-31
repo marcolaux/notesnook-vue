@@ -1,5 +1,6 @@
 import { BrowserWindow, Menu, type MenuItemConstructorOptions } from "electron";
 import { openSettingsWindow, isSettingsWindow } from "./settings-window";
+import { openAccountWindow } from "./account-window";
 import { resolveContextForWindow } from "./session-state";
 import { tMain, registerLocaleChangeCallback } from "./i18n";
 
@@ -35,7 +36,10 @@ function focusedWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
 }
 
-function sendToRenderer(channel: "app:close-tab" | "app:tray-action", payload: unknown): void {
+function sendToRenderer(
+  channel: "app:close-tab" | "app:tray-action" | "app:shell-toggle" | "app:reopen-closed-tab",
+  payload: unknown
+): void {
   const win = focusedWindow();
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
@@ -52,6 +56,19 @@ function buildAppMenu(preloadPath: string): Menu {
           label: tMain("menu.newNote"),
           accelerator: "CmdOrCtrl+N",
           click: () => sendToRenderer("app:tray-action", "new-note")
+        },
+        {
+          label: tMain("menu.newWindow"),
+          accelerator: "CmdOrCtrl+Shift+N",
+          click: () => {
+            // Open a fresh full-shell window bound to the focused window's
+            // account context (its bound `contextId`), mirroring the account
+            // switcher's "Open in new window" action. Fall back to the local
+            // context when no window is bound yet (boot / Settings-only) so the
+            // shortcut always opens something usable.
+            const ctx = resolveContextForWindow(focusedWindow()) ?? "local";
+            openAccountWindow(preloadPath, ctx);
+          }
         },
         { type: "separator" },
         {
@@ -80,11 +97,47 @@ function buildAppMenu(preloadPath: string): Menu {
           label: tMain("menu.closeWindow"),
           accelerator: "CmdOrCtrl+Shift+W",
           click: () => focusedWindow()?.close()
+        },
+        {
+          label: tMain("menu.reopenClosedTab"),
+          accelerator: "CmdOrCtrl+Shift+T",
+          click: () => sendToRenderer("app:reopen-closed-tab", "")
         }
       ]
     },
     { role: "editMenu" },
-    { role: "viewMenu" },
+    // Build the View menu explicitly (instead of the `viewMenu` role) so the
+    // sidebar / focus-mode toggles can sit alongside the standard
+    // zoom/devtools/fullscreen role items. The toggle state lives in the
+    // renderer's shell store, so the `click` handlers signal it via the
+    // `app:shell-toggle` channel (`onShellToggle` in the preload) — same shape
+    // as `app:close-tab`. The renderer ignores the signal before the shell is
+    // visible (login / Settings window).
+    {
+      label: tMain("menu.view"),
+      submenu: [
+        {
+          label: tMain("menu.toggleSidebar"),
+          accelerator: "CmdOrCtrl+S",
+          click: () => sendToRenderer("app:shell-toggle", "sidebar")
+        },
+        {
+          label: tMain("menu.toggleFocusMode"),
+          accelerator: "CmdOrCtrl+.",
+          click: () => sendToRenderer("app:shell-toggle", "focus")
+        },
+        { type: "separator" },
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" }
+      ]
+    },
     // Override the `windowMenu` role's default submenu. On Windows/Linux the
     // default submenu injects a `close` item bound to `CmdOrCtrl+W`, which
     // collides with the custom "Close Tab" item above (File menu) and — being

@@ -563,6 +563,25 @@ onMounted(async () => {
     if (id) notes.closeTab(id);
   });
 
+  // App-menu "Toggle Sidebar" (Cmd/Ctrl+S) / "Toggle Focus Mode" (Cmd/Ctrl+.),
+  // sent from main's Application menu View submenu. Both collapse shell chrome;
+  // no-op before the shell is visible (login screen / Settings window — those
+  // renderers have no sidebar to collapse).
+  window.appEvents?.onShellToggle((target) => {
+    if (!auth.showShell) return;
+    const shell = useShellStore();
+    if (target === "sidebar") shell.toggleSidebar();
+    else shell.toggleFocusMode();
+  });
+
+  // App-menu "Reopen Closed Tab" (Cmd/Ctrl+Shift+T, browser-style) — pop the
+  // most recently closed tab and reopen it in the active group. No-op before
+  // the shell is visible (login / Settings window have no tab strip).
+  window.appEvents?.onReopenClosedTab(() => {
+    if (!auth.showShell) return;
+    editorLayout.reopenClosedTab();
+  });
+
   // Cross-window DB-mutation signal: the Settings window imported a backup
   // (or created/deleted a vault) in its own renderer, mutating the shared DB.
   // Core events are per-process, so this window's stores won't see the change

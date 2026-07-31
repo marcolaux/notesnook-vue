@@ -65,7 +65,12 @@ export default {
     title: "Inhaltsverzeichnis",
     headings: "Überschriften",
     minimap: "Minimap",
-    empty: "Keine Überschriften in dieser Notiz"
+    empty: "Keine Überschriften in dieser Notiz",
+    visualizer: "Notiz-Map",
+    visualizerLoading: "Verwandte Notizen werden kartiert…",
+    visualizerDisabled: "Semantische Suche aktivieren, um verwandte Notizen zu sehen",
+    visualizerEmpty: "Keine verwandten Notizen gefunden",
+    related: "Verwandte Notizen"
   },
   sidebar: {
     notebooks: "Notizbücher",
@@ -435,9 +440,14 @@ export default {
   menu: {
     file: "Datei",
     newNote: "Neue Notiz",
+    newWindow: "Neues Fenster",
     settings: "Einstellungen …",
     closeTab: "Tab schließen",
-    closeWindow: "Fenster schließen"
+    closeWindow: "Fenster schließen",
+    reopenClosedTab: "Geschlossenen Tab wieder öffnen",
+    view: "Ansicht",
+    toggleSidebar: "Seitenleiste umschalten",
+    toggleFocusMode: "Fokusmodus umschalten"
   },
   tray: {
     newNote: "Neue Notiz",
@@ -907,10 +917,12 @@ export default {
     removeTemplate: "Vorlage entfernen",
     closeTab: "Tab schließen",
     closeTabAndTrash: "Tab schließen und in Papierkorb verschieben",
+    reopenClosedTab: "Geschlossenen Tab wieder öffnen",
     splitEditorRight: "Editor rechts teilen",
     splitEditorDown: "Editor unten teilen",
     closeEditorPane: "Editor-Pane schließen",
     detachPane: "Pane in neues Fenster lösen",
+    newWindow: "Neues Fenster",
     focusNextPane: "Nächstes Pane fokussieren",
     goBack: "Zurück",
     goForward: "Vorwärts",

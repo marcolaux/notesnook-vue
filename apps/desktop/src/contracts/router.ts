@@ -198,6 +198,10 @@ export interface UpdateStatus {
   progress: number;
   /** Release notes / changelog text from the update provider. */
   releaseNotes?: string | null;
+  /** Last autoUpdater / provider error message, if any (cleared on success).
+   *  Surfaced to the renderer so the UI can show *which* layer failed (macOS
+   *  signature mismatch, network, etc.) instead of a silent no-op. */
+  error?: string | null;
 }
 
 export interface UpdaterServer {

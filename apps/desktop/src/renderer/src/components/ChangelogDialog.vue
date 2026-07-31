@@ -3,10 +3,11 @@
  * Modal dialog displaying the latest release notes / changelog when a new version
  * is detected automatically or opened via Settings / TitleBar.
  */
-import { computed } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useUpdaterStore } from "@/stores/updater";
-import { parseMarkdownToHtml, formatBundledChangelog, getLatestChangelogVersion } from "@/utils/markdown";
+import { desktop } from "@/platform/desktop-bridge";
+import { parseMarkdownToHtml, formatChangelogRange, getLatestChangelogVersion } from "@/utils/markdown";
 import { Icon } from "@notesnook-vue/ui-vue";
 
 const updater = useUpdaterStore();
@@ -14,6 +15,12 @@ const { t } = useI18n();
 
 const rawChangelogText = typeof __CHANGELOG_CONTENT__ !== "undefined" ? __CHANGELOG_CONTENT__ : "";
 const latestBundledVersion = getLatestChangelogVersion(rawChangelogText);
+
+// Remote changelog fetched from the app's GitHub repo on mount so the modal
+// can show the full installed→newest range (the baked text only goes up to the
+// installed version). `null` until the fetch resolves or fails; the modal
+// silently falls back to the provider/baked notes on any failure.
+const remoteText = ref<string | null>(null);
 
 const targetVersion = computed(() => {
   if (updater.status.version) return updater.status.version;
@@ -28,12 +35,19 @@ const versionTag = computed(() => {
 
 const downloading = computed(() => updater.phase === "downloading");
 
-const fallbackNotes = computed(() => {
-  return formatBundledChangelog(rawChangelogText, targetVersion.value);
+const remoteNotes = computed(() => {
+  if (!remoteText.value) return "";
+  return formatChangelogRange(remoteText.value, __APP_VERSION__);
 });
 
+const fallbackNotes = computed(() => {
+  return formatChangelogRange(rawChangelogText, __APP_VERSION__);
+});
+
+// Remote installed→newest range wins; then the provider's single-version
+// release notes; then the baked installed-version section as a final fallback.
 const changelogContent = computed(() => {
-  return updater.status.releaseNotes?.trim() || fallbackNotes.value;
+  return remoteNotes.value || updater.status.releaseNotes?.trim() || fallbackNotes.value;
 });
 
 const renderedHtml = computed(() => {
@@ -60,6 +74,17 @@ function handleAction(): void {
     void updater.downloadUpdate();
   }
 }
+
+onMounted(() => {
+  desktop.changelog.fetchLatest
+    .query()
+    .then((res) => {
+      if (res && !res.error && res.text) remoteText.value = res.text;
+    })
+    .catch(() => {
+      // Bridge failure → silently fall back to the provider/baked notes.
+    });
+});
 </script>
 
 <template>

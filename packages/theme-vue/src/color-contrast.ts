@@ -212,35 +212,50 @@ export function adjustForContrast(
   // Already passing → return unchanged (as oklch, same colour).
   if (contrastRatio(fg, bg) >= target) return oklchToCss(ok);
 
-  // Move fg lightness AWAY from the background: darken on light bg, lighten
-  // on dark bg. 0.5 cleanly separates the built-ins (white=1, #181818≈0.018).
-  const darken = relativeLuminance(bg) >= 0.5;
-  const step = 0.01;
-  const bound = darken ? 0.02 : 0.98;
-
-  let bestL = ok.L;
-  let bestRatio = contrastRatio(oklchToSrgb({ L: ok.L, C: ok.C, H: ok.H }), bg);
-  // Walk toward the bound; track the best ratio seen in case the target is
-  // unreachable (gamut clipping can make the curve non-monotonic near bounds).
-  let L = ok.L;
-  for (let i = 0; i < 200; i++) {
-    L = darken ? L - step : L + step;
-    if (L < 0.02 || L > 0.98) {
-      L = Math.min(0.98, Math.max(0.02, L));
+  // Walk OKLCH lightness toward a bound (darken or lighten), tracking the best
+  // ratio seen — the curve can be non-monotonic near the gamut-clip bounds.
+  const walk = (towardDark: boolean): { L: number; ratio: number } => {
+    const step = 0.01;
+    let bestL = ok.L;
+    let bestRatio = contrastRatio(oklchToSrgb({ L: ok.L, C: ok.C, H: ok.H }), bg);
+    let L = ok.L;
+    for (let i = 0; i < 200; i++) {
+      L = towardDark ? L - step : L + step;
+      if (L < 0.02 || L > 0.98) {
+        L = Math.min(0.98, Math.max(0.02, L));
+        const r = contrastRatio(oklchToSrgb({ L, C: ok.C, H: ok.H }), bg);
+        if (r > bestRatio) {
+          bestL = L;
+          bestRatio = r;
+        }
+        break;
+      }
       const r = contrastRatio(oklchToSrgb({ L, C: ok.C, H: ok.H }), bg);
       if (r > bestRatio) {
         bestL = L;
         bestRatio = r;
       }
-      break;
+      if (r >= target) break;
     }
-    const r = contrastRatio(oklchToSrgb({ L, C: ok.C, H: ok.H }), bg);
-    if (r > bestRatio) {
-      bestL = L;
-      bestRatio = r;
-    }
-    if (r >= target) break;
+    return { L: bestL, ratio: bestRatio };
+  };
+
+  // Primary direction: move fg lightness AWAY from the background — darken on
+  // light bg, lighten on dark bg. 0.5 cleanly separates the built-ins (white=1,
+  // #181818≈0.018). Block-colorize's backgrounds are extreme, so this always
+  // reaches the target there.
+  const primaryDarken = relativeLuminance(bg) >= 0.5;
+  const primary = walk(primaryDarken);
+  if (primary.ratio >= target) {
+    return oklchToCss({ L: primary.L, C: ok.C, H: ok.H });
   }
 
-  return oklchToCss({ L: bestL, C: ok.C, H: ok.H });
+  // The primary direction couldn't reach the target. This happens with
+  // mid-luminance backgrounds (e.g. the gray/orange highlight swatches) where
+  // the heuristic points the wrong way: a light bg just under 0.5 tells the
+  // fg to lighten, but the fg may already be light. Try the opposite direction
+  // and keep whichever reaches a higher ratio.
+  const secondary = walk(!primaryDarken);
+  const best = secondary.ratio > primary.ratio ? secondary : primary;
+  return oklchToCss({ L: best.L, C: ok.C, H: ok.H });
 }

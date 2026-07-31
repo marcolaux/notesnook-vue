@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseMarkdownToHtml, formatBundledChangelog, getLatestChangelogVersion } from "@/utils/markdown";
+import { parseMarkdownToHtml, formatBundledChangelog, formatChangelogRange, getLatestChangelogVersion } from "@/utils/markdown";
 
 describe("parseMarkdownToHtml", () => {
   it("returns empty string for empty input", () => {
@@ -76,5 +76,61 @@ describe("formatBundledChangelog", () => {
     expect(formatted).toContain("## [0.7.1]");
     expect(formatted).toContain("Fix B");
     expect(formatted).not.toContain("0.8.0");
+  });
+});
+
+describe("formatChangelogRange", () => {
+  const RAW = `# Changelog\n\n## [Unreleased]\n\n- pending\n\n## [0.8.0] - 2026-07-27\n\n- New 0.8.0\n\n## [0.7.1] - 2026-07-26\n\n- Fix 0.7.1\n\n## [0.7.0] - 2026-07-20\n\n- Old 0.7.0`;
+
+  it("returns empty string for empty input", () => {
+    expect(formatChangelogRange("")).toBe("");
+  });
+
+  it("returns empty string when no version sections are present", () => {
+    expect(formatChangelogRange("# Changelog\n\n## [Unreleased]\n\n- pending")).toBe("");
+  });
+
+  it("returns all sections newest→fromVersion inclusive, excluding Unreleased and older entries", () => {
+    const range = formatChangelogRange(RAW, "0.7.1");
+    expect(range).toContain("## [0.8.0]");
+    expect(range).toContain("New 0.8.0");
+    expect(range).toContain("## [0.7.1]");
+    expect(range).toContain("Fix 0.7.1");
+    // Older than installed is excluded.
+    expect(range).not.toContain("## [0.7.0]");
+    expect(range).not.toContain("Old 0.7.0");
+    // Unreleased header is always excluded.
+    expect(range).not.toContain("## [Unreleased]");
+    expect(range).not.toContain("pending");
+    // Title header stripped.
+    expect(range).not.toContain("# Changelog");
+  });
+
+  it("excludes the Unreleased section when installed is the newest", () => {
+    const range = formatChangelogRange(RAW, "0.8.0");
+    expect(range).toContain("## [0.8.0]");
+    expect(range).not.toContain("## [Unreleased]");
+    expect(range).not.toContain("## [0.7.1]");
+  });
+
+  it("returns all version sections when fromVersion is not found", () => {
+    const range = formatChangelogRange(RAW, "0.5.0");
+    expect(range).toContain("## [0.8.0]");
+    expect(range).toContain("## [0.7.0]");
+    expect(range).not.toContain("## [Unreleased]");
+  });
+
+  it("returns all version sections when no fromVersion is given", () => {
+    const range = formatChangelogRange(RAW);
+    expect(range).toContain("## [0.8.0]");
+    expect(range).toContain("## [0.7.0]");
+    expect(range).not.toContain("## [Unreleased]");
+  });
+
+  it("accepts a v-prefixed fromVersion", () => {
+    const range = formatChangelogRange(RAW, "v0.7.1");
+    expect(range).toContain("## [0.8.0]");
+    expect(range).toContain("## [0.7.1]");
+    expect(range).not.toContain("## [0.7.0]");
   });
 });

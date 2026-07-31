@@ -25,7 +25,7 @@ import { app, BrowserWindow } from "electron";
 import { registerUpdaterServer, type UpdateStatus, type UpdaterServer } from "../contracts/router";
 import { isNewerUpstreamRelease } from "../contracts/upstream-semver";
 
-const IDLE: UpdateStatus = { available: false, version: null, downloaded: false, progress: 0 };
+const IDLE: UpdateStatus = { available: false, version: null, downloaded: false, progress: 0, error: null };
 
 /** Current snapshot, mutated by `autoUpdater` events + `check()`. */
 let status: UpdateStatus = { ...IDLE };
@@ -65,9 +65,14 @@ function bindEvents(au: import("electron-updater").AppUpdater): void {
     status = { ...status, progress: Math.round(p.percent) };
     emitState();
   });
-  au.on("error", () => {
-    // Surface as "no update" without clobbering a previously-known version.
-    status = { ...status, progress: 0 };
+  au.on("error", (err: unknown) => {
+    // Log + surface the real message. Previously this was swallowed (only
+    // progress reset), so macOS failures (signature mismatch, network, etc.)
+    // were indistinguishable from "no update". The message is mirrored into
+    // `status.error` so the renderer's `lastError` banner can show it.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[updater] autoUpdater error:", msg);
+    status = { ...status, progress: 0, error: msg };
     emitState();
   });
 }
@@ -124,17 +129,19 @@ export const updaterServer: UpdaterServer = {
         version: available ? remoteVersion : currentVersion,
         downloaded: status.downloaded,
         progress: 0,
+        error: null,
         releaseNotes
       };
       emitState();
       return status;
-    } catch {
+    } catch (err) {
       // Network/provider error → keep the last known status (don't wipe to
       // IDLE, which would regress a known "up-to-date" back to "Checking…").
-      // Only progress is reset. The renderer surfaces failures via `lastError`
-      // when the bridge call itself rejects; a swallowed provider error here
-      // leaves the prior snapshot intact.
-      status = { ...status, progress: 0 };
+      // Log + surface the message so macOS failures aren't a silent no-op;
+      // only progress is reset, the prior snapshot otherwise stays intact.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[updater] check error:", msg);
+      status = { ...status, progress: 0, error: msg };
       emitState();
       return status;
     }

@@ -53,6 +53,12 @@ export const useUpdaterStore = defineStore("updater", () => {
   function applyStatus(next: UpdateStatus): void {
     const isNew = (next.available || next.downloaded) && next.version && next.version !== dismissedVersion.value;
     status.value = next;
+    // Surface autoUpdater/provider errors that the main process captured
+    // (previously swallowed) into the existing `lastError` banner so the UI
+    // shows *which* layer failed (e.g. macOS signature mismatch). The check/
+    // download actions call `clearError()` first, so a recovered state clears
+    // the banner.
+    if (next.error) lastError.value = next.error;
     if (isNew) {
       openChangelog();
     }

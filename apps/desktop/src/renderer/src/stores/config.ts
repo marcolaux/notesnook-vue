@@ -89,9 +89,10 @@ export type ConfigKey =
   | "defaultTaskTemplate"
   | "tocMode";
 
-/** ToC/Minimap right-sidebar mode (local-only preference — the last-used mode
- *  is seeded when a tab opens its ToC sidebar). */
-export type TocMode = "toc" | "minimap";
+/** ToC/Minimap/Visualizer right-sidebar mode (local-only preference — the
+ *  last-used mode is seeded when a tab opens its ToC sidebar).
+ *  `"visualizer"` is the per-note semantic neighbourhood map. */
+export type TocMode = "toc" | "minimap" | "visualizer";
 
 /** Default value for each config key (matches upstream's stores). */
 export const CONFIG_DEFAULTS: {
@@ -120,8 +121,8 @@ export const CONFIG_DEFAULTS: {
   /** Template note id applied to every "New task", or `null` for the task seed.
    *  Local-only preference. */
   defaultTaskTemplate: string | null;
-  /** Last-used ToC/Minimap sidebar mode (seeded when a tab opens its sidebar).
-   *  Local-only preference. */
+  /** Last-used ToC/Minimap/Visualizer sidebar mode (seeded when a tab opens its
+   *  sidebar). Local-only preference. */
   tocMode: TocMode;
 } = {
   syncEnabled: true,

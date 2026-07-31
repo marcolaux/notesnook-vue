@@ -61,7 +61,12 @@ export default {
     title: "Table of contents",
     headings: "Headings",
     minimap: "Minimap",
-    empty: "No headings in this note"
+    empty: "No headings in this note",
+    visualizer: "Note map",
+    visualizerLoading: "Mapping related notes…",
+    visualizerDisabled: "Enable semantic search to see related notes",
+    visualizerEmpty: "No related notes found",
+    related: "Related notes"
   },
   sidebar: {
     notebooks: "Notebooks",
@@ -430,14 +435,20 @@ export default {
     notesnookBackup: "Notesnook backup"
   },
   // OS-level application menu (main process, `menu.ts`). Electron role menus
-  // (appMenu/editMenu/viewMenu/windowMenu) keep their native labels — these
-  // are the custom File-submenu items + the top-level "File" label.
+  // (appMenu/editMenu/windowMenu) keep their native labels — these are the
+  // custom File-submenu items + the top-level "File" label, plus the explicit
+  // View submenu (sidebar/focus-mode toggles) whose labels we localize here.
   menu: {
     file: "File",
     newNote: "New Note",
+    newWindow: "New Window",
     settings: "Settings…",
     closeTab: "Close Tab",
-    closeWindow: "Close Window"
+    closeWindow: "Close Window",
+    reopenClosedTab: "Reopen Closed Tab",
+    view: "View",
+    toggleSidebar: "Toggle Sidebar",
+    toggleFocusMode: "Toggle Focus Mode"
   },
   // System-tray context menu (main process, `contracts/tray.ts` + `tray.ts`).
   // The spec stores i18n keys; main resolves them via `tMain`.
@@ -926,10 +937,12 @@ export default {
     removeTemplate: "Remove template",
     closeTab: "Close tab",
     closeTabAndTrash: "Close tab and move to trash",
+    reopenClosedTab: "Reopen closed tab",
     splitEditorRight: "Split editor right",
     splitEditorDown: "Split editor down",
     closeEditorPane: "Close editor pane",
     detachPane: "Detach pane to new window",
+    newWindow: "New window",
     focusNextPane: "Focus next pane",
     goBack: "Go back",
     goForward: "Go forward",

@@ -159,6 +159,17 @@ const appCommands: Command[] = [
       if (id) ctx.notes.closeTab(id);
     }
   },
+  // Reopen the most recently closed tab (browser-style). Pairs with the menubar
+  // File → "Reopen Closed Tab" (`Cmd/Ctrl+Shift+T`) entry; both call the
+  // editor-layout store's closed-tab stack. Disabled while the stack is empty.
+  {
+    id: "app:reopen-closed-tab",
+    title: "command.reopenClosedTab",
+    keywords: ["reopen", "closed", "tab", "restore", "undo"],
+    group: "app",
+    when: (ctx) => ctx.layout.closedTabs.length > 0,
+    run: (ctx) => ctx.layout.reopenClosedTab()
+  },
   {
     id: "app:close-tab-and-trash",
     title: "command.closeTabAndTrash",
@@ -459,6 +470,18 @@ const appCommands: Command[] = [
     group: "app",
     when: (ctx) => ctx.auth.showShell,
     run: (ctx) => ctx.shell.toggleFocusMode()
+  },
+  // Open a NEW full-shell window bound to THIS window's account context, via
+  // the `window.openAccountWindow` tRPC bridge (same path the account switcher's
+  // "Open in new window" uses). Pairs with the menubar File → "New Window"
+  // (`Cmd/Ctrl+Shift+N`) entry, which calls the main-side function directly.
+  {
+    id: "app:new-window",
+    title: "command.newWindow",
+    keywords: ["window", "new", "open", "account"],
+    group: "app",
+    when: (ctx) => ctx.auth.showShell,
+    run: (ctx) => ctx.auth.openAccountInNewWindow(getCurrentContext())
   },
   {
     id: "app:sync-now",
