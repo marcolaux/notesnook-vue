@@ -65,9 +65,16 @@ export interface ClusteringOptions {
 export const DEFAULT_CLUSTERING_OPTIONS: ClusteringOptions = {
   algorithm: "dbscan",
   kmeansK: 5,
-  dbscanEps: 0.35,
+  // Tuned for the granite-embedding-97m-multilingual model (CLS pooling, int8):
+  // its cosine-similarity distribution is tighter / more peaked than the old
+  // all-MiniLM-L6-v2, so the old eps=0.35 / threshold=0.6 either collapsed every
+  // note into one cluster or labelled them all noise + drew a thicket of edges.
+  // A smaller eps separates tighter granite clusters; the threshold now acts as
+  // a *floor* for the kNN edge pass (each node links to its top-K similar), not
+  // an all-pairs cutoff — see `buildVisualizerGraph`.
+  dbscanEps: 0.28,
   dbscanMinSamples: 2,
-  similarityThreshold: 0.6,
+  similarityThreshold: 0.65,
   includeNotes: true,
   includeTags: true,
   includeNotebooks: true,
@@ -284,6 +291,22 @@ export function runDBSCAN(vectors: Float32Array[], eps: number, minSamples: numb
 }
 
 /**
+ * Deterministic seeded PRNG (mulberry32). `projectPCA2D` power-iterates from a
+ * random initial PC guess; using `Math.random()` made every `refreshGraph()`
+ * produce a *different* 2D layout, so the graph jumped around on each rebuild.
+ * A fixed seed makes the projection stable for a given input set.
+ */
+function makeSeededRng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
  * Fast 2-component PCA projection for Float32Array vectors.
  */
 export function projectPCA2D(vectors: Float32Array[]): [number, number][] {
@@ -291,6 +314,7 @@ export function projectPCA2D(vectors: Float32Array[]): [number, number][] {
   if (n === 0) return [];
   if (n === 1) return [[0, 0]];
   const dim = vectors[0]?.length ?? 384;
+  const rng = makeSeededRng(0x9e3779b9);
 
   const mean = new Float32Array(dim);
   for (let i = 0; i < n; i++) {
@@ -313,7 +337,7 @@ export function projectPCA2D(vectors: Float32Array[]): [number, number][] {
   });
 
   let pc1 = new Float32Array(dim);
-  for (let d = 0; d < dim; d++) pc1[d] = Math.random() - 0.5;
+  for (let d = 0; d < dim; d++) pc1[d] = rng() - 0.5;
   normalizeVector(pc1);
 
   for (let iter = 0; iter < 15; iter++) {
@@ -328,7 +352,7 @@ export function projectPCA2D(vectors: Float32Array[]): [number, number][] {
   }
 
   let pc2 = new Float32Array(dim);
-  for (let d = 0; d < dim; d++) pc2[d] = Math.random() - 0.5;
+  for (let d = 0; d < dim; d++) pc2[d] = rng() - 0.5;
   let dot12 = 0;
   for (let d = 0; d < dim; d++) dot12 += (pc2[d] ?? 0) * (pc1[d] ?? 0);
   for (let d = 0; d < dim; d++) pc2[d] = (pc2[d] ?? 0) - dot12 * (pc1[d] ?? 0);
@@ -614,26 +638,43 @@ export async function buildVisualizerGraph(
   const edges: VisualizerEdge[] = [];
   const edgeSet = new Set<string>();
 
-  // A. Semantic Vector Similarity Edges
+  // A. Semantic Vector Similarity Edges — kNN, NOT all-pairs.
+  // The old pass linked *every* pair with sim ≥ threshold, an O(n²) blow-up that
+  // drew a thicket of lines across the whole graph (especially after the granite
+  // model swap tightened the cosine distribution and pushed many more pairs over
+  // the cutoff). Instead each node links to its K most-similar neighbours, and
+  // only when sim ≥ `similarityThreshold` (now a *floor*, not an all-pairs
+  // cutoff). Yields ≈ K·N/2 edges — bounded, legible, model-agnostic.
   if (options.linkSimilarity) {
+    const K = 4;
     for (let i = 0; i < rawNodes.length; i++) {
       const n1 = rawNodes[i];
       if (!n1) continue;
-      for (let j = i + 1; j < rawNodes.length; j++) {
+      // Rank every other node by similarity to n1.
+      const ranked: { idx: number; sim: number }[] = [];
+      for (let j = 0; j < rawNodes.length; j++) {
+        if (j === i) continue;
         const n2 = rawNodes[j];
         if (!n2) continue;
-        const sim = cosineSimilarity(n1.vector, n2.vector);
-        if (sim >= options.similarityThreshold) {
-          const key = `${n1.id}-${n2.id}`;
-          edgeSet.add(key);
-          edges.push({
-            source: n1.id,
-            target: n2.id,
-            similarity: sim,
-            type: "similarity",
-            label: t("vectorViz.matchPct", { pct: Math.round(sim * 100) })
-          });
-        }
+        ranked.push({ idx: j, sim: cosineSimilarity(n1.vector, n2.vector) });
+      }
+      ranked.sort((a, b) => b.sim - a.sim);
+      for (let k = 0; k < Math.min(K, ranked.length); k++) {
+        const entry = ranked[k];
+        if (!entry || entry.sim < options.similarityThreshold) break;
+        const n2 = rawNodes[entry.idx];
+        if (!n2) continue;
+        // Dedup unordered pairs (a-b === b-a) so we don't double-draw.
+        const key = n1.id < n2.id ? `${n1.id}-${n2.id}` : `${n2.id}-${n1.id}`;
+        if (edgeSet.has(key)) continue;
+        edgeSet.add(key);
+        edges.push({
+          source: n1.id,
+          target: n2.id,
+          similarity: entry.sim,
+          type: "similarity",
+          label: t("vectorViz.matchPct", { pct: Math.round(entry.sim * 100) })
+        });
       }
     }
   }
@@ -649,7 +690,7 @@ export async function buildVisualizerGraph(
         if (!n2) continue;
         const sharedTags = n1.tags?.filter((t) => n2.tags?.includes(t)) ?? [];
         if (sharedTags.length > 0) {
-          const key = `${n1.id}-${n2.id}`;
+          const key = n1.id < n2.id ? `${n1.id}-${n2.id}` : `${n2.id}-${n1.id}`;
           if (!edgeSet.has(key)) {
             edgeSet.add(key);
             edges.push({

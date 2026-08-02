@@ -70,6 +70,7 @@ export default {
     visualizerLoading: "Verwandte Notizen werden kartiert…",
     visualizerDisabled: "Semantische Suche aktivieren, um verwandte Notizen zu sehen",
     visualizerEmpty: "Keine verwandten Notizen gefunden",
+    visualizerReindexing: "Semantische Suche wird neu indiziert — verwandte Notizen erscheinen, während der Index aufgebaut wird.",
     related: "Verwandte Notizen"
   },
   sidebar: {
@@ -580,6 +581,7 @@ export default {
     reset: "Zurücksetzen",
     closeTitle: "Visualizer schließen (Esc)",
     computing: "2D-Vektor-Cluster werden berechnet …",
+    reindexing: "Semantische Suche wird neu indiziert — die Karte füllt sich, während Notizen im Hintergrund neu eingebettet werden.",
     clusterLabel: "✦ Cluster: {title}",
     topSimilar: "Ähnlichste Notizen",
     similarityPct: "Ähnlichkeit %",
@@ -910,7 +912,8 @@ export default {
     tierExact: "Genaue Treffer",
     tierSemantic: "Semantische Treffer",
     tierCluster: "Verwandt (Cluster)",
-    tierClusterLoading: "Verwandte Notizen werden gesucht…"
+    tierClusterLoading: "Verwandte Notizen werden gesucht…",
+    reindexing: "Semantische Suche wird neu indiziert — Ergebnisse können bis zum Abschluss unvollständig sein."
   },
   command: {
     newNote: "Neue Notiz",

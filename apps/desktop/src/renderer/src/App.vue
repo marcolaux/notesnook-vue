@@ -38,6 +38,7 @@ import {
   setPersistenceSuppressed
 } from "@/composables/use-session-persistence";
 import { dropZoneFromPoint } from "@/utils/tab-dnd";
+import { abortReindexForContextSwitch } from "@/utils/vector-search";
 import { reloadBlockColorize } from "@/stores/block-colorize";
 import { matchCtxKey } from "@/platform/per-context-prefs";
 import type { LayoutSnapshot } from "@contracts/session-state";
@@ -1023,6 +1024,13 @@ if (!isSettingsWindow) {
       // restored state is already on disk (loaded below), so resuming doesn't
       // need to force a save.
       setPersistenceSuppressed(true);
+      // Abort any in-flight vector reindex + drop the embedding queue before
+      // the new context's db becomes the write target: `runSql` retargets to
+      // `getCurrentContext()` on every call, so without this the old account's
+      // queued embeddings (a long reindex drain in particular) would write
+      // into the new account's `vec_notes`. The old account's pending marker
+      // is left intact so its reindex resumes on its next boot.
+      abortReindexForContextSwitch();
       notes.resetView();
       await notes.load();
       void useCollectionsStore().load();

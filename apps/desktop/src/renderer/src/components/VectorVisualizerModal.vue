@@ -16,6 +16,7 @@ import {
   cosineSimilarity
 } from "@/utils/vector-clustering";
 import { readCanvasThemeColors, withAlpha, onThemeChange } from "@/utils/canvas-theme";
+import { isReindexing } from "@/utils/vector-search";
 
 const emit = defineEmits<{
   (e: "close"): void;
@@ -94,6 +95,13 @@ async function refreshGraph(): Promise<void> {
 }
 
 watch(options, () => refreshGraph(), { deep: true });
+
+// When a model-change re-index finishes (purge + re-queue), reload the graph so
+// the freshly-embedded notes appear instead of the stale/partial set. The idle
+// queue keeps landing embeddings afterwards; toggling any option re-runs it.
+watch(isReindexing, (reindexing, was) => {
+  if (was && !reindexing) void refreshGraph();
+});
 
 // Canvas Rendering (Screen-Space Nodes for Constant Dot & Text Size)
 function render(): void {
@@ -520,6 +528,17 @@ function navigateToNote(noteId: string): void {
           <Icon name="loader" :size="16" class="animate-spin text-accent" />
           <span>{{ t("vectorViz.computing") }}</span>
         </div>
+      </div>
+
+      <!-- Re-index banner: the embedding model changed (or semantic search was
+           just enabled) and vec_notes is being rebuilt in the background. The
+           graph shown is partial until the idle queue catches up. -->
+      <div
+        v-if="isReindexing"
+        class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-xl border border-glass-border bg-glass-surface px-4 py-2 text-xs text-text-muted shadow-xl backdrop-blur-2xl"
+      >
+        <Icon name="loader" :size="14" class="animate-spin text-accent" />
+        <span>{{ t("vectorViz.reindexing") }}</span>
       </div>
     </div>
 

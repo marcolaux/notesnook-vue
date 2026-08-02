@@ -20,6 +20,7 @@
 import { ref, watch, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { OmnibarItem, OmnibarMode, SearchTier } from "@/stores/omnibar";
+import { isReindexing } from "@/utils/vector-search";
 
 const props = defineProps<{
   items: OmnibarItem[];
@@ -143,6 +144,9 @@ watch(
           </template>
           <div v-if="clusterPending" class="omnibar-dropdown__section-hint">
             {{ t('omnibar.tierClusterLoading') }}
+          </div>
+          <div v-else-if="props.mode === 'notes' && isReindexing" class="omnibar-dropdown__section-hint">
+            {{ t('omnibar.reindexing') }}
           </div>
           <div v-if="props.items.length === 0" class="omnibar-dropdown__empty">{{ emptyText }}</div>
         </template>
