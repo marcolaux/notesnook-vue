@@ -19,6 +19,7 @@ function target(over: Partial<EditorMenuTarget> = {}): EditorMenuTarget {
     code: false,
     highlight: false,
     link: null,
+    media: null,
     ...over
   };
 }
@@ -56,7 +57,9 @@ function deps(): EditorMenuDeps {
     copyBlockLink: vi.fn(),
     findInNote: vi.fn(),
     replaceInNote: vi.fn(),
-    openCommandPalette: vi.fn()
+    openCommandPalette: vi.fn(),
+    openMediaInNewTab: vi.fn(),
+    openMediaInNewWindow: vi.fn()
   };
 }
 
@@ -181,6 +184,39 @@ describe("buildEditorMenu — submenus + actions present", () => {
       "list-simple-check",
       "list-outline"
     ]);
+  });
+});
+
+describe("buildEditorMenu — media (image / attachment chip)", () => {
+  const media = { hash: "h", filename: "f.png", mime: "image/png", size: 1234 };
+
+  it("prepends Open in new tab + Open in new window when a media node is targeted", () => {
+    const entries = buildEditorMenu(target({ hasSelection: true, media }), deps());
+    expect(item(entries, "media-open-tab").label).toBeTruthy();
+    expect(item(entries, "media-open-window").label).toBeTruthy();
+    // The media rows lead the menu (before clipboard).
+    expect(entries.findIndex((x) => x.id === "media-open-tab")).toBeLessThan(
+      entries.findIndex((x) => x.id === "cut")
+    );
+  });
+
+  it("omits the media rows when no media node is targeted", () => {
+    const entries = buildEditorMenu(target({ hasSelection: true }), deps());
+    expect(entries.find((x) => x.id === "media-open-tab")).toBeUndefined();
+    expect(entries.find((x) => x.id === "media-open-window")).toBeUndefined();
+  });
+
+  it("fires openMediaInNewTab + openMediaInNewWindow for the media rows", async () => {
+    const d = deps();
+    const entries = buildEditorMenu(target({ media }), d);
+    const run = async (id: string) => {
+      const e = item(entries, id);
+      if (e.onSelect) await e.onSelect();
+    };
+    await run("media-open-tab");
+    await run("media-open-window");
+    expect(d.openMediaInNewTab).toHaveBeenCalledTimes(1);
+    expect(d.openMediaInNewWindow).toHaveBeenCalledTimes(1);
   });
 });
 

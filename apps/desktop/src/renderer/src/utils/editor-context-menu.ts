@@ -26,6 +26,21 @@ import i18n from "@/i18n";
 const t = i18n.global.t.bind(i18n.global);
 
 /**
+ * A hash-backed image or attachment node under the right-click — enough to open
+ * it in a tab / window (`hash` is the durable link to the stored blob). Only
+ * set when the clicked node is an `image` with a `hash` (a `src`-only inline
+ * image has no attachment blob to preview) or an `attachment` chip. Structurally
+ * identical to `AttachmentTabAttrs` in the editor-layout store; kept as a local
+ * interface so this pure builder doesn't import the store.
+ */
+export interface MediaTarget {
+  hash: string;
+  filename: string;
+  mime: string;
+  size: number;
+}
+
+/**
  * The editor state snapshot the menu is built from, captured at right-click
  * time from `editor.state.selection` / `editor.isActive(...)` /
  * `editor.getAttributes("link")` / `editor.isEditable`.
@@ -44,6 +59,9 @@ export interface EditorMenuTarget {
   highlight: boolean;
   /** The active `link` mark on the selection, or `null` when none. */
   link: { href: string } | null;
+  /** A hash-backed image / attachment node under the cursor, or `null`. When
+   *  set, "Open in new tab" + "Open in new window" rows are prepended. */
+  media: MediaTarget | null;
 }
 
 /**
@@ -95,6 +113,12 @@ export interface EditorMenuDeps {
   findInNote: () => void;
   replaceInNote: () => void;
   openCommandPalette: () => void;
+  // --- media (image / attachment chip) ---
+  /** Open the hash-backed image/attachment under the cursor as a new tab. */
+  openMediaInNewTab: (attrs: MediaTarget) => void;
+  /** Open the hash-backed image/attachment under the cursor in a new
+   *  focus-mode window (a single-attachment pane window). */
+  openMediaInNewWindow: (attrs: MediaTarget) => void;
 }
 
 /** Build the Insert ▸ submenu leaves. */
@@ -142,7 +166,28 @@ export function buildEditorMenu(target: EditorMenuTarget, deps: EditorMenuDeps):
       ]
     : [{ id: "link", label: t("contextMenu.link"), icon: "link", disabled: !target.hasSelection, onSelect: deps.openLinkDialog }];
 
+  // Hash-backed image / attachment under the cursor → lead with open actions.
+  // (A `src`-only inline image has no attachment blob, so `media` is null then.)
+  const mediaRows: MenuItem[] = target.media
+    ? [
+        {
+          id: "media-open-tab",
+          label: t("contextMenu.openInNewTab"),
+          icon: "external-link",
+          onSelect: () => deps.openMediaInNewTab(target.media!)
+        },
+        {
+          id: "media-open-window",
+          label: t("contextMenu.openInNewWindow"),
+          icon: "focus",
+          onSelect: () => deps.openMediaInNewWindow(target.media!)
+        },
+        separator("sep-media")
+      ]
+    : [];
+
   return [
+    ...mediaRows,
     // --- clipboard ---
     { id: "cut", label: t("contextMenu.cut"), disabled: !target.hasSelection || !target.editable, onSelect: deps.cut },
     { id: "copy", label: t("contextMenu.copy"), icon: "copy", disabled: !target.hasSelection, onSelect: deps.copy },

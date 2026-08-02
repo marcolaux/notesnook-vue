@@ -18,11 +18,13 @@
  */
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
+import { Icon } from "@notesnook-vue/ui-vue";
 import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { getDatabase } from "@/platform/bootstrap";
 import { desktop } from "@/platform/desktop-bridge";
 import { pickPreviewKind } from "@/utils/preview-kind";
 import { formatBytes } from "@/utils/attachments";
+import { useImagePanZoom } from "@/composables/use-image-pan-zoom";
 
 const props = defineProps<{ tabId: string }>();
 const { t } = useI18n();
@@ -43,6 +45,33 @@ const text = ref<string>("");
 const blobUrl = ref<string | undefined>(undefined);
 const loading = ref(false);
 const error = ref<string | undefined>(undefined);
+
+// Image pan/zoom (only wired for the `image` kind). `enabled` is true only
+// once the blob URL is ready, so the composable resets the viewport on each
+// load — a reused (KeepAlive) preview starts at fit, not the previous zoom.
+const imageViewportEl = ref<HTMLDivElement | null>(null);
+const imageEl = ref<HTMLImageElement | null>(null);
+const {
+  transformStyle,
+  isZoomed,
+  zoomPercent,
+  dragging,
+  onWheel,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
+  zoomIn,
+  zoomOut,
+  reset,
+  toggleZoom
+} = useImagePanZoom({
+  container: imageViewportEl,
+  img: imageEl,
+  enabled: computed(() => kind.value === "image" && !!blobUrl.value)
+});
 
 /**
  * Ensure the attachment's encrypted blob is local before reading. Non-image
@@ -149,6 +178,47 @@ onUnmounted(() => {
       <span class="truncate">{{ attrs?.filename ?? t("attachments.previewTitle") }}</span>
       <span v-if="attrs?.mime" class="text-text-muted/70">· {{ attrs.mime }}</span>
       <span v-if="attrs?.size" class="text-text-muted/70">· {{ formatBytes(attrs.size) }}</span>
+      <!-- Image pan/zoom controls (pinch / scroll / drag also work directly). -->
+      <div
+        v-if="kind === 'image' && blobUrl"
+        class="ml-auto flex items-center gap-1"
+        @pointerdown.stop
+        @click.stop
+      >
+        <button
+          type="button"
+          class="grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-glass-hover hover:text-text disabled:opacity-40"
+          :title="t('attachments.zoomOut')"
+          :disabled="!isZoomed"
+          @click="zoomOut"
+        >
+          <Icon name="zoom-out" :size="15" />
+        </button>
+        <button
+          type="button"
+          class="min-w-[3rem] rounded px-1 text-center text-text-muted hover:bg-glass-hover hover:text-text"
+          :title="t('attachments.resetZoom')"
+          @click="reset"
+        >
+          {{ zoomPercent }}%
+        </button>
+        <button
+          type="button"
+          class="grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-glass-hover hover:text-text"
+          :title="t('attachments.zoomIn')"
+          @click="zoomIn"
+        >
+          <Icon name="zoom-in" :size="15" />
+        </button>
+        <button
+          type="button"
+          class="grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-glass-hover hover:text-text"
+          :title="t('attachments.resetZoom')"
+          @click="reset"
+        >
+          <Icon name="maximize-2" :size="14" />
+        </button>
+      </div>
     </div>
     <div class="relative min-h-0 flex-1 overflow-auto">
       <div v-if="loading" class="p-4 text-xs text-text-muted">Loading…</div>
@@ -163,12 +233,34 @@ onUnmounted(() => {
         class="h-full w-full border-0"
         title="PDF preview"
       />
-      <img
+      <div
         v-else-if="kind === 'image' && blobUrl"
-        :src="blobUrl"
-        class="mx-auto block max-h-full max-w-full object-contain"
-        :alt="attrs?.filename ?? ''"
-      />
+        ref="imageViewportEl"
+        class="absolute inset-0 flex items-center justify-center overflow-hidden"
+        :class="{
+          'cursor-grab': isZoomed && !dragging,
+          'cursor-grabbing': dragging
+        }"
+        @wheel="onWheel"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup="onPointerUp"
+        @pointercancel="onPointerUp"
+        @touchstart="onTouchStart"
+        @touchmove="onTouchMove"
+        @touchend="onTouchEnd"
+        @dblclick="toggleZoom"
+      >
+        <img
+          ref="imageEl"
+          :src="blobUrl"
+          :style="transformStyle"
+          class="block max-h-full max-w-full select-none object-contain"
+          :alt="attrs?.filename ?? ''"
+          draggable="false"
+          @dragstart.prevent
+        />
+      </div>
       <video
         v-else-if="kind === 'video' && blobUrl"
         :src="blobUrl"

@@ -83,7 +83,8 @@ export function openPaneWindow(
   preloadPath: string,
   snapshot: LayoutSnapshot,
   bounds?: WindowBounds | undefined,
-  contextId?: string | undefined
+  contextId?: string | undefined,
+  focus?: boolean | undefined
 ): string {
   const paneId = randomUUID();
   const clean = sanitizeBounds(bounds);
@@ -136,10 +137,12 @@ export function openPaneWindow(
   const devUrl = process.env["ELECTRON_RENDERER_URL"];
   if (devUrl) {
     const ctx = contextId ? `&ctx=${encodeURIComponent(contextId)}` : "";
-    void win.loadURL(`${devUrl}?window=pane&paneId=${encodeURIComponent(paneId)}${ctx}`);
+    const foc = focus ? "&focus=1" : "";
+    void win.loadURL(`${devUrl}?window=pane&paneId=${encodeURIComponent(paneId)}${ctx}${foc}`);
   } else {
     const query: Record<string, string> = { window: "pane", paneId };
     if (contextId) query.ctx = contextId;
+    if (focus) query.focus = "1";
     void win.loadFile(resolve(__dirname, "../renderer/index.html"), { query });
   }
   return paneId;

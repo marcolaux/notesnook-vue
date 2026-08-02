@@ -18,10 +18,11 @@ Scoped differences from upstream:
   - `onResizeStop` is accepted but the resize is committed live via `onResize`
     (embed/image call `setEmbedSize`/`setImageSize` on every move), so the stop
     callback is a no-op hook kept for API parity.
-  - The handle is a plain CSS-drawn corner grip (no `@notesnook/ui` Icon / theme),
+  - The handle is a Lucide `Scaling` glyph (the codebase's standard icon set),
     themed with currentColor so it inherits the surrounding text color.
 */
 import { computed, ref } from "vue";
+import { Scaling } from "@lucide/vue";
 
 const props = withDefaults(
   defineProps<{
@@ -145,12 +146,7 @@ function onPointerUp(e: PointerEvent): void {
       class="resizer__handle"
       @pointerdown.stop="onPointerDown"
     >
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-        <path
-          fill="currentColor"
-          d="M22 22h-6v-2h4v-4h2v6zm0-10h-2v-2h2v2zm0-6h-4V4h4V2h2v4h-2v2zm-6 6h-2v-2h2v2zm-6 6H8v-2h2v2zm-6-6h2v2H2v-2zm0-6h4V4H2V2h6v2H6v2H4v2H2v2z"
-        />
-      </svg>
+      <Scaling :size="16" aria-hidden="true" />
     </div>
   </div>
 </template>

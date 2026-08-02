@@ -566,7 +566,8 @@ export interface WindowServer {
   openPaneWindow(
     snapshot: LayoutSnapshot,
     bounds?: WindowBounds | undefined,
-    contextId?: string | undefined
+    contextId?: string | undefined,
+    focus?: boolean | undefined
   ): void;
   /**
    * Fetch the in-memory {@link LayoutSnapshot} for a pane window id (the one
@@ -978,14 +979,16 @@ export const appRouter = t.router({
         z.object({
           snapshot: LayoutSnapshotSchema,
           bounds: WindowBoundsSchema.optional(),
-          contextId: z.string().optional()
+          contextId: z.string().optional(),
+          focus: z.boolean().optional()
         })
       )
       .mutation(({ input }) =>
         requireWindowServer().openPaneWindow(
           input.snapshot as LayoutSnapshot,
           input.bounds,
-          input.contextId
+          input.contextId,
+          input.focus
         )
       ),
     // Fetch the in-memory snapshot for a pane window id (the pane renderer's

@@ -31,8 +31,8 @@ export interface ImageAttachment {
 export type ImageAttributes = ImageAttachment & ImageAlignmentOptions;
 
 export type ImageSize = {
-  width: number;
-  height: number;
+  width: number | null;
+  height: number | null;
 };
 
 export interface ImageOptions {
