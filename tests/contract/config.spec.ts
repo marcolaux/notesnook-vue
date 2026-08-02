@@ -198,6 +198,25 @@ describe("config store — per-account template keys", () => {
     );
   });
 
+  it("setImageCompression writes to the ctx-suffixed key (per-account)", () => {
+    const c = useConfigStore();
+    c.setImageCompression(ImageCompressionOptions.ENABLE);
+    expect(storage.getItem(CONFIG_PREFIX + "imageCompression.local")).toBe(
+      JSON.stringify(ImageCompressionOptions.ENABLE)
+    );
+    expect(storage.getItem(CONFIG_PREFIX + "imageCompression")).toBeNull();
+  });
+
+  it("loadClientPrefs(ctx) re-reads that ctx's imageCompression into the ref", () => {
+    const c = useConfigStore();
+    storage.setItem(
+      CONFIG_PREFIX + "imageCompression." + HEX,
+      JSON.stringify(ImageCompressionOptions.DISABLE)
+    );
+    c.loadClientPrefs(HEX);
+    expect(c.imageCompression).toBe(ImageCompressionOptions.DISABLE);
+  });
+
   it("reads a legacy un-suffixed template value (upgrade fallback) + migrates it", () => {
     storage.setItem(CONFIG_PREFIX + "defaultNoteTemplate", JSON.stringify("legacy-tmpl"));
     const c = useConfigStore();

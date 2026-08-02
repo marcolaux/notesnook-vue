@@ -123,6 +123,18 @@ export const useAttachmentsStore = defineStore("attachments", () => {
     await load();
   }
 
+  /** Clear the cached per-attachment usage (linked notes) + in-flight usage
+   *  loads. Called on account context switch (see `AttachmentsSection`) so a
+   *  stale cache entry can't serve another account's notes when an attachment
+   *  hash happens to collide across accounts (content-addressed hashes are
+   *  per-DB but the cache is a singleton keyed by hash). `load()` repopulates
+   *  `items`/`counts`/`orphanedIds`; it does NOT touch `usage`, so this is the
+   *  explicit reset for the cross-account case. */
+  function clearUsage(): void {
+    usage.value = {};
+    usageLoading.value = {};
+  }
+
   /** Best-effort cross-window signal: the main window reloads its stores so
    *  notes whose HTML was mutated by a delete's detach step stay in sync. */
   function signalDataChanged(): void {
@@ -230,6 +242,7 @@ export const useAttachmentsStore = defineStore("attachments", () => {
     orphanedIds,
     load,
     setFilter,
+    clearUsage,
     remove,
     removeOrphaned,
     loadUsage,

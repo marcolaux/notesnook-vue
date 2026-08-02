@@ -13,16 +13,24 @@
  *    toggle (lists linked notes with "Open" → `desktop.window.openNote` opens
  *    the note in a new focused window), and a delete button.
  *  - "Remove orphaned" bulk action.
+ *  - Image-compression preference (per-account): a `<select>` over the config
+ *    store's `imageCompression` ref (Ask every time / Compress / Don't compress),
+ *    written through `config.setImageCompression` to the ctx-suffixed
+ *    localStorage key. The value is reloaded on an account switch by
+ *    `switchContext` → `config.loadClientPrefs`, so the select reflects the
+ *    active account without any extra wiring here.
  *
  * `window.confirm` gates live here (not the store), matching `VaultSection`,
  * so the store stays unit-testable in node. After a delete we rely on the
  * store's `notifyDataChanged` to signal the main window to reload affected
  * notes. Icons use the shared `Icon` (ui-vue) over the `@lucide/vue` registry.
  */
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { Surface, Flex, Text, Button, Input, Icon } from "@notesnook-vue/ui-vue";
 import { useI18n } from "vue-i18n";
 import { useAttachmentsStore } from "@/stores/attachments";
+import { useAuthStore } from "@/stores/auth";
+import { useConfigStore, ImageCompressionOptions } from "@/stores/config";
 import {
   ATTACHMENT_FILTERS,
   formatBytes,
@@ -31,14 +39,44 @@ import {
 import type { Attachment, Note } from "@notesnook-vue/contracts";
 
 const attachments = useAttachmentsStore();
+const auth = useAuthStore();
+const config = useConfigStore();
 const { t } = useI18n();
+
+const search = ref("");
+const expanded = ref<Set<string>>(new Set());
+
+/** Image-compression preference options (per-account; mirrors upstream's
+ *  `ImageCompressionOptions` enum). Labels resolve via `t()` so they
+ *  re-evaluate on a locale change. */
+const compressionOptions = computed<{ value: ImageCompressionOptions; label: string }[]>(() => [
+  { value: ImageCompressionOptions.ASK_EVERY_TIME, label: t("settings.attachments.imageCompressionAsk") },
+  { value: ImageCompressionOptions.ENABLE, label: t("settings.attachments.imageCompressionEnable") },
+  { value: ImageCompressionOptions.DISABLE, label: t("settings.attachments.imageCompressionDisable") }
+]);
+
+function pickImageCompression(e: Event): void {
+  config.setImageCompression(Number((e.target as HTMLSelectElement).value) as ImageCompressionOptions);
+}
 
 onMounted(() => {
   void attachments.load();
 });
 
-const search = ref("");
-const expanded = ref<Set<string>>(new Set());
+// The section lives under each account group, so the same component instance
+// stays mounted when the user navigates from one account's Attachments to
+// another's — `onMounted` won't re-fire. `switchContext` (SettingsLayout) live-
+// swaps the DB singleton and bumps `auth.contextChangeSignal`; reload from the
+// new account's DB here, resetting the per-row expand state + cached usage so no
+// stale cross-account data lingers (attachments are content-addressed by hash).
+watch(
+  () => auth.contextChangeSignal,
+  () => {
+    expanded.value = new Set();
+    attachments.clearUsage();
+    void attachments.load();
+  }
+);
 
 const filtered = computed<Attachment[]>(() => {
   const q = search.value.trim().toLowerCase();
@@ -96,6 +134,19 @@ async function onOpen(n: Note): Promise<void> {
             {{ t("settings.attachments.orphanedSummary", { n: attachments.counts.orphaned, bytes: formatBytes(attachments.orphanedBytes) }) }}
           </template>
         </Text>
+      </Flex>
+
+      <!-- Image compression preference (per-account) -->
+      <Flex direction="column" :gap="1">
+        <Text variant="body" size="sm" class="text-text-muted">{{ t("settings.attachments.imageCompression") }}</Text>
+        <select
+          :value="config.imageCompression"
+          class="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          @change="pickImageCompression"
+        >
+          <option v-for="o in compressionOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+        </select>
+        <Text variant="body" size="xs" class="text-text-muted">{{ t("settings.attachments.imageCompressionHint") }}</Text>
       </Flex>
 
       <!-- Filter tabs -->

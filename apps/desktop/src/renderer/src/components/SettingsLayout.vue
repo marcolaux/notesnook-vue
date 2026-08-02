@@ -6,13 +6,16 @@
  * nav of section groups and a right content pane showing the active section.
  *
  * The sidebar is split into a **Global** group (device-wide sections: Sync,
- * Backup, Import, Attachments, Updates) and **one group per account** (Local +
- * every logged-in account, enumerated from the account registry), each exposing
- * the per-account sections — Appearance, Language, Notes, Search, Vault. Clicking
- * a per-account section switches the window's context in place (live-swap the DB
- * singleton + reload the per-account client prefs) so each account keeps its own
- * values; the same five section components render under every account, reading
- * the stores which are now context-aware.
+ * Backup, Import, Updates) and **one group per account** (Local + every
+ * logged-in account, enumerated from the account registry), each exposing the
+ * per-account sections — Appearance, Language, Notes, Search, Attachments,
+ * Vault. Attachments lives per-account because attachment data is stored in the
+ * account's own encrypted DB (the section browses the active context's
+ * `db.attachments`), so it follows the same live-context-swap as the other
+ * per-account sections. Clicking a per-account section switches the window's
+ * context in place (live-swap the DB singleton + reload the per-account client
+ * prefs) so each account keeps its own values; the same section components render
+ * under every account, reading the stores / active DB which are context-aware.
  *
  * Padding reuses `useTitleBarStore` so the drag label clears the OS-drawn window
  * controls (macOS traffic lights / Windows WCO), matching the main window's
@@ -116,12 +119,14 @@ interface SectionGroup {
   items: SectionItem[];
 }
 
-/** Per-account sections — rendered under every account group. */
+/** Per-account sections — rendered under every account group. Attachments is
+ *  per-account because its data lives in the account's own encrypted DB. */
 const accountSections: SectionItem[] = [
   { id: "appearance", label: "settings.sections.appearance", component: AppearanceSection },
   { id: "language", label: "settings.sections.language", component: LanguageSection },
   { id: "notes", label: "settings.sections.notes", component: NotesSection },
   { id: "search", label: "settings.sections.search", component: SearchSection },
+  { id: "attachments", label: "settings.sections.attachments", component: AttachmentsSection },
   { id: "vault", label: "settings.sections.vault", component: VaultSection }
 ];
 /** Device-wide sections — the Global group. */
@@ -129,7 +134,6 @@ const globalSections: SectionItem[] = [
   { id: "sync", label: "settings.sections.sync", component: SyncSection },
   { id: "backup", label: "settings.sections.backup", component: BackupSection },
   { id: "import", label: "settings.sections.import", component: ImportSection },
-  { id: "attachments", label: "settings.sections.attachments", component: AttachmentsSection },
   { id: "updates", label: "settings.sections.updates", component: UpdatesSection }
 ];
 

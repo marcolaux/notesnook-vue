@@ -174,11 +174,13 @@ function writeConfig<T>(suffix: ConfigKey, value: T): void {
 /** The config keys that are per-account (namespaced by `ContextId` in
  *  localStorage) rather than device-global. Currently the default note/task
  *  template selection — each account picks its own default template (the
- *  template notes themselves are per-account via the DB). All other config
- *  keys stay device-global. */
+ *  template notes themselves are per-account via the DB) — and the image-
+ *  compression preference (each account decides whether pasted/dropped
+ *  images are compressed). All other config keys stay device-global. */
 const PER_CONTEXT_KEYS: ReadonlySet<ConfigKey> = new Set([
   "defaultNoteTemplate",
-  "defaultTaskTemplate"
+  "defaultTaskTemplate",
+  "imageCompression"
 ]);
 
 /** Read + parse a per-account config value for `ctx`, falling back to the
@@ -237,7 +239,7 @@ export const useConfigStore = defineStore("config", () => {
   const hideNoteTitle = ref(readConfig("hideNoteTitle", CONFIG_DEFAULTS.hideNoteTitle));
   const homepage = ref(readConfig("homepage", CONFIG_DEFAULTS.homepage));
   const imageCompression = ref(
-    readConfig("imageCompression", CONFIG_DEFAULTS.imageCompression)
+    readConfigCtx("imageCompression", CONFIG_DEFAULTS.imageCompression, getCurrentContext())
   );
 
   // --- templates (default note/task template note id; null = none) ----------
@@ -290,9 +292,10 @@ export const useConfigStore = defineStore("config", () => {
     fontLigatures.value = readConfig("fontLigatures", CONFIG_DEFAULTS.fontLigatures);
     hideNoteTitle.value = readConfig("hideNoteTitle", CONFIG_DEFAULTS.hideNoteTitle);
     homepage.value = readConfig("homepage", CONFIG_DEFAULTS.homepage);
-    imageCompression.value = readConfig(
+    imageCompression.value = readConfigCtx(
       "imageCompression",
-      CONFIG_DEFAULTS.imageCompression
+      CONFIG_DEFAULTS.imageCompression,
+      getCurrentContext()
     );
     defaultNoteTemplate.value = readConfigCtx(
       "defaultNoteTemplate",
@@ -307,11 +310,11 @@ export const useConfigStore = defineStore("config", () => {
     tocMode.value = readConfig("tocMode", CONFIG_DEFAULTS.tocMode);
   }
 
-  /** Re-read the per-account config values (the default-template keys) for
-   *  `ctx` into the store refs, with lazy legacy migration. Call after a
-   *  context switch (Settings `switchContext`, main window
-   *  `contextChangeSignal` watch) so the UI reflects the newly-active
-   *  account's template choice. Device-global keys are unaffected. */
+  /** Re-read the per-account config values (the default-template keys + the
+   *  image-compression preference) for `ctx` into the store refs, with lazy
+   *  legacy migration. Call after a context switch (Settings `switchContext`,
+   *  main window `contextChangeSignal` watch) so the UI reflects the newly-
+   *  active account's choices. Device-global keys are unaffected. */
   function loadClientPrefs(ctx: string = getCurrentContext()): void {
     for (const suffix of PER_CONTEXT_KEYS) migrateLegacyToCtx(configKey(suffix), ctx);
     defaultNoteTemplate.value = readConfigCtx(
@@ -322,6 +325,11 @@ export const useConfigStore = defineStore("config", () => {
     defaultTaskTemplate.value = readConfigCtx(
       "defaultTaskTemplate",
       CONFIG_DEFAULTS.defaultTaskTemplate,
+      ctx
+    );
+    imageCompression.value = readConfigCtx(
+      "imageCompression",
+      CONFIG_DEFAULTS.imageCompression,
       ctx
     );
   }
@@ -388,7 +396,7 @@ export const useConfigStore = defineStore("config", () => {
   }
   function setImageCompression(v: ImageCompressionOptions): void {
     imageCompression.value = v;
-    writeConfig("imageCompression", v);
+    writeConfigCtx("imageCompression", v, getCurrentContext());
   }
   function setDefaultNoteTemplate(v: string | null): void {
     defaultNoteTemplate.value = v;
