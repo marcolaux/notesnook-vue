@@ -38,6 +38,7 @@ import {
   setPersistenceSuppressed
 } from "@/composables/use-session-persistence";
 import { dropZoneFromPoint } from "@/utils/tab-dnd";
+import { abortReindexForContextSwitch } from "@/utils/vector-search";
 import { reloadBlockColorize } from "@/stores/block-colorize";
 import { matchCtxKey } from "@/platform/per-context-prefs";
 import type { LayoutSnapshot } from "@contracts/session-state";
@@ -139,6 +140,9 @@ const noteWindowNoteId = isNoteWindow
 // scheduling / session restore to the main window, like a note window.
 const isPaneWindow = windowType === "pane";
 const paneWindowId = isPaneWindow ? new URLSearchParams(location.search).get("paneId") : null;
+// A focus-mode pane window (e.g. "Open image in new window"): the pane boots
+// with focus mode on (sidebar + notes list hidden) like a torn-off note window.
+const paneWindowFocus = isPaneWindow && new URLSearchParams(location.search).get("focus") === "1";
 // Per-window account context: main stamps `?ctx=<id>` on note/pane/account
 // windows so each opens its own account's encrypted SQLite context. The
 // default first/main window (and Settings/Changelog) carry no `ctx` →
@@ -811,8 +815,12 @@ onMounted(async () => {
     // Detached pane window (Phase 4.6): hydrate this window's layout from the
     // snapshot main opened it with (fetched by `paneId`), filtered to notes
     // still valid in this account's DB. The pane keeps the full shell (no focus
-    // mode) so it's a fully functional editing window with its own tabs.
+    // mode) so it's a fully functional editing window with its own tabs —
+    // unless `?focus=1` was stamped (a single-attachment focus window opened
+    // via "Open in new window"), in which case it hides the chrome like a note
+    // window.
     if (isPaneWindow && paneWindowId && auth.showShell) {
+      if (paneWindowFocus) useShellStore().setFocusMode(true);
       void router.push("/all").then(async () => {
         try {
           const snapshot = await desktop.window.getPaneSnapshot.query({ paneId: paneWindowId });
@@ -1016,6 +1024,13 @@ if (!isSettingsWindow) {
       // restored state is already on disk (loaded below), so resuming doesn't
       // need to force a save.
       setPersistenceSuppressed(true);
+      // Abort any in-flight vector reindex + drop the embedding queue before
+      // the new context's db becomes the write target: `runSql` retargets to
+      // `getCurrentContext()` on every call, so without this the old account's
+      // queued embeddings (a long reindex drain in particular) would write
+      // into the new account's `vec_notes`. The old account's pending marker
+      // is left intact so its reindex resumes on its next boot.
+      abortReindexForContextSwitch();
       notes.resetView();
       await notes.load();
       void useCollectionsStore().load();

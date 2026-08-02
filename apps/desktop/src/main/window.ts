@@ -58,9 +58,10 @@ export function createWindowServer(preloadPath: string): WindowServer {
     openPaneWindow(
       snapshot: LayoutSnapshot,
       bounds?: WindowBounds | undefined,
-      contextId?: string | undefined
+      contextId?: string | undefined,
+      focus?: boolean | undefined
     ): void {
-      openPaneWindowImpl(preloadPath, snapshot, bounds, contextId);
+      openPaneWindowImpl(preloadPath, snapshot, bounds, contextId, focus);
     },
     getPaneSnapshot(paneId: string): LayoutSnapshot | null {
       return getPaneSnapshotImpl(paneId);

@@ -29,17 +29,23 @@
  */
 import type { ShallowRef, Ref } from "vue";
 import type { Editor, JSONContent } from "@tiptap/vue-3";
-import { DOMSerializer } from "@tiptap/pm/model";
+import { DOMSerializer, type Node as PMNode } from "@tiptap/pm/model";
+import { NodeSelection } from "@tiptap/pm/state";
 import { EDITOR_ACTION_BY_ID, linkMarkAttrs, createInternalLink } from "@notesnook-vue/editor-vue";
 import { useContextMenuStore } from "@/stores/context-menu";
 import { useEditorStore } from "@/stores/editor";
 import { useOmnibarStore } from "@/stores/omnibar";
 import { useLinkDialogStore } from "@/stores/link-dialog";
+import { useEditorLayoutStore, type EditorTab, type EditorSession } from "@/stores/editor-layout";
+import type { LayoutSnapshot } from "@contracts/session-state";
+import { desktop } from "@/platform/desktop-bridge";
+import { readCurrentContext } from "@/platform/account-context";
 import { blockIdAtSelection } from "@/utils/editor-block-link";
 import {
   buildEditorMenu,
   type EditorMenuTarget,
-  type EditorMenuDeps
+  type EditorMenuDeps,
+  type MediaTarget
 } from "@/utils/editor-context-menu";
 
 /** Prepend `https://` when the user entered a scheme-less URL. Leaves
@@ -53,12 +59,14 @@ function normalizeHref(href: string): string {
 
 export function useEditorContextMenu(
   editor: ShallowRef<Editor | undefined>,
-  noteId: Ref<string | null>
+  noteId: Ref<string | null>,
+  groupId: Ref<string>
 ) {
   const contextMenu = useContextMenuStore();
   const editorStore = useEditorStore();
   const omnibar = useOmnibarStore();
   const linkDialog = useLinkDialogStore();
+  const layout = useEditorLayoutStore();
 
   /** Run a vendored `EDITOR_ACTION` by id on the pane's editor (no-op if the
    *  editor is gone or the id is unknown). The action's `run` focuses + chains. */
@@ -239,6 +247,102 @@ export function useEditorContextMenu(
     omnibar.openCommands();
   }
 
+  // --- media (image / attachment chip) --------------------------------------
+
+  /** Read a `MediaTarget` off a ProseMirror node, or `null` if it isn't a
+   *  hash-backed image / attachment. A `src`-only inline image (external URL /
+   *  data URL, no `hash`) has no attachment blob to preview → `null`. */
+  function mediaFromNode(node: PMNode | null | undefined): MediaTarget | null {
+    if (!node) return null;
+    const name = node.type.name;
+    if (name !== "image" && name !== "attachment") return null;
+    const hash = node.attrs.hash;
+    if (!hash || typeof hash !== "string") return null;
+    return {
+      hash,
+      filename: String(node.attrs.filename ?? ""),
+      mime: String(node.attrs.mime ?? ""),
+      size: Number(node.attrs.size ?? 0)
+    };
+  }
+
+  /** The hash-backed image / attachment under a right-click, or `null`. ProseMirror
+   *  moves a `NodeSelection` onto an atom node (image/attachment) on right-click;
+   *  fall back to `posAtCoords` + `nodeAt`/`nodeAfter` for robustness. */
+  function mediaUnderClick(ed: Editor, e: MouseEvent): MediaTarget | null {
+    const sel = ed.state.selection;
+    if (sel instanceof NodeSelection) {
+      const m = mediaFromNode(sel.node);
+      if (m) return m;
+    }
+    try {
+      const pos = ed.view.posAtCoords({ left: e.clientX, top: e.clientY });
+      if (pos) {
+        const m = mediaFromNode(ed.state.doc.nodeAt(pos.pos) ?? null);
+        if (m) return m;
+        const $p = ed.state.doc.resolve(pos.pos);
+        return mediaFromNode($p.nodeAfter ?? null);
+      }
+    } catch {
+      /* posAtCoords can throw outside the editor — ignore */
+    }
+    return null;
+  }
+
+  /** Open the image/attachment as a new attachment-preview tab in this pane's
+   *  group (reuses an existing tab for the same hash). */
+  function openMediaInNewTab(attrs: MediaTarget): void {
+    const gid = groupId.value;
+    if (!gid) return;
+    layout.openAttachmentTab(gid, {
+      hash: attrs.hash,
+      filename: attrs.filename,
+      mime: attrs.mime,
+      size: attrs.size
+    });
+  }
+
+  /** Build a one-attachment {@link LayoutSnapshot} (a single root group with one
+   *  attachment tab) for a focus-mode pane window. Mirrors what
+   *  `detachGroupSnapshot` produces for a single-tab pane. */
+  function buildAttachmentFocusSnapshot(attrs: MediaTarget): LayoutSnapshot {
+    const tabId = crypto.randomUUID();
+    const sessionId = crypto.randomUUID();
+    const gid = crypto.randomUUID();
+    const tab: EditorTab = {
+      id: tabId,
+      groupId: gid,
+      kind: "attachment",
+      attachment: {
+        hash: attrs.hash,
+        filename: attrs.filename,
+        mime: attrs.mime,
+        size: attrs.size
+      },
+      sessionId,
+      history: [],
+      historyIndex: 0
+    };
+    const session: EditorSession = { id: sessionId, tabId, type: "attachment" };
+    return {
+      layout: { id: crypto.randomUUID(), type: "group", groupId: gid },
+      groups: { [gid]: { id: gid, activeTabId: tabId } },
+      tabs: { [tabId]: tab },
+      sessions: { [sessionId]: session },
+      activeGroupId: gid
+    };
+  }
+
+  /** Open the image/attachment in a new focus-mode window (a single-attachment
+   *  pane window; main appends `&focus=1` so the pane enables focus mode). */
+  function openMediaInNewWindow(attrs: MediaTarget): void {
+    const snapshot = buildAttachmentFocusSnapshot(attrs);
+    const contextId = readCurrentContext();
+    void desktop.window.openPaneWindow
+      .mutate({ snapshot, contextId, focus: true })
+      .catch(() => undefined);
+  }
+
   /** Build the dep bag. Rebuilt per right-click so the closures always see the
    *  latest `editor.value` (e.g. after a tab switch under KeepAlive). */
   function buildDeps(): EditorMenuDeps {
@@ -273,7 +377,9 @@ export function useEditorContextMenu(
       copyBlockLink,
       findInNote,
       replaceInNote,
-      openCommandPalette
+      openCommandPalette,
+      openMediaInNewTab,
+      openMediaInNewWindow
     };
   }
 
@@ -293,7 +399,8 @@ export function useEditorContextMenu(
       strike: ed.isActive("strike"),
       code: ed.isActive("code"),
       highlight: ed.isActive("highlight"),
-      link: ed.isActive("link") ? { href: String(ed.getAttributes("link").href ?? "") } : null
+      link: ed.isActive("link") ? { href: String(ed.getAttributes("link").href ?? "") } : null,
+      media: mediaUnderClick(ed, e)
     };
     e.preventDefault();
     contextMenu.show(buildEditorMenu(target, buildDeps()), e.clientX, e.clientY);

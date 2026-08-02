@@ -27,6 +27,7 @@ import { useEditorLayoutStore } from "@/stores/editor-layout";
 import { getNoteNeighbourhood, type NeighbourNode } from "@/utils/note-neighbourhood";
 import { projectPCA2D } from "@/utils/vector-clustering";
 import { readCanvasThemeColors, withAlpha, onThemeChange } from "@/utils/canvas-theme";
+import { isReindexing } from "@/utils/vector-search";
 
 const props = defineProps<{ noteId: string | null; tabId: string }>();
 const { t } = useI18n();
@@ -353,6 +354,12 @@ onBeforeUnmount(() => {
 // note set shifts (so trashed/archived neighbours drop out).
 watch(() => props.noteId, scheduleLoad);
 watch(() => notesStore.items.length, scheduleLoad);
+// While the embedding index is being rebuilt (model-change reindex), the
+// neighbourhood is partial — show the reindexing notice instead of a misleading
+// sparse graph, then reload once the reindex drains.
+watch(isReindexing, (reindexing) => {
+  if (!reindexing) scheduleLoad();
+});
 </script>
 
 <template>
@@ -388,6 +395,17 @@ watch(() => notesStore.items.length, scheduleLoad);
       >
         <Icon name="network" :size="20" class="text-text-muted" />
         <p class="text-xs text-text-muted leading-relaxed">{{ t("toc.visualizerDisabled") }}</p>
+      </div>
+
+      <!-- Reindexing (embedding index being rebuilt) — the neighbourhood is
+           partial until the reindex drains; the notice avoids presenting a
+           misleadingly sparse map. -->
+      <div
+        v-else-if="isReindexing"
+        class="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center"
+      >
+        <Icon name="loader" :size="20" class="animate-spin text-accent" />
+        <p class="text-xs text-text-muted leading-relaxed">{{ t("toc.visualizerReindexing") }}</p>
       </div>
 
       <!-- Empty (centre resolved, no live neighbours) -->

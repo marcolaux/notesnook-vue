@@ -40,6 +40,7 @@ import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue"
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/vue-3";
 import { Image as ImageIcon } from "@lucide/vue";
 import Resizer from "../../components/Resizer.vue";
+import ImageToolbar from "./components/ImageToolbar.vue";
 import { useObserver } from "../../utils/use-observer";
 import { corsify, revokeBloburl, toBlobURL } from "../../utils/downloader";
 import type { ImageAlignmentOptions } from "./types";
@@ -57,10 +58,27 @@ const progress = computed(
 const align = computed<NonNullable<ImageAlignmentOptions["align"]>>(
   () => (props.node.attrs.align as ImageAlignmentOptions["align"]) ?? "left"
 );
+const aspectRatio = computed(
+  () => (props.node.attrs.aspectRatio as number | null) ?? null
+);
 const isReadonly = computed(() => !props.editor.isEditable);
 
 const bloburl = ref<string | undefined>(undefined);
 const resizing = ref<{ width: number; height: number } | null>(null);
+// Natural pixel dimensions, captured on <img> load. Runtime ref only (not
+// persisted) — repopulates whenever the image loads, so the ImageToolbar's
+// "Orig" preset works after note reload too.
+const naturalSize = ref<{ width: number; height: number } | null>(null);
+
+function onImgLoad(e: Event): void {
+  const img = e.currentTarget as HTMLImageElement;
+  if (img.naturalWidth && img.naturalHeight) {
+    naturalSize.value = {
+      width: img.naturalWidth,
+      height: img.naturalHeight
+    };
+  }
+}
 
 // The observer target is the always-rendered frame so intersection fires even
 // before the blob loads (the `<img>` has no src until then).
@@ -237,6 +255,15 @@ function onResizeStop(w: number, h: number): void {
 
 <template>
   <NodeViewWrapper as="div" class="image-node" :class="justifyClass">
+    <ImageToolbar
+      v-if="editor.isEditable && props.selected"
+      :editor="editor"
+      :align="align"
+      :width="width"
+      :height="height"
+      :aspect-ratio="aspectRatio"
+      :natural-size="naturalSize"
+    />
     <Resizer
       :enabled="editor.isEditable"
       :selected="props.selected"
@@ -279,6 +306,7 @@ function onResizeStop(w: number, h: number): void {
           :src="imgSrc"
           crossOrigin="anonymous"
           draggable="false"
+          @load="onImgLoad"
         />
       </div>
     </Resizer>

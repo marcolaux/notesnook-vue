@@ -854,7 +854,7 @@ const editor = useEditor({
 // Right-click context menu for the editor body (clipboard / formatting / link
 // / insert / list / find / palette). Bound on `<EditorContent>` above; the
 // composable captures the PM selection snapshot + builds the dep bag per click.
-const { onEditorContext, pasteAsPlainText } = useEditorContextMenu(editor, myNoteId);
+const { onEditorContext, pasteAsPlainText } = useEditorContextMenu(editor, myNoteId, myGroupId);
 
 // --- Autosave (debounced), instance-local (flushed on switch/deactivate) -----
 // INSTANCE-LOCAL (setup scope, not module scope): a split layout mounts several

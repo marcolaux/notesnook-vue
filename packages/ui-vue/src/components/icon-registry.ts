@@ -109,7 +109,11 @@ import {
   // Block-colorize toolbar toggle (port of sn-super-colors) — chrome, first paint.
   Palette,
   // Proactive suggestion overlay (editor) — chrome, first paint.
-  Sparkles
+  Sparkles,
+  // Image attachment preview pan/zoom controls — chrome, first paint.
+  ZoomIn,
+  ZoomOut,
+  Maximize2
 } from "@lucide/vue";
 
 
@@ -198,7 +202,11 @@ export const ICONS: Record<string, Component> = {
   // Pane detach grip (Phase 4.6) — tab-strip drag handle.
   "grip-vertical": GripVertical,
   // Proactive suggestion overlay (editor).
-  sparkles: Sparkles
+  sparkles: Sparkles,
+  // Image attachment preview pan/zoom controls.
+  "zoom-in": ZoomIn,
+  "zoom-out": ZoomOut,
+  "maximize-2": Maximize2
 };
 
 /**

@@ -66,6 +66,7 @@ export default {
     visualizerLoading: "Mapping related notes…",
     visualizerDisabled: "Enable semantic search to see related notes",
     visualizerEmpty: "No related notes found",
+    visualizerReindexing: "Reindexing semantic search — related notes fill in as the index rebuilds.",
     related: "Related notes"
   },
   sidebar: {
@@ -107,6 +108,9 @@ export default {
     previewTitle: "Attachment",
     openExternally: "Open externally",
     unsupportedPreview: "No in-app preview for this file type.",
+    zoomIn: "Zoom in",
+    zoomOut: "Zoom out",
+    resetZoom: "Reset zoom",
     categoryImage: "Images",
     categoryVideo: "Videos",
     categoryAudio: "Audio",
@@ -582,6 +586,7 @@ export default {
     reset: "Reset",
     closeTitle: "Close Visualizer (Esc)",
     computing: "Computing 2D vector clusters...",
+    reindexing: "Reindexing semantic search — the map fills in as notes are re-embedded in the background.",
     clusterLabel: "✦ Cluster: {title}",
     topSimilar: "Top Similar Notes",
     similarityPct: "Similarity %",
@@ -922,7 +927,8 @@ export default {
     tierExact: "Exact matches",
     tierSemantic: "Semantic matches",
     tierCluster: "Related (cluster)",
-    tierClusterLoading: "Finding related notes…"
+    tierClusterLoading: "Finding related notes…",
+    reindexing: "Reindexing semantic search — results may be incomplete until it finishes."
   },
   // Phase 7.1 Batch 6 — command palette titles, context menus, status/updater.
   // `command.*` keys are stored in `Command.title` and resolved at omnibar render
@@ -1007,6 +1013,7 @@ export default {
     unpublishNote: "Unpublish note",
     copyMonographUrl: "Copy monograph URL",
     openInBrowser: "Open in browser",
+    openInNewTab: "Open in new tab",
     openInNewWindow: "Open in new window",
     openInSplitRight: "Open in split right",
     openInSplitDown: "Open in split down",
