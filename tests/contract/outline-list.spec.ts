@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import { Editor } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -11,8 +11,22 @@ import {
 } from "@notesnook-vue/editor-vue";
 
 describe("Upstream Outline List Contract & Grouped Toolbar Button Tests", () => {
+  // Track every editor we spin up so we can destroy them in afterAll. A live
+  // prosemirror EditorView keeps a DOMObserver flush timer running; if it
+  // fires after happy-dom tears down the environment it throws
+  // `ReferenceError: document is not defined`, which Vitest reports as an
+  // unhandled error and exits non-zero (breaks CI even with all tests green).
+  const editors: Editor[] = [];
+
+  afterAll(() => {
+    for (const editor of editors) {
+      editor.destroy();
+    }
+    editors.length = 0;
+  });
+
   function createTestEditor(content = "") {
-    return new Editor({
+    const editor = new Editor({
       element: document.createElement("div"),
       extensions: [
         StarterKit.configure({ codeBlock: false }),
@@ -21,6 +35,8 @@ describe("Upstream Outline List Contract & Grouped Toolbar Button Tests", () => 
       ],
       content
     });
+    editors.push(editor);
+    return editor;
   }
 
   it("parses <ul data-type='outlineList'> HTML and serializes it accurately", () => {
